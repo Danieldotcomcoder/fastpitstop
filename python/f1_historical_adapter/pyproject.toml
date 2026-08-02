@@ -1,0 +1,35 @@
+[project]
+name = "f1-historical-adapter"
+version = "0.0.1"
+description = "Phase 1 seam: maps f1_backfill's historical parquet tables into the SAME DomainEvent stream the live pipeline emits, so Phase 2's kernel runs one code path over both."
+requires-python = ">=3.12"
+dependencies = [
+    "f1-domain",
+    "f1-parse",
+    "pandas>=2.2",
+    "pyarrow>=17",
+]
+
+[project.scripts]
+f1-historical-compare = "f1_historical_adapter.cli:main"
+
+[dependency-groups]
+# f1-recording/f1-replay are test-only: the comparison harness drives a
+# real recording through the live pipeline to diff it against historical.
+dev = [
+    "f1-recording",
+    "f1-replay",
+]
+
+[tool.uv.sources]
+f1-domain = { workspace = true }
+f1-parse = { workspace = true }
+f1-recording = { workspace = true }
+f1-replay = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/f1_historical_adapter"]

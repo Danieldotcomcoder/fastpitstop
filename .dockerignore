@@ -1,0 +1,38 @@
+# Both python/Dockerfile and apps/web/Dockerfile build from the repo root
+# context, so one .dockerignore covers both. Keep images small and free of
+# anything that shouldn't ship: source control, dev-only tooling, tests and
+# fixtures, and — most importantly — the local data/ directory (recordings,
+# historical parquet, the FastF1 cache) which is large, gitignored, and must
+# only ever live on a mounted volume, never baked into a layer.
+
+.git
+.github
+
+# Python: don't ship dev tooling, caches, or test trees into a runtime image.
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/tests
+**/fixtures
+
+# Node: force a clean install inside the image rather than copying the
+# host's node_modules (may not match the target platform/arch) or build
+# output (regenerated in-image).
+**/node_modules
+apps/web/build
+apps/web/.svelte-kit
+apps/web/test-results
+apps/web/playwright-report
+apps/web/e2e
+
+# Local data — never in an image layer (see CLAUDE.md: recordings/backfill
+# are unrepeatable, must live on a volume, not a layer).
+data/
+
+# Misc.
+*.png
+docs/beta-screenshots
+.env
+.env.local

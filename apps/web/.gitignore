@@ -1,0 +1,14 @@
+node_modules/
+build/
+.svelte-kit/
+dist/
+vite.config.ts.timestamp-*
+vite.config.js.timestamp-*
+.env
+.env.*
+!.env.example
+
+# Playwright (verify-phase3) output
+test-results/
+playwright-report/
+blob-report/

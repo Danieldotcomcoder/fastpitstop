@@ -1,0 +1,41 @@
+[
+  {
+    "Messages": [
+      {
+        "Utc": "2024-03-02T15:00:00",
+        "Category": "Flag",
+        "Flag": "GREEN",
+        "Scope": "Track",
+        "Message": "GREEN LIGHT - PIT EXIT OPEN"
+      },
+      {
+        "Utc": "2024-03-02T15:04:31",
+        "Category": "Other",
+        "Message": "RISK OF RAIN FOR F1 RACE IS 20%"
+      }
+    ]
+  },
+  {
+    "Messages": {
+      "5": {
+        "Utc": "2024-03-02T15:12:03",
+        "Category": "Flag",
+        "Flag": "YELLOW",
+        "Scope": "Sector",
+        "Sector": 7,
+        "Message": "YELLOW IN TRACK SECTOR 7"
+      }
+    }
+  },
+  {
+    "Messages": {
+      "9": {
+        "Utc": "2024-03-02T15:47:20",
+        "Category": "CarEvent",
+        "RacingNumber": "23",
+        "Lap": 24,
+        "Message": "CAR 23 (ALB) TIME 1:31.773 DELETED - TRACK LIMITS AT TURN 13"
+      }
+    }
+  }
+]

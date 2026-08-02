@@ -1,0 +1,26 @@
+[project]
+name = "f1-why"
+version = "0.0.1"
+description = "Phase 5: the why-engine. 5.1 detects anomalies (pure Python over kernel + state frames); 5.2 assembles a spoiler-safe, token-budgeted evidence bundle per anomaly (kernel state, radio, race control); 5.3 narrates one grounded, cited sentence over that bundle via a swappable model interface (real Claude Haiku backend + a deterministic mock) behind a grounding validator, cached per anomaly."
+requires-python = ">=3.12"
+dependencies = [
+    "f1-domain",
+    "f1-kernel",
+    "f1-radio",
+    "polars>=1.20",
+    "numpy>=1.26",
+    "pydantic>=2.7",
+    "anthropic>=0.69",
+]
+
+[tool.uv.sources]
+f1-domain = { workspace = true }
+f1-kernel = { workspace = true }
+f1-radio = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/f1_why"]

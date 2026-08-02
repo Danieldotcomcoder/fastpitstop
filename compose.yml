@@ -1,0 +1,114 @@
+# Shared service definitions. Always combined with an override:
+#   dev:  docker compose -f compose.yml -f compose.dev.yml  up -d
+#   prod: docker compose -f compose.yml -f compose.prod.yml up -d
+# (`just up` / `just deploy` wrap these.) No environment VALUES live here —
+# everything comes from `.env` (see .env.example), so this file is identical
+# in both environments; only compose.dev.yml/compose.prod.yml differ.
+#
+# One named volume (`pitwall-data`) backs data/{recordings,historical,
+# fastf1_cache,radio_audio} — every Python package under python/ already
+# resolves those as relative `Path("data/...")` against its CWD, so mounting
+# one volume at /app/data (matching the image's WORKDIR) covers all four
+# with no extra --out/--cache/--historical-root flags needed. Recordings and
+# the radio corpus must live on a volume, never in an image layer or a
+# container's writable layer (CLAUDE.md: losing a live recording is losing
+# something unrepeatable).
+
+services:
+  db:
+    image: timescale/timescaledb-ha:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pitwall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pitwall}
+      POSTGRES_DB: ${POSTGRES_DB:-pitwall}
+    volumes:
+      - pitwall-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Queries, not just a port check (a listening-but-not-ready Postgres
+      # during recovery/startup would pass a bare TCP check).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pitwall} -d ${POSTGRES_DB:-pitwall} && psql -U ${POSTGRES_USER:-pitwall} -d ${POSTGRES_DB:-pitwall} -c 'SELECT 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
+    command: ["f1-api", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    environment:
+      F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}
+    volumes:
+      - pitwall-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-web:${IMAGE_TAG:-latest}
+    env_file: .env
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
+    # Long-lived by default: the recorder, reconnecting on its own (see
+    # f1_ingest.cli). One-shot jobs (backfill, radio fetch/transcribe/index,
+    # an ad-hoc migration) run against the SAME image via, e.g.:
+    #   docker compose run --rm worker f1-backfill --season 2025
+    command: ["f1-record"]
+    env_file: .env
+    environment:
+      F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}
+    volumes:
+      - pitwall-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  proxy:
+    image: caddy:2.10.0
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - pitwall-caddy-data:/data
+      - pitwall-caddy-config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pitwall-pgdata:
+  pitwall-data:
+  pitwall-caddy-data:
+  pitwall-caddy-config:

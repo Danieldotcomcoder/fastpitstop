@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "sessions": {
+    "2024_01_Race": {
+      "acquired_at": "2024-05-01T00:00:00Z",
+      "event_name": "Radio Fixture Grand Prix",
+      "round": 1,
+      "season": 2024,
+      "session_type": "Race",
+      "sources": [
+        "openf1"
+      ],
+      "tables": {
+        "team_radio": 4
+      }
+    }
+  }
+}

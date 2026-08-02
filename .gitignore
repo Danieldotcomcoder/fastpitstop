@@ -1,0 +1,44 @@
+# --- Data (Phase 0 recordings, historical tables, FastF1 cache) ---
+# Git won't recurse into an ignored directory, so each level that should
+# keep a .gitkeep has to be un-ignored explicitly.
+data/*
+!data/recordings/
+!data/historical/
+!data/fastf1_cache/
+data/recordings/*
+!data/recordings/.gitkeep
+data/historical/*
+!data/historical/.gitkeep
+data/fastf1_cache/*
+!data/fastf1_cache/.gitkeep
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Parquet / misc data files anywhere in the tree ---
+*.parquet
+
+# --- Node / pnpm ---
+node_modules/
+.pnpm-store/
+dist/
+build/
+
+# --- Env ---
+.env
+.env.local
+
+# --- Editors / OS ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

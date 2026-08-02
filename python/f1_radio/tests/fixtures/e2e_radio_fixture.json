@@ -1,0 +1,105 @@
+{
+  "session_key": {
+    "year": 2024,
+    "round": 1,
+    "session_type": "race"
+  },
+  "clips": [
+    {
+      "driver": "44",
+      "captured_at": "2024-05-01T14:05:00+00:00",
+      "audio_path": "fixture://44/2024-05-01T14:05:00+00:00",
+      "transcript_text": "Box box, box this lap for the hard tyre",
+      "language": "en",
+      "confidence": 0.91,
+      "model_version": "fixture-whisper-v1",
+      "embedding": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "embedding_model_version": "fixture-embed-v1",
+      "lap_number": 12,
+      "position": 4,
+      "track_status": "green",
+      "track_status_flags": []
+    },
+    {
+      "driver": "1",
+      "captured_at": "2024-05-01T14:08:00+00:00",
+      "audio_path": "fixture://1/2024-05-01T14:08:00+00:00",
+      "transcript_text": "Gap to the car behind is one point eight, keep pushing",
+      "language": "en",
+      "confidence": 0.88,
+      "model_version": "fixture-whisper-v1",
+      "embedding": [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "embedding_model_version": "fixture-embed-v1",
+      "lap_number": 13,
+      "position": 1,
+      "track_status": "green",
+      "track_status_flags": []
+    },
+    {
+      "driver": "44",
+      "captured_at": "2024-05-01T14:15:00+00:00",
+      "audio_path": "fixture://44/2024-05-01T14:15:00+00:00",
+      "transcript_text": "Yellow yellow yellow, safety car deployed",
+      "language": "en",
+      "confidence": 0.35,
+      "model_version": "fixture-whisper-v1",
+      "embedding": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "embedding_model_version": "fixture-embed-v1",
+      "lap_number": 20,
+      "position": 4,
+      "track_status": "sc",
+      "track_status_flags": [
+        "sc"
+      ]
+    },
+    {
+      "driver": "1",
+      "captured_at": "2024-05-01T14:20:00+00:00",
+      "audio_path": "fixture://1/2024-05-01T14:20:00+00:00",
+      "transcript_text": "Copy, box box confirmed for the medium tyre",
+      "language": "en",
+      "confidence": 0.83,
+      "model_version": "fixture-whisper-v1",
+      "embedding": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "embedding_model_version": "fixture-embed-v1",
+      "lap_number": 24,
+      "position": 1,
+      "track_status": "green",
+      "track_status_flags": []
+    }
+  ],
+  "query_embeddings": {
+    "there's nothing left up front, box this lap": [
+      0.97,
+      0.03,
+      0.0,
+      0.0
+    ]
+  },
+  "default_query_embedding": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ]
+}

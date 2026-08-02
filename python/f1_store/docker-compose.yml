@@ -1,0 +1,35 @@
+# Local TimescaleDB for f1_store development and the DB-backed tests.
+#
+#   docker compose -f python/f1_store/docker-compose.yml up -d
+#   export F1_STORE_DSN=postgresql://pitwall:pitwall@localhost:5432/pitwall
+#   uv run f1-store-migrate
+#   F1_STORE_RUN_DB_TESTS=1 uv run pytest python/f1_store
+#
+# The image bundles the TimescaleDB extension (the migrations run
+# `CREATE EXTENSION timescaledb` and create hypertables/compression policies,
+# which plain Postgres cannot do) AND pgvector (migration 003 runs
+# `CREATE EXTENSION vector` for Phase 4.3's semantic index over
+# radio_transcripts) -- the plain `timescale/timescaledb` image bundles only
+# the former, so this uses the `-ha` image, which TimescaleDB documents as
+# shipping pgvector alongside it. If you already have a `timescaledb`
+# volume from before Phase 4.3, `docker compose down` (keeps the named
+# volume) then `up -d` again picks up the new image against the same data.
+services:
+  timescaledb:
+    image: timescale/timescaledb-ha:pg16
+    environment:
+      POSTGRES_USER: pitwall
+      POSTGRES_PASSWORD: pitwall
+      POSTGRES_DB: pitwall
+    ports:
+      - "5432:5432"
+    volumes:
+      - pitwall-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pitwall -d pitwall"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pitwall-pgdata:

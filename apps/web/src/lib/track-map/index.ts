@@ -1,0 +1,16 @@
+export { buildArcLengthTable, pointAtArcLength, projectToArcLength } from './arc-length';
+export type { ArcLengthTable } from './arc-length';
+export { applyEnvelope, createRaceState } from './car-state';
+export type { RaceState } from './car-state';
+export { DEFAULT_SEGMENT_COUNT, DominanceTracker } from './dominance';
+export type { SegmentBest } from './dominance';
+export { buildDrawFrame } from './frame';
+export type { DrawCar, DrawFrame, DrawSegment } from './frame';
+export { fitOutlineToCanvas, outlineFromApi, project } from './geometry';
+export type { ApiTrackOutline, Viewport } from './geometry';
+export { DEFAULT_STALE_AFTER_MS, interpolatePosition } from './interpolation';
+export type { InterpolatedPosition } from './interpolation';
+export { RaceStateReducer } from './race-state';
+export { TrackMapRenderer } from './renderer';
+export { colorForTeam, FALLBACK_TEAM_COLOR } from './team-colors';
+export type { CarMarker, Point, PositionSample, TrackOutline } from './types';

@@ -1,0 +1,6 @@
+[
+  { "Status": "1", "Message": "AllClear" },
+  { "Status": "2", "Message": "Yellow" },
+  { "Status": "4", "Message": "SCDeployed" },
+  { "Status": "6", "Message": "VSCDeployed" }
+]

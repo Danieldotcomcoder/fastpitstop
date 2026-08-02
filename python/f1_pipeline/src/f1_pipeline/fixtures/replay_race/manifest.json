@@ -1,0 +1,19 @@
+{
+  "format_version": 1,
+  "year": 2024,
+  "grand_prix": "Simulated Grand Prix",
+  "session_type": "Race",
+  "session_start_utc": "2024-03-02T15:00:00Z",
+  "recorder_version": "race-sim/1.0",
+  "topics": [
+    "Heartbeat",
+    "LapCount",
+    "RaceControlMessages",
+    "SessionData",
+    "TeamRadio",
+    "TimingAppData",
+    "TimingData",
+    "TrackStatus",
+    "WeatherData"
+  ]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "Captures": [
+      {
+        "Utc": "2024-03-02T15:10:12.345Z",
+        "RacingNumber": "44",
+        "Path": "TeamRadio/HAMLEW01_44_20240302_151012.mp3"
+      }
+    ]
+  },
+  {
+    "Captures": {
+      "3": {
+        "Utc": "2024-03-02T15:22:48.1234567Z",
+        "RacingNumber": "1",
+        "Path": "TeamRadio/MAXVER01_1_20240302_152248.mp3"
+      }
+    }
+  }
+]

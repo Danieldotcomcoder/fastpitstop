@@ -1,0 +1,23 @@
+[project]
+name = "f1-ingest"
+version = "0.0.1"
+description = "The live-feed connector. Phase 0: connects to F1's SignalR live timing feed and records it raw via f1_recording. Phase 1 will add: normalizing the raw stream into domain events and persisting them to TimescaleDB."
+requires-python = ">=3.12"
+dependencies = [
+    "f1-recording",
+    "fastf1>=3.7",
+    "signalrcore>=0.9",
+]
+
+[tool.uv.sources]
+f1-recording = { workspace = true }
+
+[project.scripts]
+f1-record = "f1_ingest.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/f1_ingest"]

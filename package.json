@@ -1,0 +1,9 @@
+{
+  "name": "f1dashboard",
+  "private": true,
+  "description": "Root of the F1 Companion monorepo. TS packages/apps land in later phases.",
+  "packageManager": "pnpm@10.25.0",
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

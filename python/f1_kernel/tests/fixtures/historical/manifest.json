@@ -1,0 +1,44 @@
+{
+  "format_version": 1,
+  "sessions": {
+    "2024_01_Race": {
+      "acquired_at": "2024-03-03T00:00:00Z",
+      "event_name": "Bahrain Grand Prix",
+      "round": 1,
+      "season": 2024,
+      "session_type": "Race",
+      "sources": [
+        "fastf1",
+        "openf1"
+      ],
+      "tables": {
+        "car_telemetry": 3652,
+        "intervals": 4491,
+        "laps": 240,
+        "race_control": 5,
+        "results": 8,
+        "stints": 16,
+        "weather": 60
+      }
+    },
+    "2024_02_Race": {
+      "acquired_at": "2024-03-03T00:00:00Z",
+      "event_name": "Saudi Arabian Grand Prix",
+      "round": 2,
+      "season": 2024,
+      "session_type": "Race",
+      "sources": [
+        "fastf1",
+        "openf1"
+      ],
+      "tables": {
+        "intervals": 3800,
+        "laps": 208,
+        "race_control": 4,
+        "results": 8,
+        "stints": 16,
+        "weather": 52
+      }
+    }
+  }
+}

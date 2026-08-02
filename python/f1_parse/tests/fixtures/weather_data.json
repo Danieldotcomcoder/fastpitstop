@@ -1,0 +1,20 @@
+[
+  {
+    "AirTemp": "27.8",
+    "Humidity": "58.0",
+    "Pressure": "1018.7",
+    "Rainfall": "0",
+    "TrackTemp": "34.1",
+    "WindDirection": "212",
+    "WindSpeed": "2.0"
+  },
+  {
+    "AirTemp": "18.2",
+    "Humidity": "93.0",
+    "Pressure": "1002.1",
+    "Rainfall": "1",
+    "TrackTemp": "19.4",
+    "WindDirection": "8",
+    "WindSpeed": "4.7"
+  }
+]

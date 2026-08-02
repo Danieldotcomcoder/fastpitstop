@@ -1,0 +1,37 @@
+[
+  {
+    "Lines": {
+      "44": {
+        "GapToLeader": "+2.259",
+        "IntervalToPositionAhead": { "Value": "+0.722" },
+        "Sectors": { "1": { "Value": "26.259", "PersonalFastest": false } },
+        "LastLapTime": { "Value": "1:27.897", "PersonalFastest": true },
+        "NumberOfLaps": 12
+      },
+      "1": {
+        "Position": "1",
+        "GapToLeader": "",
+        "InPit": false
+      }
+    }
+  },
+  {
+    "SessionPart": 2,
+    "Lines": {
+      "63": {
+        "KnockedOut": true,
+        "BestLapTime": { "Value": "1:29.312" }
+      }
+    }
+  },
+  {
+    "Lines": {
+      "16": {
+        "InPit": true,
+        "PitOut": false,
+        "NumberOfPitStops": 1,
+        "Sectors": { "2": { "Value": "" } }
+      }
+    }
+  }
+]

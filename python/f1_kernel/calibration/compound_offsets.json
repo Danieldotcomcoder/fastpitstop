@@ -1,0 +1,823 @@
+{
+  "compound_offset_s": {
+    "soft": 0.0,
+    "hard": 0.36454151570050186,
+    "medium": -0.08036812499992152
+  },
+  "reference_compound": "soft",
+  "n_samples": 79,
+  "n_sessions": 13,
+  "compounds_calibrated": [
+    "hard",
+    "medium"
+  ],
+  "method": "per-driver-per-session paired delta: each driver's lap-count-weighted mean stint intercept (fuel-corrected pace at tyre_age=0, from fit_degradation) on a compound minus their own mean intercept on soft in the SAME session \u2014 cancels car/driver pace, isolating the compound's own baseline offset. Reported per compound as the median paired delta across every driver-session pair found.",
+  "sessions": [
+    "2024 R01 race",
+    "2024 R02 race",
+    "2024 R04 race",
+    "2024 R05 race",
+    "2024 R06 race",
+    "2024 R08 race",
+    "2024 R10 race",
+    "2024 R12 race",
+    "2024 R13 race",
+    "2024 R14 race",
+    "2024 R15 race",
+    "2024 R18 race",
+    "2024 R23 race"
+  ],
+  "plausibility_check_passed": false,
+  "samples": [
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "63",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -0.403808771929846,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 1.0974947089947165,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "23",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.2364617216117466,
+      "n_laps": 7
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.03630519480516625,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "2",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.3198330314009894,
+      "n_laps": 13
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "27",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -0.4501079545454445,
+      "n_laps": 14
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "4",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.43017777777777155,
+      "n_laps": 9
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "81",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.3191407312925634,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "11",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.04329285714284481,
+      "n_laps": 18
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "10",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.4092500000000143,
+      "n_laps": 10
+    },
+    {
+      "session_year": 2024,
+      "session_round": 1,
+      "session_type": "race",
+      "driver": "1",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -0.7951725806451577,
+      "n_laps": 18
+    },
+    {
+      "session_year": 2024,
+      "session_round": 2,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.01590210526310898,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 2,
+      "session_type": "race",
+      "driver": "4",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.08036812499992152,
+      "n_laps": 12
+    },
+    {
+      "session_year": 2024,
+      "session_round": 2,
+      "session_type": "race",
+      "driver": "77",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.6009512500000227,
+      "n_laps": 12
+    },
+    {
+      "session_year": 2024,
+      "session_round": 4,
+      "session_type": "race",
+      "driver": "2",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.09681392114175935,
+      "n_laps": 9
+    },
+    {
+      "session_year": 2024,
+      "session_round": 4,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 1.1304144654088475,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 4,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 1.2140613207547517,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 5,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -0.006588095238114988,
+      "n_laps": 10
+    },
+    {
+      "session_year": 2024,
+      "session_round": 5,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.25677098214286787,
+      "n_laps": 7
+    },
+    {
+      "session_year": 2024,
+      "session_round": 5,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.4386095238095322,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 6,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -2.438091666666736,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 8,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -17.432338461538485,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 8,
+      "session_type": "race",
+      "driver": "18",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 2.327956287955473,
+      "n_laps": 12
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "63",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.7560624999999703,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "63",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.7814814814814639,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "16",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.8660340909090962,
+      "n_laps": 18
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.7629499999999751,
+      "n_laps": 13
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -1.632774999999981,
+      "n_laps": 13
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "23",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.022020833333300516,
+      "n_laps": 7
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 2.502487500000001,
+      "n_laps": 7
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "14",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 1.7431030303030468,
+      "n_laps": 7
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "77",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 2.9277775919732534,
+      "n_laps": 13
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 1.340315559440569,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 3.2861641604010003,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "18",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.06545714285712734,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "18",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.5337333333333305,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "44",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.12009523809526002,
+      "n_laps": 15
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "31",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.4858416666666443,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "31",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 1.2731194444444043,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "27",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.2005216165413799,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "27",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.02011309523810212,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "4",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.690305257936501,
+      "n_laps": 14
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "81",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.37411581196569443,
+      "n_laps": 18
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "55",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 1.7922812500000305,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "55",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 2.2852499999999765,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "11",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.18874425287360452,
+      "n_laps": 14
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "10",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.12896666666664203,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "10",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.42983333333334883,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 10,
+      "session_type": "race",
+      "driver": "1",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 0.26781397569445176,
+      "n_laps": 24
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -1.1124587912087236,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -6.2066666666666634,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "77",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -3.3212825091574985,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -2.666076923076929,
+      "n_laps": 10
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "20",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -4.104328205128212,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "44",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -1.480298191391924,
+      "n_laps": 12
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "31",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 6.872033653846174,
+      "n_laps": 8
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "2",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -6.23460192307698,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "27",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -15.618954326923259,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 12,
+      "session_type": "race",
+      "driver": "4",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.2908021978022788,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 13,
+      "session_type": "race",
+      "driver": "18",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 3.1426071428571447,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 13,
+      "session_type": "race",
+      "driver": "18",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 2.7561357142856906,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 14,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.036694444444478336,
+      "n_laps": 6
+    },
+    {
+      "session_year": 2024,
+      "session_round": 14,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.3995312499999386,
+      "n_laps": 10
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "63",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -1.340815850815801,
+      "n_laps": 16
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "63",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -0.5155173160172666,
+      "n_laps": 16
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -2.0023333333332403,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "24",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -1.8453596491227557,
+      "n_laps": 15
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "77",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.7639047619047545,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "77",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 2.2710714285711333,
+      "n_laps": 11
+    },
+    {
+      "session_year": 2024,
+      "session_round": 15,
+      "session_type": "race",
+      "driver": "44",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.09516547619047344,
+      "n_laps": 20
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -2.3315516596540533,
+      "n_laps": 23
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "3",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -1.063124078341005,
+      "n_laps": 14
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "20",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": -2.6782580645161147,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "20",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.32529743833016767,
+      "n_laps": 5
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "44",
+      "compound": "hard",
+      "reference_compound": "soft",
+      "delta_s": 0.4487123655914189,
+      "n_laps": 14
+    },
+    {
+      "session_year": 2024,
+      "session_round": 18,
+      "session_type": "race",
+      "driver": "10",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -1.4744812957440985,
+      "n_laps": 15
+    },
+    {
+      "session_year": 2024,
+      "session_round": 23,
+      "session_type": "race",
+      "driver": "22",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -0.85208333333334,
+      "n_laps": 10
+    },
+    {
+      "session_year": 2024,
+      "session_round": 23,
+      "session_type": "race",
+      "driver": "23",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": 4.248428571428519,
+      "n_laps": 9
+    },
+    {
+      "session_year": 2024,
+      "session_round": 23,
+      "session_type": "race",
+      "driver": "30",
+      "compound": "medium",
+      "reference_compound": "soft",
+      "delta_s": -2.6477727272726526,
+      "n_laps": 6
+    }
+  ]
+}

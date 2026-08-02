@@ -1,0 +1,33 @@
+[project]
+name = "f1-pipeline"
+version = "0.0.1"
+description = "Phase 1 wiring: the one pipeline both live and replay feed (records -> normalizer -> sink), the historical ingest path, and the f1-pipeline CLI + Phase 1 verification harness."
+requires-python = ">=3.12"
+dependencies = [
+    "f1-domain",
+    "f1-recording",
+    "f1-parse",
+    "f1-store",
+    "f1-replay",
+    "f1-historical-adapter",
+    "f1-ingest",
+]
+
+[project.scripts]
+f1-pipeline = "f1_pipeline.cli:main"
+
+[tool.uv.sources]
+f1-domain = { workspace = true }
+f1-recording = { workspace = true }
+f1-parse = { workspace = true }
+f1-store = { workspace = true }
+f1-replay = { workspace = true }
+f1-historical-adapter = { workspace = true }
+f1-ingest = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/f1_pipeline"]

@@ -1,0 +1,3264 @@
+{
+  "components": {
+    "schemas": {
+      "AnomalyOut": {
+        "description": "One `GET /sessions/{key}/anomalies` row \u2014 `f1_why.Anomaly` field-for-\nfield, plus the opaque `anomaly_id` path segment for\n`GET /anomalies/{id}/explanation`. Machine-readable only: `summary` is\nthe detector's own numbers, never prose (narration is the explanation\nendpoint's job).",
+        "properties": {
+          "anomaly_id": {
+            "title": "Anomaly Id",
+            "type": "string"
+          },
+          "anomaly_time": {
+            "format": "date-time",
+            "title": "Anomaly Time",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lap_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Number"
+          },
+          "magnitude": {
+            "title": "Magnitude",
+            "type": "number"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "salience": {
+            "title": "Salience",
+            "type": "number"
+          },
+          "summary": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Summary",
+            "type": "object"
+          }
+        },
+        "required": [
+          "anomaly_id",
+          "kind",
+          "lap_number",
+          "anomaly_time",
+          "drivers",
+          "magnitude",
+          "salience",
+          "summary",
+          "reasons"
+        ],
+        "title": "AnomalyOut",
+        "type": "object"
+      },
+      "BrakingDriftOut": {
+        "description": "One `f1_kernel.BrakingDrift` \u2014 one (driver, stint, corner)'s fitted\nbraking-point trend.",
+        "properties": {
+          "compound": {
+            "title": "Compound",
+            "type": "string"
+          },
+          "corner_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corner Letter"
+          },
+          "corner_number": {
+            "title": "Corner Number",
+            "type": "integer"
+          },
+          "drift_ci_high_m_per_lap": {
+            "title": "Drift Ci High M Per Lap",
+            "type": "number"
+          },
+          "drift_ci_low_m_per_lap": {
+            "title": "Drift Ci Low M Per Lap",
+            "type": "number"
+          },
+          "drift_m_per_lap": {
+            "title": "Drift M Per Lap",
+            "type": "number"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "intercept_m": {
+            "title": "Intercept M",
+            "type": "number"
+          },
+          "n_laps_used": {
+            "title": "N Laps Used",
+            "type": "integer"
+          },
+          "reliability": {
+            "$ref": "#/components/schemas/Reliability"
+          },
+          "session_round": {
+            "title": "Session Round",
+            "type": "integer"
+          },
+          "session_type": {
+            "title": "Session Type",
+            "type": "string"
+          },
+          "session_year": {
+            "title": "Session Year",
+            "type": "integer"
+          },
+          "stint_number": {
+            "title": "Stint Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_year",
+          "session_round",
+          "session_type",
+          "driver",
+          "stint_number",
+          "compound",
+          "corner_number",
+          "corner_letter",
+          "drift_m_per_lap",
+          "drift_ci_low_m_per_lap",
+          "drift_ci_high_m_per_lap",
+          "intercept_m",
+          "n_laps_used",
+          "reliability"
+        ],
+        "title": "BrakingDriftOut",
+        "type": "object"
+      },
+      "BrakingPointRowOut": {
+        "description": "One row of `GET /sessions/{key}/telemetry/{driver}` \u2014\n`f1_kernel.braking_points`' output: one (lap, corner) braking-point\nobservation, the novel dataset CLAUDE.md's Phase 2.6 built instead of\nneeding computer vision.",
+        "properties": {
+          "brake_point_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brake Point Distance M"
+          },
+          "corner_distance_m": {
+            "title": "Corner Distance M",
+            "type": "number"
+          },
+          "corner_letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corner Letter"
+          },
+          "corner_number": {
+            "title": "Corner Number",
+            "type": "integer"
+          },
+          "distance_before_corner_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Before Corner M"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "known": {
+            "title": "Known",
+            "type": "boolean"
+          },
+          "lap_number": {
+            "title": "Lap Number",
+            "type": "integer"
+          },
+          "n_samples_in_window": {
+            "title": "N Samples In Window",
+            "type": "integer"
+          },
+          "session_round": {
+            "title": "Session Round",
+            "type": "integer"
+          },
+          "session_type": {
+            "title": "Session Type",
+            "type": "string"
+          },
+          "session_year": {
+            "title": "Session Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_year",
+          "session_round",
+          "session_type",
+          "driver",
+          "lap_number",
+          "corner_number",
+          "corner_letter",
+          "corner_distance_m",
+          "brake_point_distance_m",
+          "distance_before_corner_m",
+          "n_samples_in_window",
+          "known"
+        ],
+        "title": "BrakingPointRowOut",
+        "type": "object"
+      },
+      "CircuitOut": {
+        "description": "`GET /sessions/{key}/circuit` \u2014 `f1_kernel.Circuit`'s geometry, for\nthe track map. `None` (not a 404) when the session's event does not\nmatch one of the few circuits this project ships metadata for yet \u2014\nthe same \"an analytic must degrade gracefully, not assume every venue\nis present\" discipline `f1_kernel.circuit_for_event` already documents.",
+        "properties": {
+          "circuit_id": {
+            "title": "Circuit Id",
+            "type": "string"
+          },
+          "corners": {
+            "items": {
+              "$ref": "#/components/schemas/CornerOut"
+            },
+            "title": "Corners",
+            "type": "array"
+          },
+          "drs_zones": {
+            "items": {
+              "$ref": "#/components/schemas/DrsZoneOut"
+            },
+            "title": "Drs Zones",
+            "type": "array"
+          },
+          "lap_distance_m": {
+            "title": "Lap Distance M",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "circuit_id",
+          "name",
+          "lap_distance_m",
+          "corners",
+          "drs_zones",
+          "outline"
+        ],
+        "title": "CircuitOut",
+        "type": "object"
+      },
+      "CitedEvidenceOut": {
+        "description": "One evidence item an explanation actually cited \u2014 enough for a\ncitation trail, with an optional `href` the client follows for full\ndetail (radio clip / degradation / laps). Items with no dedicated REST\nroute (anomaly facts, race-control messages) carry `href=None`.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confidence_label": {
+            "title": "Confidence Label",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "event_time": {
+            "format": "date-time",
+            "title": "Event Time",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "href": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Href"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "event_time",
+          "drivers",
+          "summary",
+          "confidence",
+          "confidence_label",
+          "href"
+        ],
+        "title": "CitedEvidenceOut",
+        "type": "object"
+      },
+      "ClassificationEntryOut": {
+        "description": "One driver's row in `GET /sessions/{key}`'s classification \u2014 the\nfinal classification for a completed historical session, or the\ncurrent running order for a live one. Derived uniformly from the lap\nframe's last lap per driver (see `f1_api.convert.classification_from_laps`),\nso historical and live sessions answer this the same way.",
+        "properties": {
+          "best_lap_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Lap S"
+          },
+          "compound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compound"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "gap_to_leader_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap To Leader S"
+          },
+          "in_pit": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Pit"
+          },
+          "laps_completed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laps Completed"
+          },
+          "last_lap_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Lap S"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "tyre_age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tyre Age"
+          }
+        },
+        "required": [
+          "driver",
+          "position",
+          "last_lap_s",
+          "best_lap_s",
+          "gap_to_leader_s",
+          "compound",
+          "tyre_age",
+          "in_pit",
+          "laps_completed"
+        ],
+        "title": "ClassificationEntryOut",
+        "type": "object"
+      },
+      "Confidence": {
+        "description": "How much to trust this result \u2014 derived from the underlying\ndegradation-fit reliability, never asserted independently of it.",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "title": "Confidence",
+        "type": "string"
+      },
+      "CornerOut": {
+        "description": "One `f1_kernel.Corner` \u2014 a numbered corner along the reference lap.",
+        "properties": {
+          "angle_deg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Angle Deg"
+          },
+          "distance_m": {
+            "title": "Distance M",
+            "type": "number"
+          },
+          "letter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Letter"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "letter",
+          "distance_m",
+          "angle_deg"
+        ],
+        "title": "CornerOut",
+        "type": "object"
+      },
+      "CrossoverKind": {
+        "enum": [
+          "undercut",
+          "overcut"
+        ],
+        "title": "CrossoverKind",
+        "type": "string"
+      },
+      "CrossoverResultOut": {
+        "description": "One `f1_kernel.CrossoverResult` \u2014 an undercut/overcut projection for\none (attacker, defender) pair. The Phase 3 countdown primitive.",
+        "properties": {
+          "attacker": {
+            "title": "Attacker",
+            "type": "string"
+          },
+          "attacker_state": {
+            "$ref": "#/components/schemas/DriverStintStateOut"
+          },
+          "attacker_stop_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attacker Stop Lap"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "crossover_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossover Lap"
+          },
+          "decision_lap": {
+            "title": "Decision Lap",
+            "type": "integer"
+          },
+          "defender": {
+            "title": "Defender",
+            "type": "string"
+          },
+          "defender_state": {
+            "$ref": "#/components/schemas/DriverStintStateOut"
+          },
+          "defender_stop_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defender Stop Lap"
+          },
+          "gap_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap S"
+          },
+          "horizon_lap": {
+            "title": "Horizon Lap",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CrossoverKind"
+          },
+          "opens_in_laps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opens In Laps"
+          },
+          "out_lap_penalty_s": {
+            "title": "Out Lap Penalty S",
+            "type": "number"
+          },
+          "pit_loss_provenance": {
+            "title": "Pit Loss Provenance",
+            "type": "string"
+          },
+          "pit_loss_s": {
+            "title": "Pit Loss S",
+            "type": "number"
+          },
+          "projected_gap_at_crossover_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Gap At Crossover S"
+          },
+          "projected_gap_if_covered_high_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Gap If Covered High S"
+          },
+          "projected_gap_if_covered_low_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Gap If Covered Low S"
+          },
+          "projected_gap_if_covered_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Gap If Covered S"
+          },
+          "projected_margin_at_assumed_stop_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Margin At Assumed Stop S"
+          },
+          "projected_rejoin_gap_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Rejoin Gap S"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "window": {
+            "$ref": "#/components/schemas/WindowState"
+          }
+        },
+        "required": [
+          "kind",
+          "attacker",
+          "defender",
+          "decision_lap",
+          "attacker_stop_lap",
+          "defender_stop_lap",
+          "gap_s",
+          "pit_loss_s",
+          "pit_loss_provenance",
+          "out_lap_penalty_s",
+          "crossover_lap",
+          "projected_gap_at_crossover_s",
+          "projected_gap_if_covered_s",
+          "projected_gap_if_covered_low_s",
+          "projected_gap_if_covered_high_s",
+          "projected_margin_at_assumed_stop_s",
+          "projected_rejoin_gap_s",
+          "window",
+          "opens_in_laps",
+          "horizon_lap",
+          "confidence",
+          "reasons",
+          "attacker_state",
+          "defender_state"
+        ],
+        "title": "CrossoverResultOut",
+        "type": "object"
+      },
+      "DegradationByCompoundRowOut": {
+        "description": "One compound's row of `KernelReportOut.degradation_by_compound` \u2014\n`f1_kernel.summarize_degradation_by_compound`.",
+        "properties": {
+          "compound": {
+            "title": "Compound",
+            "type": "string"
+          },
+          "max_deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Deg Rate S Per Lap"
+          },
+          "mean_deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Deg Rate S Per Lap"
+          },
+          "median_deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Deg Rate S Per Lap"
+          },
+          "min_deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Deg Rate S Per Lap"
+          },
+          "n_fits": {
+            "title": "N Fits",
+            "type": "integer"
+          },
+          "n_good": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Good"
+          },
+          "n_thin": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Thin"
+          },
+          "n_unreliable": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Unreliable"
+          },
+          "std_deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Std Deg Rate S Per Lap"
+          }
+        },
+        "required": [
+          "compound",
+          "n_fits"
+        ],
+        "title": "DegradationByCompoundRowOut",
+        "type": "object"
+      },
+      "DegradationFitOut": {
+        "description": "One `f1_kernel.DegradationFit` \u2014 one (driver, stint, compound).",
+        "properties": {
+          "compound": {
+            "title": "Compound",
+            "type": "string"
+          },
+          "deg_rate_ci_high_s_per_lap": {
+            "title": "Deg Rate Ci High S Per Lap",
+            "type": "number"
+          },
+          "deg_rate_ci_low_s_per_lap": {
+            "title": "Deg Rate Ci Low S Per Lap",
+            "type": "number"
+          },
+          "deg_rate_s_per_lap": {
+            "title": "Deg Rate S Per Lap",
+            "type": "number"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "intercept_s": {
+            "title": "Intercept S",
+            "type": "number"
+          },
+          "n_laps_used": {
+            "title": "N Laps Used",
+            "type": "integer"
+          },
+          "quadratic_term_s_per_lap2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quadratic Term S Per Lap2"
+          },
+          "r2": {
+            "title": "R2",
+            "type": "number"
+          },
+          "reliability": {
+            "$ref": "#/components/schemas/Reliability"
+          },
+          "session_round": {
+            "title": "Session Round",
+            "type": "integer"
+          },
+          "session_type": {
+            "title": "Session Type",
+            "type": "string"
+          },
+          "session_year": {
+            "title": "Session Year",
+            "type": "integer"
+          },
+          "stint_number": {
+            "title": "Stint Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_year",
+          "session_round",
+          "session_type",
+          "driver",
+          "stint_number",
+          "compound",
+          "deg_rate_s_per_lap",
+          "deg_rate_ci_low_s_per_lap",
+          "deg_rate_ci_high_s_per_lap",
+          "intercept_s",
+          "quadratic_term_s_per_lap2",
+          "n_laps_used",
+          "r2",
+          "reliability"
+        ],
+        "title": "DegradationFitOut",
+        "type": "object"
+      },
+      "DriverStintStateOut": {
+        "description": "One driver's fitted state at a crossover's decision lap \u2014\n`f1_kernel.DriverStintState`, the evidence behind a `CrossoverResultOut`.",
+        "properties": {
+          "compound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compound"
+          },
+          "deg_rate_ci_high_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deg Rate Ci High S Per Lap"
+          },
+          "deg_rate_ci_low_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deg Rate Ci Low S Per Lap"
+          },
+          "deg_rate_s_per_lap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deg Rate S Per Lap"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "fit_reliability": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fit Reliability"
+          },
+          "intercept_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intercept S"
+          },
+          "n_laps_in_fit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Laps In Fit"
+          },
+          "pace_now_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pace Now S"
+          },
+          "stint_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stint Number"
+          },
+          "tyre_age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tyre Age"
+          }
+        },
+        "required": [
+          "driver",
+          "stint_number",
+          "compound",
+          "tyre_age",
+          "deg_rate_s_per_lap",
+          "deg_rate_ci_low_s_per_lap",
+          "deg_rate_ci_high_s_per_lap",
+          "intercept_s",
+          "pace_now_s",
+          "n_laps_in_fit",
+          "fit_reliability"
+        ],
+        "title": "DriverStintStateOut",
+        "type": "object"
+      },
+      "DrsZoneOut": {
+        "description": "One `f1_kernel.DrsZone` \u2014 an activation zone in reference-lap distance.",
+        "properties": {
+          "detection_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detection M"
+          },
+          "end_m": {
+            "title": "End M",
+            "type": "number"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "observed_drivers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Drivers"
+          },
+          "start_m": {
+            "title": "Start M",
+            "type": "number"
+          },
+          "wraps_start_finish": {
+            "title": "Wraps Start Finish",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "number",
+          "detection_m",
+          "start_m",
+          "end_m",
+          "observed_drivers",
+          "wraps_start_finish"
+        ],
+        "title": "DrsZoneOut",
+        "type": "object"
+      },
+      "ExplanationOut": {
+        "description": "`GET /anomalies/{id}/explanation` \u2014 the grounded narration plus the\ncited evidence trail. `anomaly_id` is the same opaque path segment the\nlist endpoint returns; `text` is either a real cited sentence or\n`f1_why.FALLBACK_TEXT` when there is no clear cause.",
+        "properties": {
+          "anomaly_id": {
+            "title": "Anomaly Id",
+            "type": "string"
+          },
+          "anomaly_time": {
+            "format": "date-time",
+            "title": "Anomaly Time",
+            "type": "string"
+          },
+          "cited_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/CitedEvidenceOut"
+            },
+            "title": "Cited Evidence",
+            "type": "array"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "fallback_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Reason"
+          },
+          "grounded": {
+            "title": "Grounded",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "lap_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Number"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "anomaly_id",
+          "session_key",
+          "kind",
+          "lap_number",
+          "drivers",
+          "anomaly_time",
+          "text",
+          "confidence",
+          "grounded",
+          "fallback_reason",
+          "cited_evidence"
+        ],
+        "title": "ExplanationOut",
+        "type": "object"
+      },
+      "FeedbackIn": {
+        "properties": {
+          "company_website": {
+            "default": "",
+            "title": "Company Website",
+            "type": "string"
+          },
+          "diagnostics": {
+            "additionalProperties": true,
+            "title": "Diagnostics",
+            "type": "object"
+          },
+          "form_started_at_ms": {
+            "title": "Form Started At Ms",
+            "type": "number"
+          },
+          "reply_email": {
+            "anyOf": [
+              {
+                "maxLength": 254,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Email"
+          },
+          "route": {
+            "maxLength": 500,
+            "title": "Route",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "default": "",
+            "title": "Turnstile Token",
+            "type": "string"
+          },
+          "what_doing": {
+            "maxLength": 2000,
+            "title": "What Doing",
+            "type": "string"
+          },
+          "what_expected": {
+            "maxLength": 2000,
+            "title": "What Expected",
+            "type": "string"
+          },
+          "what_happened": {
+            "maxLength": 2000,
+            "title": "What Happened",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what_doing",
+          "what_happened",
+          "what_expected",
+          "route",
+          "form_started_at_ms"
+        ],
+        "title": "FeedbackIn",
+        "type": "object"
+      },
+      "FeedbackOut": {
+        "properties": {
+          "message": {
+            "default": "Thanks \u2014 we got it.",
+            "title": "Message",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "FeedbackOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "HealthOut",
+        "type": "object"
+      },
+      "KernelReportOut": {
+        "description": "`GET /sessions/{key}/analysis` \u2014 `f1_kernel.KernelReport`, the whole\nkernel behind one call. Per-lap frames (`annotated_laps`/`clean_laps`/\n`fuel_corrected_laps`) are deliberately NOT repeated here \u2014 `GET\n.../laps` already serves those rows; duplicating a few hundred rows of\nthe same laps at three processing stages would triple the payload for\nno information a client can't already reconstruct from `/laps` plus\nthis report's aggregates. Everything analytic-shaped is included.",
+        "properties": {
+          "braking_drift": {
+            "items": {
+              "$ref": "#/components/schemas/BrakingDriftOut"
+            },
+            "title": "Braking Drift",
+            "type": "array"
+          },
+          "braking_drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Braking Drivers",
+            "type": "array"
+          },
+          "crossovers": {
+            "items": {
+              "$ref": "#/components/schemas/CrossoverResultOut"
+            },
+            "title": "Crossovers",
+            "type": "array"
+          },
+          "decision_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Lap"
+          },
+          "degradation_by_compound": {
+            "items": {
+              "$ref": "#/components/schemas/DegradationByCompoundRowOut"
+            },
+            "title": "Degradation By Compound",
+            "type": "array"
+          },
+          "degradation_fits": {
+            "items": {
+              "$ref": "#/components/schemas/DegradationFitOut"
+            },
+            "title": "Degradation Fits",
+            "type": "array"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "lap_summary": {
+            "items": {
+              "$ref": "#/components/schemas/LapSummaryRowOut"
+            },
+            "title": "Lap Summary",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "provenance": {
+            "enum": [
+              "live",
+              "historical"
+            ],
+            "title": "Provenance",
+            "type": "string"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "total_laps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Laps"
+          }
+        },
+        "required": [
+          "session_key",
+          "event_name",
+          "provenance",
+          "total_laps",
+          "decision_lap",
+          "lap_summary",
+          "degradation_fits",
+          "degradation_by_compound",
+          "crossovers",
+          "braking_drift",
+          "braking_drivers",
+          "notes",
+          "summary"
+        ],
+        "title": "KernelReportOut",
+        "type": "object"
+      },
+      "LapRowOut": {
+        "description": "One row of `GET /sessions/{key}/laps` \u2014 `f1_kernel.annotate_laps`'\noutput: the lap frame plus every clean-lap exclusion reason, never\nsilently filtered (CLAUDE.md's Phase 2 clean-lap-filter invariant).",
+        "properties": {
+          "anomaly_known": {
+            "title": "Anomaly Known",
+            "type": "boolean"
+          },
+          "compound": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compound"
+          },
+          "dirty_air_known": {
+            "title": "Dirty Air Known",
+            "type": "boolean"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "exclusion_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclusion Reasons",
+            "type": "array"
+          },
+          "gap_ahead_min_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Ahead Min S"
+          },
+          "gap_ahead_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Ahead S"
+          },
+          "gap_ahead_samples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Ahead Samples"
+          },
+          "gap_to_leader_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap To Leader S"
+          },
+          "is_anomalous": {
+            "title": "Is Anomalous",
+            "type": "boolean"
+          },
+          "is_clean": {
+            "title": "Is Clean",
+            "type": "boolean"
+          },
+          "is_dirty_air": {
+            "title": "Is Dirty Air",
+            "type": "boolean"
+          },
+          "is_in_lap": {
+            "title": "Is In Lap",
+            "type": "boolean"
+          },
+          "is_lap1": {
+            "title": "Is Lap1",
+            "type": "boolean"
+          },
+          "is_out_lap": {
+            "title": "Is Out Lap",
+            "type": "boolean"
+          },
+          "is_personal_best": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Personal Best"
+          },
+          "is_pit_in": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pit In"
+          },
+          "is_pit_out": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Pit Out"
+          },
+          "is_red": {
+            "title": "Is Red",
+            "type": "boolean"
+          },
+          "is_sc": {
+            "title": "Is Sc",
+            "type": "boolean"
+          },
+          "is_vsc": {
+            "title": "Is Vsc",
+            "type": "boolean"
+          },
+          "is_yellow": {
+            "title": "Is Yellow",
+            "type": "boolean"
+          },
+          "lap_end_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap End Utc"
+          },
+          "lap_number": {
+            "title": "Lap Number",
+            "type": "integer"
+          },
+          "lap_start_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Start Utc"
+          },
+          "lap_time_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Time S"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "sector1_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector1 S"
+          },
+          "sector2_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector2 S"
+          },
+          "sector3_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector3 S"
+          },
+          "session_round": {
+            "title": "Session Round",
+            "type": "integer"
+          },
+          "session_type": {
+            "title": "Session Type",
+            "type": "string"
+          },
+          "session_year": {
+            "title": "Session Year",
+            "type": "integer"
+          },
+          "stint_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stint Number"
+          },
+          "track_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Status"
+          },
+          "track_status_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Track Status Flags",
+            "type": "array"
+          },
+          "tyre_age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tyre Age"
+          }
+        },
+        "required": [
+          "session_year",
+          "session_round",
+          "session_type",
+          "driver",
+          "lap_number",
+          "lap_start_utc",
+          "lap_end_utc",
+          "lap_time_s",
+          "sector1_s",
+          "sector2_s",
+          "sector3_s",
+          "is_personal_best",
+          "compound",
+          "tyre_age",
+          "stint_number",
+          "position",
+          "gap_ahead_s",
+          "gap_ahead_min_s",
+          "gap_ahead_samples",
+          "gap_to_leader_s",
+          "track_status",
+          "track_status_flags",
+          "is_pit_in",
+          "is_pit_out",
+          "provenance",
+          "is_lap1",
+          "is_in_lap",
+          "is_out_lap",
+          "is_sc",
+          "is_vsc",
+          "is_yellow",
+          "is_red",
+          "is_dirty_air",
+          "is_anomalous",
+          "dirty_air_known",
+          "anomaly_known",
+          "is_clean",
+          "exclusion_reasons"
+        ],
+        "title": "LapRowOut",
+        "type": "object"
+      },
+      "LapSummaryRowOut": {
+        "description": "One driver's row of `KernelReportOut.lap_summary` \u2014\n`f1_kernel.clean_lap_summary`: how many laps survived the clean-lap\nfilter and why the rest didn't.",
+        "properties": {
+          "clean_fraction": {
+            "title": "Clean Fraction",
+            "type": "number"
+          },
+          "clean_laps": {
+            "title": "Clean Laps",
+            "type": "integer"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "is_anomalous": {
+            "title": "Is Anomalous",
+            "type": "integer"
+          },
+          "is_dirty_air": {
+            "title": "Is Dirty Air",
+            "type": "integer"
+          },
+          "is_in_lap": {
+            "title": "Is In Lap",
+            "type": "integer"
+          },
+          "is_lap1": {
+            "title": "Is Lap1",
+            "type": "integer"
+          },
+          "is_out_lap": {
+            "title": "Is Out Lap",
+            "type": "integer"
+          },
+          "is_red": {
+            "title": "Is Red",
+            "type": "integer"
+          },
+          "is_sc": {
+            "title": "Is Sc",
+            "type": "integer"
+          },
+          "is_vsc": {
+            "title": "Is Vsc",
+            "type": "integer"
+          },
+          "is_yellow": {
+            "title": "Is Yellow",
+            "type": "integer"
+          },
+          "laps": {
+            "title": "Laps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "driver",
+          "laps",
+          "clean_laps",
+          "clean_fraction",
+          "is_lap1",
+          "is_in_lap",
+          "is_out_lap",
+          "is_sc",
+          "is_vsc",
+          "is_yellow",
+          "is_red",
+          "is_dirty_air",
+          "is_anomalous"
+        ],
+        "title": "LapSummaryRowOut",
+        "type": "object"
+      },
+      "RadioClipOut": {
+        "description": "One team-radio exchange \u2014 the join `f1_radio.domain.radio_clip`\nalready makes at the library layer, reshaped for the API: the\noriginating `TeamRadioClip` event's own fields (`driver`, `captured_at`,\n`audio_url`) plus whatever `radio_transcripts` row exists for it.\n`has_transcript=False` with every transcript field `None` is a normal,\nexpected state (Phase 4's own \"transcription runs offline/batch\" \u2014 a\nclip fetched but not yet transcribed), never an error. `audio_url` is\nthe feed's own clip URL \u2014 the frontend fetches audio lazily from it when\nthe user plays a clip; this API never streams audio bytes. `clip_id` is\n`f1_api.radio.clip_id_path`'s own opaque path segment, included here so\na client (the corpus search page, whose `RadioSearchResultOut.clip`\nnever carries `audio_url`) can resolve `GET /radio/{clip_id}` for one\nresult without reimplementing that encoding itself.",
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "clip_id": {
+            "title": "Clip Id",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver"
+          },
+          "has_transcript": {
+            "title": "Has Transcript",
+            "type": "boolean"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "lap_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Number"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "segments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RadioSegmentOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segments"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "track_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Status"
+          },
+          "track_status_flags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Status Flags"
+          },
+          "transcript_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Text"
+          }
+        },
+        "required": [
+          "session_key",
+          "driver",
+          "captured_at",
+          "clip_id",
+          "audio_url",
+          "has_transcript",
+          "transcript_text",
+          "language",
+          "confidence",
+          "model_version",
+          "segments",
+          "lap_number",
+          "position",
+          "track_status",
+          "track_status_flags"
+        ],
+        "title": "RadioClipOut",
+        "type": "object"
+      },
+      "RadioSearchResultOut": {
+        "description": "One `GET /radio/search` result: a clip plus this query's own\nsimilarity score. `clip.audio_url` is always `None` here \u2014 a search can\nspan many sessions, and resolving each result's originating event would\nmean re-reading every one of those sessions' event streams just to\nanswer a ranked list; `GET /radio/{clip_id}` (single-session-scoped) is\nwhere a client gets the playable URL, once a result is actually chosen.",
+        "properties": {
+          "clip": {
+            "$ref": "#/components/schemas/RadioClipOut"
+          },
+          "similarity": {
+            "title": "Similarity",
+            "type": "number"
+          }
+        },
+        "required": [
+          "clip",
+          "similarity"
+        ],
+        "title": "RadioSearchResultOut",
+        "type": "object"
+      },
+      "RadioSegmentOut": {
+        "description": "One `f1_radio.transcription.TranscriptSegment`, stored as a plain\ndict on `radio_transcripts.segments` and reshaped here field-for-field.",
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "end_s": {
+            "title": "End S",
+            "type": "number"
+          },
+          "start_s": {
+            "title": "Start S",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_s",
+          "end_s",
+          "text",
+          "confidence"
+        ],
+        "title": "RadioSegmentOut",
+        "type": "object"
+      },
+      "ReadyOut": {
+        "description": "`GET /readyz` \u2014 unlike `/health`/`/healthz`, this one actually touches\nthe database, so a 200 here means \"safe to route traffic here\", not just\n\"the process is alive\".",
+        "properties": {
+          "database": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Database",
+            "type": "string"
+          },
+          "last_ingest_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingest At"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "ReadyOut",
+        "type": "object"
+      },
+      "Reliability": {
+        "description": "How much a `DegradationFit` should be trusted \u2014 driven by lap count\nand fit quality, never presented as a single undifferentiated number.",
+        "enum": [
+          "good",
+          "thin",
+          "unreliable"
+        ],
+        "title": "Reliability",
+        "type": "string"
+      },
+      "SessionDetailOut": {
+        "description": "`GET /sessions/{key}`: metadata plus classification.",
+        "properties": {
+          "classification": {
+            "items": {
+              "$ref": "#/components/schemas/ClassificationEntryOut"
+            },
+            "title": "Classification",
+            "type": "array"
+          },
+          "current_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Lap"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "provenance": {
+            "enum": [
+              "live",
+              "historical"
+            ],
+            "title": "Provenance",
+            "type": "string"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "track_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Status"
+          }
+        },
+        "required": [
+          "key",
+          "session_key",
+          "event_name",
+          "provenance",
+          "status",
+          "current_lap",
+          "track_status",
+          "classification"
+        ],
+        "title": "SessionDetailOut",
+        "type": "object"
+      },
+      "SessionKey": {
+        "additionalProperties": false,
+        "description": "Identifies one session of one championship round.\n\nDistinct from `f1_backfill.schedule.SessionKey` (that one is Phase 0\nbookkeeping for the historical fixture track); this is the domain\nidentity every event and state model carries.",
+        "properties": {
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "session_type": {
+            "$ref": "#/components/schemas/SessionType",
+            "default": "unknown"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "round"
+        ],
+        "title": "SessionKey",
+        "type": "object"
+      },
+      "SessionSummaryOut": {
+        "description": "One row of `GET /sessions`. `key` is the exact path segment to use\nagainst every `GET /sessions/{key}/...` route below.",
+        "properties": {
+          "circuit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Name"
+          },
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "has_radio": {
+            "default": false,
+            "title": "Has Radio",
+            "type": "boolean"
+          },
+          "has_telemetry": {
+            "default": false,
+            "title": "Has Telemetry",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "live_recorded": {
+            "default": false,
+            "title": "Live Recorded",
+            "type": "boolean"
+          },
+          "provenance": {
+            "enum": [
+              "live",
+              "historical"
+            ],
+            "title": "Provenance",
+            "type": "string"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          }
+        },
+        "required": [
+          "key",
+          "session_key",
+          "event_name",
+          "provenance"
+        ],
+        "title": "SessionSummaryOut",
+        "type": "object"
+      },
+      "SessionType": {
+        "description": "The kind of session within a race weekend.",
+        "enum": [
+          "practice_1",
+          "practice_2",
+          "practice_3",
+          "sprint_qualifying",
+          "sprint",
+          "qualifying",
+          "race",
+          "unknown"
+        ],
+        "title": "SessionType",
+        "type": "string"
+      },
+      "TrackOutlineOut": {
+        "description": "`f1_kernel.TrackOutline` \u2014 the real 2D lap shape Phase 3.4's track map\nrenders, derived from position telemetry by `tools/build_circuits.py`.",
+        "properties": {
+          "height_m": {
+            "title": "Height M",
+            "type": "number"
+          },
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "source_points": {
+            "title": "Source Points",
+            "type": "integer"
+          },
+          "width_m": {
+            "title": "Width M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "points",
+          "width_m",
+          "height_m",
+          "source_points"
+        ],
+        "title": "TrackOutlineOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VersionOut": {
+        "description": "`GET /version` \u2014 image build metadata, read from the `GIT_SHA`/\n`BUILD_TIME` env vars the Dockerfiles set. Surfaced on the `/status`\npage so \"what's actually running\" is a page load away, not a `docker\ninspect`.",
+        "properties": {
+          "build_time": {
+            "title": "Build Time",
+            "type": "string"
+          },
+          "git_sha": {
+            "title": "Git Sha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "git_sha",
+          "build_time"
+        ],
+        "title": "VersionOut",
+        "type": "object"
+      },
+      "WindowState": {
+        "description": "The headline a UI renders \u2014 'open now / opens in N laps / closed'.",
+        "enum": [
+          "open",
+          "opens_later",
+          "closed",
+          "unknown"
+        ],
+        "title": "WindowState",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "description": "Unofficial fan project, not associated with Formula 1. The read model bridging the analytics kernel and event store to the frontend \u2014 REST for point-in-time reads, a WebSocket envelope stream for live/replay.",
+    "title": "F1 Companion API",
+    "version": "0.0.1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/anomalies/{anomaly_id}/explanation": {
+      "get": {
+        "description": "One grounded, cited explanation for the anomaly named by the opaque\n`anomaly_id`. Uses `explain_cached` \u2014 never regenerates when the store\nalready has this anomaly. `cited_evidence` carries lazy-fetch `href`s;\nthe client loads full radio/telemetry detail on demand.",
+        "operationId": "get_anomaly_explanation_anomalies__anomaly_id__explanation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anomaly_id",
+            "required": true,
+            "schema": {
+              "title": "Anomaly Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplanationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Anomaly Explanation",
+        "tags": [
+          "why"
+        ]
+      }
+    },
+    "/feedback": {
+      "post": {
+        "operationId": "post_feedback_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Feedback",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Liveness only \u2014 no DB call, so a slow/unreachable database never\nmakes an orchestrator think the process itself is dead.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/radio/search": {
+      "get": {
+        "description": "Semantic + structured search over `radio_transcripts` \u2014 `f1_radio.\nsearch_transcripts` does the ranking, this route only reshapes the\nresult and resolves `session=` into `SearchFilters`' season/round/type.\nAn empty list, not a 500, when the corpus is unavailable (`F1_STORE_DSN`\nunset or unreachable) \u2014 the same \"DB is a sink, never a dependency\"\ndegrade `f1_api.sessions` already applies to historical/live sessions.",
+        "operationId": "search_radio_radio_search_get",
+        "parameters": [
+          {
+            "description": "Free-text query; blank runs a pure structured/keyword search",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Free-text query; blank runs a pure structured/keyword search",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict to one driver number, e.g. 44",
+            "in": "query",
+            "name": "driver",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to one driver number, e.g. 44",
+              "title": "Driver"
+            }
+          },
+          {
+            "description": "Restrict to one session, e.g. 2024-1-race",
+            "in": "query",
+            "name": "session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to one session, e.g. 2024-1-race",
+              "title": "Session"
+            }
+          },
+          {
+            "description": "captured_at lower bound (inclusive)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "captured_at lower bound (inclusive)",
+              "title": "From"
+            }
+          },
+          {
+            "description": "captured_at upper bound (inclusive)",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "captured_at upper bound (inclusive)",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Restrict to one lap number",
+            "in": "query",
+            "name": "lap",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to one lap number",
+              "title": "Lap"
+            }
+          },
+          {
+            "description": "Restrict to one track status at capture time, e.g. sc/green",
+            "in": "query",
+            "name": "track_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict to one track status at capture time, e.g. sc/green",
+              "title": "Track Status"
+            }
+          },
+          {
+            "description": "Require this literal substring in the transcript text",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Require this literal substring in the transcript text",
+              "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RadioSearchResultOut"
+                  },
+                  "title": "Response Search Radio Radio Search Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Radio",
+        "tags": [
+          "radio"
+        ]
+      }
+    },
+    "/radio/{clip_id}": {
+      "get": {
+        "description": "One clip by its opaque `clip_id` (`f1_api.radio.clip_id_path`):\ntranscript, segments and race context from `radio_transcripts`, plus the\nplayable `audio_url` \u2014 resolved best-effort from the originating\nsession's own event stream (`None` if that session isn't resolvable, or\nnever had a matching `TeamRadioClip` event \u2014 the transcript itself is\nstill returned either way, per this project's \"nothing silently\ndropped\" discipline).",
+        "operationId": "get_radio_clip_radio__clip_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "clip_id",
+            "required": true,
+            "schema": {
+              "title": "Clip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadioClipOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Radio Clip",
+        "tags": [
+          "radio"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness \u2014 actually touches the database. 503 (not a 200 with a\nfalse field) when it can't, so a load balancer/orchestrator reads this\nthe same way as any other liveness/readiness split.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/sessions": {
+      "get": {
+        "description": "Every session available to analyze, live + historical.",
+        "operationId": "get_sessions_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionSummaryOut"
+                  },
+                  "title": "Response Get Sessions Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Sessions",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}": {
+      "get": {
+        "description": "Session metadata plus classification (final for a finished\nhistorical session, current running order for a live one).",
+        "operationId": "get_session_sessions__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}/analysis": {
+      "get": {
+        "description": "The full `KernelReport`: clean -> fuel-correct -> degradation ->\ncrossover -> (opt-in) braking-drift, in that order.",
+        "operationId": "get_analysis_sessions__key__analysis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Opt specific drivers into the braking-point-drift stage (expensive).",
+            "in": "query",
+            "name": "braking_drivers",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opt specific drivers into the braking-point-drift stage (expensive).",
+              "title": "Braking Drivers"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KernelReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}/anomalies": {
+      "get": {
+        "description": "Every `f1_why.Anomaly` this session's own kernel report surfaces,\nalready sorted most-salient-first. Detection only \u2014 no prose, no\nevidence bundle, no LLM call. An empty list (not an error) when the\ndetector finds nothing worth explaining.",
+        "operationId": "get_session_anomalies_sessions__key__anomalies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnomalyOut"
+                  },
+                  "title": "Response Get Session Anomalies Sessions  Key  Anomalies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Anomalies",
+        "tags": [
+          "why"
+        ]
+      }
+    },
+    "/sessions/{key}/circuit": {
+      "get": {
+        "description": "The circuit geometry the track map (Phase 3.4) renders: corners, DRS\nzones and (once `tools/build_circuits.py`'s outline step has run for\nthis venue) the real 2D lap shape. `None`, not a 404, when the\nsession's event does not match one of the few circuits this project\nships metadata for yet \u2014 the same degrade-gracefully rule\n`f1_kernel.circuit_for_event` already follows.",
+        "operationId": "get_circuit_sessions__key__circuit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/CircuitOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Circuit Sessions  Key  Circuit Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Circuit",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}/degradation": {
+      "get": {
+        "description": "`DegradationFit[]` with reliability signals \u2014 one per (driver, stint,\ncompound). Runs the same `analyze_session` chain `/analysis` does, so\nthe two never disagree about a fit.",
+        "operationId": "get_degradation_sessions__key__degradation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DegradationFitOut"
+                  },
+                  "title": "Response Get Degradation Sessions  Key  Degradation Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Degradation",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}/laps": {
+      "get": {
+        "description": "The annotated lap frame: every lap, clean or not, with its exclusion\nreasons (`f1_kernel.annotate_laps`) \u2014 nothing is silently dropped.",
+        "operationId": "get_laps_sessions__key__laps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LapRowOut"
+                  },
+                  "title": "Response Get Laps Sessions  Key  Laps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Laps",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/sessions/{key}/radio": {
+      "get": {
+        "description": "Every `TeamRadioClip` this session's own event stream carries, time-\nordered, each joined to its transcript (if one exists yet). A session\nwith no team radio at all (every fixture race in this repo, and any\nhistorical session `f1-radio fetch` hasn't been pointed at) returns `[]`\n\u2014 not an error, matching every other \"nothing to report\" state in this\nproject.",
+        "operationId": "get_session_radio_sessions__key__radio_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RadioClipOut"
+                  },
+                  "title": "Response Get Session Radio Sessions  Key  Radio Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Radio",
+        "tags": [
+          "radio"
+        ]
+      }
+    },
+    "/sessions/{key}/telemetry/{driver}": {
+      "get": {
+        "description": "The braking-point frame for one driver (`f1_kernel.braking_points`):\none row per (lap, corner) sustained braking-application distance \u2014 the\nnovel dataset Phase 2.6 built instead of needing computer vision.\nDegrades to an empty list rather than 404ing on a driver/session with\ntoo little telemetry, matching `braking_points`' own discipline.",
+        "operationId": "get_telemetry_sessions__key__telemetry__driver__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "driver",
+            "required": true,
+            "schema": {
+              "title": "Driver",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrakingPointRowOut"
+                  },
+                  "title": "Response Get Telemetry Sessions  Key  Telemetry  Driver  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Telemetry",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/version": {
+      "get": {
+        "operationId": "version_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

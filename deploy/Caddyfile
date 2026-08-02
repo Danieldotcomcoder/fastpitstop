@@ -1,0 +1,21 @@
+# Reverse proxy + automatic TLS (this is the whole reason Caddy over nginx
+# here — the cert story is one line). `{$DOMAIN}` comes from the `DOMAIN` env
+# var compose.yml passes through (see .env.example); for local/no-DNS testing
+# it defaults to "localhost", which Caddy serves over plain HTTP with a
+# locally-trusted cert instead of attempting ACME.
+#
+# /api/* is stripped of its prefix and forwarded to the api service
+# unprefixed (f1_api's own routes are un-prefixed, e.g. /sessions, /stream/
+# {key}) — `handle_path` does the stripping, so no backend route changes
+# were needed for this. WebSocket upgrade (the /stream/{key} live feed) is
+# automatic in Caddy's reverse_proxy: it forwards the Connection/Upgrade
+# headers as-is, no special config.
+{$DOMAIN} {
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

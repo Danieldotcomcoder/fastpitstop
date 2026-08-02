@@ -1,0 +1,108 @@
+/*
+ * Design tokens — colour is reserved for meaning.
+ *
+ * Chrome is achromatic (graphite surfaces, white/grey type, hairline rules).
+ * The only colour on screen is data colour: timing purple/green/yellow,
+ * flag red, tyre compounds, and team swatches from teams.ts.
+ * Interactive states use brightness, weight, and a 1px rule — never a brand hue.
+ */
+
+:root {
+	color-scheme: dark;
+
+	/* --- Surfaces --- */
+	--surface-base: #0f1216;
+	--surface-raised: #171b21;
+	--surface-overlay: #1e242b;
+	--hairline: #272e37;
+	--hairline-strong: #3a434e;
+
+	/* --- Type --- */
+	--text-primary: #e9ecef;
+	--text-secondary: #9aa4b0;
+	--text-muted: #6b7684;
+	--text-inverse: #0f1216;
+
+	/* --- Reserved data colours — never chrome, never decoration --- */
+	--timing-purple: #b45bf5;
+	--timing-green: #26d07c;
+	--timing-yellow: #e8c547;
+	--flag-red: #ff453a;
+	--tyre-soft: #e8453c;
+	--tyre-medium: #e8c547;
+	--tyre-hard: #e9ecef;
+	--tyre-inter: #26d07c;
+	--tyre-wet: #3b9eff;
+
+	/* Reliability tiers reuse data hues (paired with a text label always) */
+	--reliability-good: var(--timing-green);
+	--reliability-thin: var(--timing-yellow);
+	--reliability-unreliable: var(--flag-red);
+
+	/* --- Interaction (achromatic) --- */
+	--focus-ring: color-mix(in srgb, var(--text-primary) 60%, transparent);
+
+	/* --- Type faces --- */
+	--font-display: 'IBM Plex Sans Condensed', 'Arial Narrow', sans-serif;
+	--font-ui: 'IBM Plex Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+	--font-size-xs: 0.75rem;
+	--font-size-sm: 0.875rem;
+	--font-size-base: 1rem;
+	--font-size-md: 1.125rem;
+	--font-size-lg: 1.375rem;
+	--font-size-xl: 1.75rem;
+	--font-size-2xl: 2.25rem;
+	--font-size-3xl: 3rem;
+
+	--line-height-tight: 1.15;
+	--line-height-normal: 1.5;
+	--tracking-display: -0.02em;
+
+	/* --- Spacing (4px base grid) --- */
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-5: 1.5rem;
+	--space-6: 2rem;
+	--space-7: 3rem;
+	--space-8: 4rem;
+
+	/* --- Shape (quiet; no decorative cards in hero) --- */
+	--radius-sm: 2px;
+	--radius-md: 4px;
+	--radius-lg: 6px;
+
+	/* --- Motion --- */
+	--ease-standard: linear;
+	--duration-crossfade: 120ms;
+	--duration-fast: 120ms;
+	--duration-normal: 120ms;
+
+	/* --- Layout --- */
+	--content-max: 1680px;
+	--bp-sm: 640px;
+	--bp-md: 1024px;
+	--bp-lg: 1600px;
+
+	/* --- Compat aliases (map old names → new system; do not add new usages) --- */
+	--color-bg: var(--surface-base);
+	--color-bg-elevated: var(--surface-raised);
+	--color-border: var(--hairline);
+	--color-border-strong: var(--hairline-strong);
+	--color-text: var(--text-primary);
+	--color-text-muted: var(--text-secondary);
+	--color-text-faint: var(--text-muted);
+	--color-accent: var(--text-primary);
+	--color-accent-strong: var(--text-primary);
+	--color-on-accent: var(--text-inverse);
+	--color-positive: var(--timing-green);
+	--color-negative: var(--flag-red);
+	--color-confidence-good: var(--reliability-good);
+	--color-confidence-thin: var(--reliability-thin);
+	--color-confidence-unreliable: var(--reliability-unreliable);
+	--font-sans: var(--font-ui);
+	--shadow-panel: none;
+}

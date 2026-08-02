@@ -1,0 +1,58 @@
+# Prod overlay: `docker compose -f compose.yml -f compose.prod.yml up -d`
+# (`just deploy` runs this over SSH on the host). No bind mounts (images are
+# self-contained, built in CI), no published db port, restart policies,
+# resource limits, and log rotation everywhere — a beta with an unknown
+# number of users, optimised for "debuggable at 2am" over elasticity.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-resources-small: &resources-small
+  limits:
+    cpus: "1.0"
+    memory: 512M
+
+services:
+  db:
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  api:
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      F1_ENV: production
+    deploy:
+      resources: *resources-small
+
+  web:
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources: *resources-small
+
+  worker:
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  proxy:
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      resources: *resources-small

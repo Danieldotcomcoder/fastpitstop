@@ -1,0 +1,142 @@
+[project]
+name = "f1dashboard-workspace"
+version = "0.0.1"
+description = "Root workspace for the F1 Companion project (pitwall). See CLAUDE.md for the phase map."
+requires-python = ">=3.12"
+dependencies = [
+    "f1-recording",
+    "f1-ingest",
+    "f1-replay",
+    "f1-backfill",
+    "f1-domain",
+    "f1-parse",
+    "f1-store",
+    "f1-historical-adapter",
+    "f1-pipeline",
+    "f1-kernel",
+    "f1-api",
+    "f1-radio",
+    "f1-why",
+]
+
+[tool.uv]
+# The root is a virtual project: it exists only to aggregate the workspace
+# and shared dev tooling, and is never itself built/published.
+package = false
+
+[tool.uv.sources]
+f1-recording = { workspace = true }
+f1-ingest = { workspace = true }
+f1-replay = { workspace = true }
+f1-backfill = { workspace = true }
+f1-domain = { workspace = true }
+f1-parse = { workspace = true }
+f1-store = { workspace = true }
+f1-historical-adapter = { workspace = true }
+f1-pipeline = { workspace = true }
+f1-kernel = { workspace = true }
+f1-api = { workspace = true }
+f1-radio = { workspace = true }
+f1-why = { workspace = true }
+
+[tool.uv.workspace]
+members = ["python/*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6.9",
+    "pyright>=1.1.380",
+    "pytest>=8.3.0",
+    "pre-commit>=3.8.0",
+    "hypothesis>=6.100",
+    "pandas-stubs>=2.2",
+    "types-requests>=2.32",
+    "httpx>=0.27",
+    # Ops scripts only (deploy/, python/f1_store/tools/backup.py etc.) —
+    # `just deploy`/`backup`/`restore`/`record-check` read GHCR_NAMESPACE,
+    # DEPLOY_HOST, POSTGRES_*, F1_STORE_DSN, etc. from .env the same way
+    # compose's `env_file: .env` does, rather than requiring them exported
+    # into the shell by hand.
+    "python-dotenv>=1.0",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — lint + format, inherited by every workspace member (no per-package
+# ruff config needed unless a package wants to deviate).
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["python"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+    "PIE", # flake8-pie
+    "N",   # pep8-naming
+    "RUF", # ruff-specific
+    "ANN", # flake8-annotations (full type hints, per CLAUDE.md conventions)
+]
+ignore = [
+    "ANN401", # Allow `Any` where it's genuinely needed
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["ANN201"] # test functions don't need a return annotation noted explicitly
+
+[tool.ruff.lint.isort]
+known-first-party = ["f1_recording", "f1_ingest", "f1_replay", "f1_backfill", "f1_domain", "f1_parse", "f1_store", "f1_historical_adapter", "f1_pipeline", "f1_kernel", "f1_api", "f1_radio", "f1_why"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------------
+# pyright — strict-ish type checking across the whole workspace.
+# ---------------------------------------------------------------------------
+[tool.pyright]
+include = ["python", "deploy"]
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "data",
+    # Dev-only fixture generator: imports f1_parse's test-tree race_sim via a
+    # runtime sys.path insert, which pyright can't resolve statically.
+    "**/fixtures/generate.py",
+]
+stubPath = "stubs"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+
+# f1_api's tests drive `starlette.testclient.TestClient` (httpx underneath).
+# httpx/starlette are fully `py.typed`, but their client method signatures
+# default-parameter types resolve through private submodules
+# (`httpx._types`, `httpx._client.UseClientDefault`) that pyright can't
+# fully resolve, which under strict mode contaminates the whole signature
+# to "Unknown" and cascades into every `response = client.get(...)` call
+# site. That is a third-party typing-completeness gap, not a defect in our
+# code (`python/f1_api/src` itself is fully strict-clean — this scopes the
+# relaxation to the test files that call the client, mirroring the
+# `ANN201` test carve-out ruff already has above).
+[[tool.pyright.executionEnvironments]]
+root = "python/f1_api/tests"
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+# ---------------------------------------------------------------------------
+# pytest — each workspace member keeps its tests under its own tests/.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["python"]
+# importlib mode avoids module-name collisions between same-named test files
+# across workspace members (e.g. every package's tests/test_placeholder.py).
+addopts = "-ra --import-mode=importlib"

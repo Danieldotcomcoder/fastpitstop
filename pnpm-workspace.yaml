@@ -1,0 +1,5 @@
+# TypeScript workspace (Phase 3+). apps/web is the SvelteKit frontend;
+# packages/* stays empty until something is shared between multiple apps.
+packages:
+  - "packages/*"
+  - "apps/*"
