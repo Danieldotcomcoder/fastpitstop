@@ -34,26 +34,34 @@
 		return reducer.explanations;
 	});
 
-	let scrollEl: HTMLDivElement | undefined = $state();
-	let count = $derived(explanations.length);
-	$effect(() => {
-		if (count > 0 && scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
-	});
+	/** Newest first, capped. This lane lives in a narrow rail beside the
+	 * timing tower; it used to be a horizontally-scrolled filmstrip
+	 * auto-scrolled to the right, which in a ~34rem column showed one and a
+	 * half cards with the previous one sliced down the middle — it read as
+	 * a rendering bug rather than a feed. A short vertical stack, most
+	 * recent at the top, is what a "what just happened" feed should be. */
+	const VISIBLE_LIMIT = 4;
+	let newestFirst = $derived([...explanations].reverse());
+	let shown = $derived(newestFirst.slice(0, VISIBLE_LIMIT));
+	let older = $derived(Math.max(0, newestFirst.length - shown.length));
 </script>
 
 <Panel
-	title="Why"
-	subtitle="Grounded explanations at the moment they happen — never ahead of your clock"
+	title="Key moments"
+	subtitle="What happened and why, with sources — never ahead of your clock"
 >
 	{#if explanations.length === 0}
 		<LoadingState label="Waiting for explained moments…" />
 	{:else}
-		<div class="lane" bind:this={scrollEl} data-testid="explanation-lane">
-			{#each explanations as item (item.anomalyId)}
+		<div class="lane" data-testid="explanation-lane">
+			{#each shown as item (item.anomalyId)}
 				<div class="lane-item">
 					<ExplanationCard explanation={item} />
 				</div>
 			{/each}
+			{#if older > 0}
+				<p class="older">{older} earlier moment{older === 1 ? '' : 's'} this race</p>
+			{/if}
 		</div>
 	{/if}
 </Panel>
@@ -61,20 +69,17 @@
 <style>
 	.lane {
 		display: flex;
+		flex-direction: column;
 		gap: var(--space-3);
-		overflow-x: auto;
-		padding-bottom: var(--space-2);
-		scroll-behavior: smooth;
 	}
 
 	.lane-item {
-		flex: none;
-		width: min(90vw, 22rem);
+		min-width: 0;
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.lane {
-			scroll-behavior: auto;
-		}
+	.older {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: var(--font-size-xs);
 	}
 </style>

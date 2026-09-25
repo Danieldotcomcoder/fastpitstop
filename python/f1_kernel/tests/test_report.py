@@ -17,7 +17,7 @@ import polars as pl
 import pytest
 from kernel_fixture import GREEN_RACE, SC_RACE, load_truth, truth_key
 
-from f1_domain import DomainEvent, RaceControlMessage, SessionKey, SessionType
+from f1_domain import DomainEvent, LapCounterUpdated, RaceControlMessage, SessionKey, SessionType
 from f1_kernel import (
     ANNOTATED_LAP_FRAME_SCHEMA,
     LAP_FRAME_SCHEMA,
@@ -30,6 +30,7 @@ from f1_kernel import (
     analyze_session,
     analyze_session_from_frames,
     empty_frame,
+    race_distance_laps,
 )
 from f1_kernel.frames import SessionFrames
 from f1_kernel.sources import LAP_FRAME_KINDS
@@ -253,3 +254,57 @@ def test_live_session_ignores_events_for_another_session(params: KernelParams) -
 
     assert live.events == ()
     assert report.frames.laps.is_empty()
+
+
+def test_a_live_session_mid_race_uses_the_race_distance_not_the_slice(
+    source: HistoricalSource, params: KernelParams, sc_report: KernelReport
+) -> None:
+    """Halfway through, the kernel must still fuel-correct over the WHOLE
+    race. Inferred from the slice, it read the race as half its length,
+    over-removed the fuel trend and biased every degradation rate the
+    undercut call is built on."""
+    events = _events_for(source, SC_RACE)
+    half = len(events) // 2
+    distance = sc_report.total_laps
+    assert distance is not None
+
+    sliced = LiveKernelSession(session_key=SC_RACE, params=params).push(events[:half])
+    assert sliced.total_laps is not None and sliced.total_laps < distance, "the old reading"
+
+    told = LiveKernelSession(session_key=SC_RACE, params=params, total_laps=distance)
+    assert told.push(events[:half]).total_laps == distance
+
+
+def test_a_live_session_reads_the_distance_from_the_feeds_lap_counter(
+    source: HistoricalSource, params: KernelParams, sc_report: KernelReport
+) -> None:
+    """A genuinely live race has no finished recording to measure, but the
+    feed announces the distance on its lap counter from lap 1."""
+    events = _events_for(source, SC_RACE)
+    half = len(events) // 2
+    distance = sc_report.total_laps
+    assert distance is not None
+    counter = LapCounterUpdated(
+        session_key=SC_RACE,
+        ts_utc=events[0].ts_utc,
+        source_seq=0,
+        current_lap=1,
+        total_laps=distance,
+    )
+
+    report = LiveKernelSession(session_key=SC_RACE, params=params).push([counter, *events[:half]])
+
+    assert report.total_laps == distance
+
+
+def test_race_distance_prefers_the_counter_then_the_furthest_lap(
+    source: HistoricalSource,
+) -> None:
+    events = _events_for(source, SC_RACE)
+    furthest = race_distance_laps(events)
+    assert furthest is not None
+    counter = LapCounterUpdated(
+        session_key=SC_RACE, ts_utc=events[0].ts_utc, source_seq=0, current_lap=1, total_laps=99
+    )
+    assert race_distance_laps([counter, *events]) == 99
+    assert race_distance_laps([]) is None

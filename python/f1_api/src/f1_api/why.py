@@ -5,9 +5,9 @@
 providers — the injection seam tests need to swap in a `MockNarrationModel`
 and a fresh `MemoryExplanationStore`, so no test ever needs a live API key
 (CLAUDE.md's Phase 5 invariant). Production resolves to a process-level
-`ClaudeHaikuModel` + `MemoryExplanationStore` singleton; a persistent
-store is a later prompt's job, mirroring `f1_radio.store`'s own
-Memory-now / Postgres-later split.
+narration model (see `get_narration_model`) and, whenever a store DSN is
+configured, a `PostgresExplanationStore` so explanations outlive the process
+-- the same Memory/Postgres split `f1_radio.store` makes.
 
 Orchestration helpers (`detect_session_anomalies`, `explain_session_anomaly`,
 `precompute_session_explanations`) keep every route and the WebSocket
@@ -18,8 +18,11 @@ wiring by hand — the same "one place owns the chain" discipline
 
 from __future__ import annotations
 
+import logging
+import math
 import os
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,7 +32,7 @@ from urllib.parse import quote, unquote
 
 from fastapi import Depends
 
-from f1_api.config import WHY_FIXTURE_ENV_VAR, Settings
+from f1_api.config import WHY_FIXTURE_ENV_VAR, Settings, get_settings
 from f1_api.radio import clip_id_path, radio_search_index_cm
 from f1_api.sessions import parse_session_key, session_key_path
 from f1_api.why_fixture import CitingNarrationModel
@@ -38,6 +41,7 @@ from f1_kernel import EventSource, KernelParams, KernelReport, analyze_session
 from f1_radio.search import SearchIndex
 from f1_why import (
     Anomaly,
+    AnomalyKind,
     AnomalyParams,
     ClaudeHaikuModel,
     EvidenceBundle,
@@ -52,6 +56,8 @@ from f1_why import (
     ModelNarration,
     NarrationModel,
     NarrationParams,
+    OpenRouterModel,
+    PostgresExplanationStore,
     assemble_evidence,
     detect_anomalies,
     explain_cached,
@@ -59,10 +65,13 @@ from f1_why import (
 from f1_why import (
     anomaly_id as why_anomaly_id,
 )
+from f1_why.openrouter import API_KEY_ENV_VAR as OPENROUTER_API_KEY_ENV_VAR
+
+_log = logging.getLogger(__name__)
 
 _narration_model: NarrationModel | None = None
 _narration_model_lock = Lock()
-_explanation_store: MemoryExplanationStore | None = None
+_explanation_store: ExplanationStore | None = None
 _explanation_store_lock = Lock()
 
 
@@ -141,16 +150,40 @@ def cited_evidence_refs(
     )
 
 
+def _try_backend(factory: Callable[[], NarrationModel], label: str) -> NarrationModel | None:
+    """Construct a real backend, or log and return `None` so the caller
+    falls through to the declining mock. Constructing one reaches for an
+    optional dependency (`httpx`, `anthropic`) and validates a key, either
+    of which can fail on a misconfigured box — and an explanation that
+    degrades to "no clear cause" is a far better failure than every
+    why-engine route returning 500."""
+    try:
+        return factory()
+    except Exception:
+        _log.warning("could not construct the %s narration backend", label, exc_info=True)
+        return None
+
+
 def get_narration_model() -> NarrationModel:
     """Process-level lazy singleton. Resolution order:
 
     1. `F1_API_WHY_FIXTURE` set → `CitingNarrationModel` (`f1_api.why_fixture`)
        so `just verify-phase5`'s real Playwright process can assert grounded,
        cited explanations without a live API key;
-    2. `ANTHROPIC_API_KEY` set → real `ClaudeHaikuModel`;
-    3. otherwise a declining `MockNarrationModel` so CI / a developer with no
+    2. `OPENROUTER_API_KEY` set → `OpenRouterModel`, walking
+       `f1_why.openrouter.DEFAULT_OPENROUTER_MODEL_CHAIN` (or
+       `OPENROUTER_MODELS`). Checked BEFORE Anthropic
+       because it is the deployment this project actually runs on; a box
+       with both keys set can pick explicitly by unsetting one.
+    3. `ANTHROPIC_API_KEY` set → real `ClaudeHaikuModel`;
+    4. otherwise a declining `MockNarrationModel` so CI / a developer with no
        key still get explanation envelopes (as the canonical fallback text)
        rather than a hard failure mid-stream.
+
+    A backend that cannot be constructed (a missing optional dependency,
+    say) falls through to the declining mock rather than 500-ing every
+    explanation route — the why-engine is an enrichment, never the reason
+    the rest of the API stops working.
 
     Overridden in unit tests with a scripted model so the suite never needs
     a live API key regardless of the environment."""
@@ -160,9 +193,11 @@ def get_narration_model() -> NarrationModel:
             if _narration_model is None:
                 if os.environ.get(WHY_FIXTURE_ENV_VAR):
                     _narration_model = CitingNarrationModel()
+                elif os.environ.get(OPENROUTER_API_KEY_ENV_VAR):
+                    _narration_model = _try_backend(OpenRouterModel, "OpenRouter")
                 elif os.environ.get("ANTHROPIC_API_KEY"):
-                    _narration_model = ClaudeHaikuModel()
-                else:
+                    _narration_model = _try_backend(ClaudeHaikuModel, "Anthropic")
+                if _narration_model is None:
                     _narration_model = MockNarrationModel(
                         ModelNarration(
                             text="",
@@ -174,16 +209,35 @@ def get_narration_model() -> NarrationModel:
 
 
 def get_explanation_store() -> ExplanationStore:
-    """Process-level `MemoryExplanationStore` — explanations are never
-    regenerated once cached (CLAUDE.md's Phase 5 budget invariant). Tests
-    override with a fresh store so runs cannot leak explanations into each
-    other."""
+    """The process-level explanation cache. Explanations are never
+    regenerated once cached (CLAUDE.md's Phase 5 budget invariant).
+
+    Postgres-backed whenever a store DSN is configured, so a moment is
+    narrated once ever rather than once per process: the narrator's free
+    tier allows 50 requests a day, and an in-memory cache was emptied by
+    every deploy. `MemoryExplanationStore` otherwise (a developer machine,
+    CI). Tests override with a fresh store so runs cannot leak explanations
+    into each other."""
     global _explanation_store
     if _explanation_store is None:
         with _explanation_store_lock:
             if _explanation_store is None:
-                _explanation_store = MemoryExplanationStore()
+                dsn = get_settings().store_dsn
+                _explanation_store = (
+                    PostgresExplanationStore(dsn) if dsn else MemoryExplanationStore()
+                )
     return _explanation_store
+
+
+def reset_narration_model() -> None:
+    """Drop the resolved backend so the next `get_narration_model` picks one
+    again. Exists for tests that change the environment between cases: the
+    singleton is deliberately process-level (constructing a backend opens an
+    HTTP client), so without this the FIRST test's resolution would leak
+    into every later one."""
+    global _narration_model
+    with _narration_model_lock:
+        _narration_model = None
 
 
 NarrationModelDep = Annotated[NarrationModel, Depends(get_narration_model)]
@@ -209,11 +263,16 @@ def why_stream_deps_cm(
         yield get_narration_model(), get_explanation_store(), radio_index
 
 
-def _race_control_events(source: EventSource, session_key: SessionKey) -> tuple[DomainEvent, ...]:
-    """Only the kinds `assemble_evidence` reads from the raw stream —
-    race-control messages. Keeps the evidence load off the telemetry channel
-    a full `source.events()` would otherwise pull in."""
-    return tuple(source.events(session_key, kinds=["race_control_message"]))
+EVIDENCE_EVENT_KINDS = ("race_control_message", "driver_list_updated")
+"""The raw-stream kinds `assemble_evidence` reads: race-control messages as
+evidence, and the driver list so a narrator can name who "63" is."""
+
+
+def _evidence_events(source: EventSource, session_key: SessionKey) -> tuple[DomainEvent, ...]:
+    """Only the kinds `assemble_evidence` reads from the raw stream. Keeps
+    the evidence load off the telemetry channel a full `source.events()`
+    would otherwise pull in."""
+    return tuple(source.events(session_key, kinds=list(EVIDENCE_EVENT_KINDS)))
 
 
 def detect_session_anomalies(
@@ -250,7 +309,7 @@ def explain_session_anomaly(
     sources = EvidenceSources(
         session_frames=report.frames,
         kernel_report=report,
-        events=_race_control_events(source, session_key),
+        events=_evidence_events(source, session_key),
         radio_index=radio_index,
     )
     bundle = assemble_evidence(anomaly, sources, EvidenceParams())
@@ -261,11 +320,74 @@ def explain_session_anomaly(
 @dataclass(frozen=True, slots=True)
 class ScheduledExplanation:
     """One precomputed explanation ready to pace onto the timeline at
-    `anomaly.anomaly_time`."""
+    `anomaly.anomaly_time`.
+
+    Carries both citation shapes because the two consumers need different
+    ones and neither should re-derive the other's: `cited` is the
+    lightweight id+href form the WebSocket puts on the wire, `bundle` is
+    the full evidence the REST story route renders as `CitedEvidenceOut`
+    (event time, drivers, summary, confidence). Keeping the bundle costs
+    nothing here — it was just built to produce the explanation."""
 
     anomaly: Anomaly
     explanation: Explanation
     cited: tuple[CitedEvidenceRef, ...]
+    bundle: EvidenceBundle
+
+
+NARRATION_CONCURRENCY = 4
+"""Model calls in flight at once while narrating one session. Enough to turn
+a dozen serial round trips into three, and well inside OpenRouter's free-tier
+rate limit (20 requests a minute) for a single story."""
+
+
+def most_salient(anomalies: Sequence[Anomaly], limit: int | None) -> list[Anomaly]:
+    """The `limit` most salient anomalies, still in `detect_anomalies`' own
+    (salience-descending, deterministically tie-broken) order.
+
+    `detect_anomalies` is deliberately uncapped — it reports everything it
+    finds — but NARRATING everything is neither affordable nor readable: a
+    real 2024 race detects ~300 anomalies, one model call each, and a
+    300-item "story" is a log, not a story. `None` means no cap (the
+    original behaviour, kept for callers that genuinely want every one)."""
+    if limit is None:
+        return list(anomalies)
+    return list(anomalies[: max(0, limit)])
+
+
+STORY_KIND_SHARE = 1 / 3
+"""The most of a story any one kind of moment may fill before the next most
+salient moment of another kind gets a turn."""
+
+
+def story_moments(anomalies: Sequence[Anomaly], limit: int | None) -> list[Anomaly]:
+    """The moments worth narrating: the most salient, but not all of one kind.
+
+    Pure salience made a poor story. In the 2025 Spanish GP ten of the top
+    twelve were "undercut resolved" verdicts, eight of them on laps 47-50,
+    so a replay's explanation lane sat empty for 46 laps and then filled
+    with near-identical cards. Each kind is capped at a third of the story
+    (never fewer than two); when the race genuinely offers too little
+    variety the remaining places go back to salience order rather than the
+    story coming up short. Returned in `detect_anomalies`' own salience
+    order, like `most_salient`, which the `/anomalies` listing keeps using
+    unchanged."""
+    if limit is None:
+        return list(anomalies)
+    cap = max(2, math.ceil(limit * STORY_KIND_SHARE))
+    counts: dict[AnomalyKind, int] = {}
+    picked: list[int] = []
+    held: list[int] = []
+    for index, anomaly in enumerate(anomalies):
+        if len(picked) >= limit:
+            break
+        if counts.get(anomaly.kind, 0) < cap:
+            picked.append(index)
+            counts[anomaly.kind] = counts.get(anomaly.kind, 0) + 1
+        else:
+            held.append(index)
+    picked.extend(held[: max(0, limit - len(picked))])
+    return [anomalies[index] for index in sorted(picked)]
 
 
 def precompute_session_explanations(
@@ -276,31 +398,93 @@ def precompute_session_explanations(
     *,
     radio_index: SearchIndex | None = None,
     event_name: str | None = None,
+    max_explanations: int | None = None,
 ) -> list[ScheduledExplanation]:
-    """Historical-session batch: detect every anomaly, explain_cached each,
-    return them sorted by `anomaly_time` for Delay Sync pacing. Live sessions
-    call `explain_session_anomaly` per newly-seen anomaly instead — same
-    cache either way."""
+    """Historical-session batch: detect anomalies, explain_cached the
+    `max_explanations` most salient, return them sorted by `anomaly_time`
+    for Delay Sync pacing. Live sessions call `explain_session_anomaly` per
+    newly-seen anomaly instead — same cache either way."""
     report, anomalies = detect_session_anomalies(source, session_key, event_name=event_name)
     sources = EvidenceSources(
         session_frames=report.frames,
         kernel_report=report,
-        events=_race_control_events(source, session_key),
+        events=_evidence_events(source, session_key),
         radio_index=radio_index,
     )
-    scheduled: list[ScheduledExplanation] = []
-    for anomaly in anomalies:
-        bundle = assemble_evidence(anomaly, sources, EvidenceParams())
-        explanation = explain_cached(bundle, model, store, NarrationParams())
-        scheduled.append(
-            ScheduledExplanation(
-                anomaly=anomaly,
-                explanation=explanation,
-                cited=cited_evidence_refs(session_key, bundle, explanation),
-            )
+    picked = story_moments(anomalies, max_explanations)
+    bundles = [assemble_evidence(anomaly, sources, EvidenceParams()) for anomaly in picked]
+
+    # The model calls are independent network round trips, so they run side
+    # by side. One after another, a twelve-moment story cost twelve serial
+    # calls: at the old free-tier latency that was 157 seconds before the
+    # story rendered at all.
+    def narrate(bundle: EvidenceBundle) -> Explanation:
+        return explain_cached(bundle, model, store, NarrationParams())
+
+    with ThreadPoolExecutor(max_workers=NARRATION_CONCURRENCY) as pool:
+        explanations = list(pool.map(narrate, bundles))
+    scheduled = [
+        ScheduledExplanation(
+            anomaly=anomaly,
+            explanation=explanation,
+            cited=cited_evidence_refs(session_key, bundle, explanation),
+            bundle=bundle,
         )
+        for anomaly, bundle, explanation in zip(picked, bundles, explanations, strict=True)
+    ]
     scheduled.sort(key=lambda item: (item.anomaly.anomaly_time, why_anomaly_id(item.anomaly)))
     return scheduled
+
+
+class ExplanationSchedule:
+    """A thread-safe hand-off for a session's precomputed explanation batch.
+
+    Why this exists: `precompute_session_explanations` costs seconds even
+    capped (a full `analyze_session` + `detect_anomalies`, then one evidence
+    assembly per narrated anomaly), and it used to run INLINE at the top of
+    `replay_envelopes` — before a single domain event was yielded. On a real
+    2024 race that meant ~121 s of a blank, silent dashboard before the
+    first envelope arrived, which read as "the app is broken" and, at
+    `speed>=20`, was most of the interesting part of the race.
+
+    So the batch now runs on its own thread (with its OWN `EventSource`, so
+    no source or database connection is ever touched by two threads at
+    once) while the event stream is already flowing. `items()` returns
+    `None` until the batch lands; the replay loop simply emits no
+    explanations until then, and once the batch arrives every anomaly whose
+    moment has already passed flushes at the next event.
+
+    Spoiler-safety is unaffected: an explanation arriving LATE is always
+    safe (it is paced to at-or-after its own `anomaly_time`, and gets the
+    same wall-clock `event_time_utc` remap as every other envelope). Only
+    arriving EARLY would leak, and nothing here can make that happen."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._items: list[ScheduledExplanation] | None = None
+        self._failed: BaseException | None = None
+
+    def set(self, items: Sequence[ScheduledExplanation]) -> None:
+        with self._lock:
+            self._items = list(items)
+
+    def fail(self, error: BaseException) -> None:
+        """Record that the batch could not be built. The stream continues
+        without explanations rather than dying — the why-engine is an
+        enrichment, never the reason a race is watchable."""
+        with self._lock:
+            self._failed = error
+            self._items = []
+
+    def items(self) -> list[ScheduledExplanation] | None:
+        """The batch, or `None` while it is still being computed."""
+        with self._lock:
+            return self._items
+
+    @property
+    def error(self) -> BaseException | None:
+        with self._lock:
+            return self._failed
 
 
 def find_anomaly_by_why_id(anomalies: Sequence[Anomaly], why_id: str) -> Anomaly | None:
@@ -313,6 +497,7 @@ def find_anomaly_by_why_id(anomalies: Sequence[Anomaly], why_id: str) -> Anomaly
 
 __all__ = [
     "CitedEvidenceRef",
+    "ExplanationSchedule",
     "ExplanationStoreDep",
     "NarrationModelDep",
     "ScheduledExplanation",
@@ -324,7 +509,10 @@ __all__ = [
     "find_anomaly_by_why_id",
     "get_explanation_store",
     "get_narration_model",
+    "most_salient",
     "parse_anomaly_id",
     "precompute_session_explanations",
+    "reset_narration_model",
+    "story_moments",
     "why_stream_deps_cm",
 ]

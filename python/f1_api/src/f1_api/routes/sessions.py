@@ -20,6 +20,7 @@ from f1_api.convert import (
     session_detail,
     session_summary,
 )
+from f1_api.geometry import session_positions
 from f1_api.schemas import (
     BrakingPointRowOut,
     CircuitOut,
@@ -38,7 +39,9 @@ from f1_kernel import (
     analyze_session,
     annotate_laps,
     braking_points,
+    fuel_correct,
     lap_frame,
+    race_distance_laps,
     session_frames,
     telemetry_frame,
 )
@@ -100,7 +103,12 @@ def get_session(session_key: SessionKeyDep, settings: SettingsDep) -> SessionDet
         status_events = list(
             resolved.source.events(
                 session_key,
-                kinds=["session_status_changed", "track_status_changed", "race_control_message"],
+                kinds=[
+                    "session_status_changed",
+                    "track_status_changed",
+                    "race_control_message",
+                    "driver_list_updated",
+                ],
             )
         )
         return session_detail(resolved.entry, laps, status_events)
@@ -114,8 +122,14 @@ def get_laps(session_key: SessionKeyDep, settings: SettingsDep) -> list[LapRowOu
         if resolved is None:
             raise _not_found(session_key)
         laps = lap_frame(resolved.source, session_key)
-        annotated = annotate_laps(laps, KernelParams())
-        return lap_rows(annotated)
+        params = KernelParams()
+        annotated = annotate_laps(laps, params)
+        # The race distance the live kernel uses too (`race_distance_laps`):
+        # the feed's own lap counter when there is one, else the furthest lap.
+        distance = race_distance_laps(
+            resolved.source.events(session_key, kinds=["lap_counter_updated", "lap_completed"])
+        )
+        return lap_rows(fuel_correct(annotated, params, total_laps=distance))
 
 
 @router.get("/sessions/{key}/degradation", response_model=list[DegradationFitOut])
@@ -160,7 +174,13 @@ def get_circuit(session_key: SessionKeyDep, settings: SettingsDep) -> CircuitOut
         if resolved is None:
             raise _not_found(session_key)
         frames = session_frames(resolved.source, session_key, event_name=resolved.entry.event_name)
-        return circuit_out(frames.circuit) if frames.circuit is not None else None
+        if frames.circuit is None:
+            return None
+        # The same geometry the stream draws its dots against: the circuit
+        # file's lines, or this session's own when those do not fit it
+        # (f1_api.geometry).
+        geometry, _ = session_positions(settings, resolved.source, session_key, frames.circuit)
+        return circuit_out(frames.circuit, geometry)
 
 
 @router.get("/sessions/{key}/telemetry/{driver}", response_model=list[BrakingPointRowOut])

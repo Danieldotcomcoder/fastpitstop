@@ -12,14 +12,22 @@ Two backing sources, exactly `f1_kernel`'s own two non-memory `EventSource`s:
   is a sink, never a dependency" extends here too — no database configured,
   or unreachable, degrades to "no live sessions" rather than a 500.
 
-A session present in both is reported as `live`: the store is the source of
-truth for a session currently being ingested, and it can be queried while a
-historical adapter run for the same event would only ever see the final
-backfill.
+A session present in both is reported with `provenance="live"`: the store is
+the source of truth for a session currently being ingested, and it can be
+queried while a historical adapter run for the same event would only ever see
+the final backfill.
+
+`provenance` and `live` are DIFFERENT questions, and conflating them was a
+real outage. `provenance` says which source serves this session; `live` says
+whether it is happening right now. Every session ever ingested stays in the
+store forever, so `provenance == "live"` is permanent, while `live` is
+`f1_store.live_session_keys`' measured answer and goes false once the event
+log stops growing.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -28,6 +36,8 @@ from typing import Literal
 from f1_api.config import Settings
 from f1_domain import SessionKey, SessionType
 from f1_kernel import EventSource, HistoricalSource
+
+_log = logging.getLogger(__name__)
 
 Provenance = Literal["live", "historical"]
 
@@ -65,6 +75,13 @@ class SessionEntry:
     event_name: str | None
     provenance: Provenance
     tables: tuple[str, ...] = ()
+    live: bool = False
+    """Whether this session is in progress RIGHT NOW — never merely
+    whether the store happens to hold it (see the module docstring)."""
+    circuit_name: str | None = None
+    """The feed's venue short name when the source knows it (live sessions,
+    from the log's `session_info_updated`): how a live session finds its
+    circuit, since a Grand Prix name alone is ambiguous across seasons."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +92,17 @@ class ResolvedSession:
     entry: SessionEntry
 
 
+@dataclass(frozen=True, slots=True)
+class _Store:
+    """The store source plus the one thing only an open connection can
+    answer: which of its sessions are actually running."""
+
+    source: EventSource
+    live_keys: frozenset[SessionKey]
+
+
 @contextmanager
-def _store_source(settings: Settings) -> Generator[EventSource | None, None, None]:
+def _store_source(settings: Settings) -> Generator[_Store | None, None, None]:
     """The live source, or `None` when no DSN is configured or the database
     is unreachable — both normal, expected states outside a live session
     (see `docs/PHASE0.md`'s "day-to-day development does not run against
@@ -86,7 +112,7 @@ def _store_source(settings: Settings) -> Generator[EventSource | None, None, Non
         return
     try:
         from f1_kernel import StoreSource
-        from f1_store import connect
+        from f1_store import connect, live_session_keys
     except ImportError:  # pragma: no cover - f1_store is a hard dependency
         yield None
         return
@@ -96,7 +122,17 @@ def _store_source(settings: Settings) -> Generator[EventSource | None, None, Non
         yield None
         return
     try:
-        yield StoreSource(conn)
+        live_keys: frozenset[SessionKey]
+        try:
+            live_keys = frozenset(live_session_keys(conn))
+        except Exception:
+            # An older schema, or a transient query failure. "Nothing is
+            # live" is the safe reading: it costs a visitor the live page
+            # during a race, where guessing the other way spends money
+            # narrating a finished one.
+            _log.warning("could not determine live sessions", exc_info=True)
+            live_keys = frozenset()
+        yield _Store(source=StoreSource(conn), live_keys=live_keys)
     finally:
         conn.close()
 
@@ -122,12 +158,14 @@ def list_sessions(settings: Settings) -> list[SessionEntry]:
     }
     with _store_source(settings) as store:
         if store is not None:
-            for ref in store.sessions():
+            for ref in store.source.sessions():
                 by_key[ref.session_key] = SessionEntry(
                     session_key=ref.session_key,
                     event_name=ref.event_name,
                     provenance="live",
                     tables=ref.tables,
+                    live=ref.session_key in store.live_keys,
+                    circuit_name=ref.circuit_name,
                 )
     return sorted(by_key.values(), key=_sort_key)
 
@@ -144,15 +182,17 @@ def resolve_session(
     source holds nothing that needs closing."""
     with _store_source(settings) as store:
         if store is not None:
-            for ref in store.sessions():
+            for ref in store.source.sessions():
                 if ref.session_key == session_key:
                     yield ResolvedSession(
-                        source=store,
+                        source=store.source,
                         entry=SessionEntry(
                             session_key=session_key,
                             event_name=ref.event_name,
                             provenance="live",
                             tables=ref.tables,
+                            live=session_key in store.live_keys,
+                            circuit_name=ref.circuit_name,
                         ),
                     )
                     return

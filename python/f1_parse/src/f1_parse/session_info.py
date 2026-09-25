@@ -21,6 +21,9 @@ class SessionInfoDecoded:
     meeting_name: str | None
     """e.g. "Bahrain Grand Prix"."""
     meeting_key: int | None
+    meeting_number: int | None
+    """The championship round (`Meeting.Number`) -- what our `SessionKey.round`
+    means. Without it a live ingest cannot name its own session."""
     country: str | None
     circuit: str | None
     session_name: str | None
@@ -45,6 +48,7 @@ def decode_session_info(payload: JsonValue) -> SessionInfoDecoded:
     return SessionInfoDecoded(
         meeting_name=as_str(meeting.get("Name")),
         meeting_key=as_int(meeting.get("Key")),
+        meeting_number=as_int(meeting.get("Number")),
         country=as_str(country.get("Name")),
         circuit=as_str(circuit.get("ShortName")),
         session_name=as_str(body.get("Name")),

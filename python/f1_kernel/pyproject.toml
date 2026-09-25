@@ -6,7 +6,13 @@ requires-python = ">=3.12"
 dependencies = [
     "f1-domain",
     "f1-historical-adapter",
-    "polars>=1.20",
+    # [rtcompat]: the default polars wheel is compiled for x86-64-v3 (AVX2,
+    # FMA, BMI1/2, LZCNT...) and dies with SIGILL on a CPU without them --
+    # which is exactly what a QEMU-generic vCPU exposes, as the deploy VM
+    # does. rtcompat dispatches at runtime instead, so one lockfile serves
+    # both a modern laptop and an emulated-CPU host. Marginally slower where
+    # AVX2 exists; a crash-free API everywhere is worth more than that.
+    "polars[rtcompat]>=1.20",
     "pandas>=2.2",
     "numpy>=1.26",
     "scipy>=1.13",

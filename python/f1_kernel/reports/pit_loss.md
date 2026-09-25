@@ -8,29 +8,29 @@ Per stop: (in-lap + out-lap) minus clean-neighbour baselines (median of the clea
 
 | circuit | pit_loss_s | ±SE | MAD | stops | sessions | seasons | status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| belgian_grand_prix | 18.78 | 0.13 | 0.29 | 18 | 1 | 2024 | CALIBRATED |
-| miami_grand_prix | 20.08 | 0.61 | 0.73 | 5 | 1 | 2024 | thin — kept provisional |
-| austrian_grand_prix | 21.00 | 0.30 | 0.90 | 31 | 1 | 2024 | CALIBRATED |
+| spa | 18.78 | 0.13 | 0.29 | 18 | 1 | 2024 | CALIBRATED |
+| miami | 20.08 | 0.61 | 0.73 | 5 | 1 | 2024 | thin — kept provisional |
+| red_bull_ring | 21.00 | 0.30 | 0.90 | 31 | 1 | 2024 | CALIBRATED |
 | albert_park | 21.09 | 0.35 | 0.81 | 19 | 1 | 2024 | CALIBRATED |
-| hungarian_grand_prix | 21.33 | 0.25 | 0.70 | 27 | 1 | 2024 | CALIBRATED |
-| united_states_grand_prix | 21.70 | 0.48 | 1.16 | 20 | 1 | 2024 | CALIBRATED |
+| hungaroring | 21.33 | 0.25 | 0.70 | 27 | 1 | 2024 | CALIBRATED |
+| cota | 21.70 | 0.48 | 1.16 | 20 | 1 | 2024 | CALIBRATED |
 | jeddah | 22.02 | 1.46 | 1.75 | 5 | 1 | 2024 | thin — kept provisional |
-| azerbaijan_grand_prix | 22.29 | 0.80 | 1.42 | 11 | 1 | 2024 | CALIBRATED |
+| baku | 22.29 | 0.80 | 1.42 | 11 | 1 | 2024 | CALIBRATED |
 | suzuka | 22.38 | 0.26 | 0.69 | 24 | 1 | 2024 | CALIBRATED |
-| las_vegas_grand_prix | 22.54 | 0.37 | 0.93 | 22 | 1 | 2024 | CALIBRATED |
-| abu_dhabi_grand_prix | 22.87 | 0.55 | 1.19 | 16 | 1 | 2024 | CALIBRATED |
-| spanish_grand_prix | 23.03 | 0.31 | 0.98 | 35 | 1 | 2024 | CALIBRATED |
-| chinese_grand_prix | 23.33 | 0.27 | 0.43 | 9 | 1 | 2024 | CALIBRATED |
-| mexico_city_grand_prix | 23.50 | 0.56 | 1.24 | 17 | 1 | 2024 | CALIBRATED |
-| dutch_grand_prix | 23.54 | 0.32 | 0.79 | 21 | 1 | 2024 | CALIBRATED |
+| las_vegas | 22.54 | 0.37 | 0.93 | 22 | 1 | 2024 | CALIBRATED |
+| yas_marina | 22.87 | 0.55 | 1.19 | 16 | 1 | 2024 | CALIBRATED |
+| barcelona | 23.03 | 0.31 | 0.98 | 35 | 1 | 2024 | CALIBRATED |
+| shanghai | 23.33 | 0.27 | 0.43 | 9 | 1 | 2024 | CALIBRATED |
+| mexico_city | 23.50 | 0.56 | 1.24 | 17 | 1 | 2024 | CALIBRATED |
+| zandvoort | 23.54 | 0.32 | 0.79 | 21 | 1 | 2024 | CALIBRATED |
 | bahrain | 24.32 | 0.21 | 0.61 | 29 | 1 | 2024 | CALIBRATED |
 | monza | 25.73 | 0.27 | 0.64 | 19 | 1 | 2024 | CALIBRATED |
-| canadian_grand_prix | 26.28 | 1.14 | 1.74 | 8 | 1 | 2024 | CALIBRATED |
-| british_grand_prix | 26.42 | 1.75 | 5.42 | 33 | 1 | 2024 | CALIBRATED |
-| qatar_grand_prix | 27.69 | 0.97 | 0.74 | 2 | 1 | 2024 | thin — kept provisional |
-| emilia_romagna_grand_prix | 28.50 | 0.32 | 0.73 | 18 | 1 | 2024 | CALIBRATED |
+| montreal | 26.28 | 1.14 | 1.74 | 8 | 1 | 2024 | CALIBRATED |
+| silverstone | 26.42 | 1.75 | 5.42 | 33 | 1 | 2024 | CALIBRATED |
+| lusail | 27.69 | 0.97 | 0.74 | 2 | 1 | 2024 | thin — kept provisional |
+| imola | 28.50 | 0.32 | 0.73 | 18 | 1 | 2024 | CALIBRATED |
 | monaco | 28.87 | 3.67 | 3.42 | 3 | 1 | 2024 | thin — kept provisional |
-| singapore_grand_prix | 30.13 | 0.52 | 1.18 | 18 | 1 | 2024 | CALIBRATED |
+| marina_bay | 30.13 | 0.52 | 1.18 | 18 | 1 | 2024 | CALIBRATED |
 
 ## Exclusions
 

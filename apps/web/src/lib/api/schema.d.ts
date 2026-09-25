@@ -333,6 +333,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{key}/story": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Story
+         * @description The race story: the most salient moments with their grounded
+         *     explanations, resolved in ONE pass over the session.
+         *
+         *     The whole point of this route is that it detects once. Building the
+         *     same list from `/anomalies` + one `/anomalies/{id}/explanation` per row
+         *     re-ran `analyze_session` and `detect_anomalies` for every single row —
+         *     seconds of duplicated work each, hundreds of times over. Detection is a
+         *     per-session computation, so this is a per-session read; the per-anomaly
+         *     route stays for a client that wants exactly one moment's citations.
+         */
+        get: operations["get_session_story_sessions__key__story_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{key}/telemetry/{driver}": {
         parameters: {
             query?: never;
@@ -493,11 +521,17 @@ export interface components {
             corners: components["schemas"]["CornerOut"][];
             /** Drs Zones */
             drs_zones: components["schemas"]["DrsZoneOut"][];
+            /**
+             * Geometry From Session
+             * @default false
+             */
+            geometry_from_session: boolean;
             /** Lap Distance M */
             lap_distance_m: number;
             /** Name */
             name: string;
             outline: components["schemas"]["TrackOutlineOut"] | null;
+            pit_lane?: components["schemas"]["PitLaneOut"] | null;
         };
         /**
          * CitedEvidenceOut
@@ -538,10 +572,14 @@ export interface components {
         ClassificationEntryOut: {
             /** Best Lap S */
             best_lap_s: number | null;
+            /** Code */
+            code?: string | null;
             /** Compound */
             compound: string | null;
             /** Driver */
             driver: string;
+            /** Full Name */
+            full_name?: string | null;
             /** Gap To Leader S */
             gap_to_leader_s: number | null;
             /** In Pit */
@@ -552,6 +590,8 @@ export interface components {
             last_lap_s: number | null;
             /** Position */
             position: number | null;
+            /** Team */
+            team?: string | null;
             /** Tyre Age */
             tyre_age: number | null;
         };
@@ -927,6 +967,8 @@ export interface components {
             lap_number: number;
             /** Lap Start Utc */
             lap_start_utc: string | null;
+            /** Lap Time Fuel Corrected S */
+            lap_time_fuel_corrected_s?: number | null;
             /** Lap Time S */
             lap_time_s: number | null;
             /** Position */
@@ -987,6 +1029,23 @@ export interface components {
             is_yellow: number;
             /** Laps */
             laps: number;
+        };
+        /**
+         * PitLaneOut
+         * @description `f1_kernel.PitLane` — the pit lane as an open polyline from entry to
+         *     exit, derived from the reference race's real pit stops, in the same
+         *     units as the outline.
+         */
+        PitLaneOut: {
+            /** Length M */
+            length_m: number;
+            /** Points */
+            points: [
+                number,
+                number
+            ][];
+            /** Source Stops */
+            source_stops: number;
         };
         /**
          * RadioClipOut
@@ -1156,6 +1215,11 @@ export interface components {
             /** Key */
             key: string;
             /**
+             * Live
+             * @default false
+             */
+            live: boolean;
+            /**
              * Live Recorded
              * @default false
              */
@@ -1175,6 +1239,27 @@ export interface components {
          * @enum {string}
          */
         SessionType: "practice_1" | "practice_2" | "practice_3" | "sprint_qualifying" | "sprint" | "qualifying" | "race" | "unknown";
+        /**
+         * StoryMomentOut
+         * @description One entry of `GET /sessions/{key}/story` — an anomaly together with
+         *     its grounded explanation, resolved in the SAME pass.
+         *
+         *     Exists because the alternative the frontend used to do (list anomalies,
+         *     then one `GET /anomalies/{id}/explanation` per row) re-ran the whole
+         *     `analyze_session` + `detect_anomalies` chain once per request: seconds
+         *     of work per row, times a few hundred rows. Detection is a per-session
+         *     computation, so the story is served as a per-session read.
+         *
+         *     `explanation` is `None` only when narration for that moment could not
+         *     be produced at all; a moment with no clear cause still carries a real
+         *     `ExplanationOut` whose `text` is the canonical fallback and whose
+         *     `grounded` is False — the honest "we don't know" the UI renders
+         *     differently, never a missing row.
+         */
+        StoryMomentOut: {
+            anomaly: components["schemas"]["AnomalyOut"];
+            explanation: components["schemas"]["ExplanationOut"] | null;
+        };
         /**
          * TrackOutlineOut
          * @description `f1_kernel.TrackOutline` — the real 2D lap shape Phase 3.4's track map
@@ -1523,7 +1608,10 @@ export interface operations {
     };
     get_session_anomalies_sessions__key__anomalies_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Keep only the N most salient anomalies. Omitted returns every one the detector found — a few hundred on a real race, which is the right answer for an analysis client and the wrong one for a UI list. */
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 key: string;
@@ -1663,6 +1751,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RadioClipOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_story_sessions__key__story_get: {
+        parameters: {
+            query?: {
+                /** @description How many moments to narrate. Defaults to the server's own F1_WHY_MAX_EXPLANATIONS budget. */
+                limit?: number | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryMomentOut"][];
                 };
             };
             /** @description Validation Error */

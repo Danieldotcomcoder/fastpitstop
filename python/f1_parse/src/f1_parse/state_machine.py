@@ -18,13 +18,25 @@ Design rules (each mirrors a Phase 1 invariant in CLAUDE.md):
   monotonic-seq guard — the `_meta.*` sentinels are exempt because the
   replayer's initial-snapshot record carries a placeholder seq (see
   docs/DATA_CONTRACTS.md: rely on emission order, not seq, for it).
-- Seeding is silent. `seed()` — called directly at live connect time, or
-  triggered by the `_meta.subscribe_snapshot` records the replayer and
-  recorder inject at connect/reconnect — adopts the snapshot as the new
-  baseline and emits NOTHING: neither for unchanged values nor for
-  changes that happened during a connection gap. Gap-spanning changes
-  surface in `state`; events are reserved for transitions actually
-  observed in the delta stream.
+- The FIRST seed publishes a baseline; every re-seed is silent. `seed()`
+  — called directly at live connect time, or triggered by the
+  `_meta.subscribe_snapshot` records the replayer and recorder inject at
+  connect/reconnect — adopts the snapshot as the new baseline. A machine's
+  first seed also queues a one-off baseline: every known classification
+  position (`PositionChanged`) and the driver roster (`DriverListUpdated`),
+  emitted ahead of the NEXT real record's own events and stamped with that
+  record's `ts_utc`/`source_seq`. Without it a consumer that joins
+  mid-session never learns the running order until each car happens to
+  change place — seen live at the 2026 Spanish GP, where ingest joined at
+  lap 4 and the leader and P2 stayed blank from then on. The baseline is
+  stamped from the next real record, not the snapshot, because the
+  replayer's synthetic snapshot record carries `time.time()` and a
+  placeholder seq: stamping from it would make replaying one recording
+  non-deterministic. Stints are deliberately left out: a snapshot does not
+  say which lap an earlier stint started on, and a guessed `start_lap`
+  would feed the kernel a fabricated value. Every later seed (a reconnect)
+  stays silent: gap-spanning changes surface in `state`, and events remain
+  transitions actually observed in the delta stream.
 - Every event's `source_seq` is the triggering record's seq, verbatim.
 
 Transition semantics worth knowing (the fine print lives on each
@@ -71,11 +83,13 @@ from f1_domain import (
     DriverState,
     GapUpdated,
     LapCompleted,
+    LapCounterUpdated,
     PitEntry,
     PitExit,
     PositionChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionInfoUpdated,
     SessionKey,
     SessionState,
     SessionStatusChanged,
@@ -364,6 +378,9 @@ class SessionStateMachine:
         self._session_status: str | None = None
         self._current_lap: int | None = None
         self._total_laps: int | None = None
+        # SessionInfo's meeting and venue, published as SessionInfoUpdated.
+        self._meeting_name: str | None = None
+        self._circuit_name: str | None = None
         self._track_status_code: str | None = None
         self._track_status_kind: TrackStatusKind | None = None
         self._track_status_message: str | None = None
@@ -374,6 +391,10 @@ class SessionStateMachine:
         self._tr_seen = 0
         self._status_seen = 0
         self._last_seq: int | None = None
+        # Whether any snapshot has been adopted yet; every later seed is a re-seed.
+        self._seeded = False
+        # A first-seed baseline, queued until the next real record stamps it.
+        self._baseline_pending = False
 
     # ------------------------------------------------------------------
     # Public surface
@@ -384,8 +405,10 @@ class SessionStateMachine:
 
         Pure with respect to the outside world (no I/O, no clock) and
         idempotent per record: re-applying an already-seen seq returns [].
-        `_meta.subscribe_snapshot` records trigger a silent (re-)seed;
-        `_meta.reconnect` markers are acknowledged and ignored.
+        `_meta.subscribe_snapshot` records trigger a (re-)seed and return []
+        themselves — a FIRST seed's baseline rides on the next real record
+        instead (see `seed`); `_meta.reconnect` markers are acknowledged and
+        ignored.
         """
         if record.topic.startswith("_meta."):
             # Sentinels bypass the seq guard: the replayer's initial
@@ -397,8 +420,15 @@ class SessionStateMachine:
         if self._last_seq is not None and record.seq <= self._last_seq:
             return []
         self._last_seq = record.seq
-        message = decode(record)
         ts = datetime.fromtimestamp(record.ts_wall, tz=UTC)
+        baseline = self._take_baseline(ts, record.seq)
+        events = self._dispatch(record, ts)
+        return [*baseline, *events] if baseline else events
+
+    def _dispatch(self, record: RawRecord, ts: datetime) -> list[DomainEvent]:
+        """Route one real (non-sentinel, seq-guarded) record to its family's
+        transition logic."""
+        message = decode(record)
         seq = record.seq
         data = message.data
         if message.family is Family.TIMING and isinstance(data, TimingLinesDelta):
@@ -416,13 +446,11 @@ class SessionStateMachine:
         if message.family is Family.TEAM_RADIO and isinstance(data, list):
             return self._apply_team_radio(data, ts, seq)
         if message.family is Family.SESSION_INFO and isinstance(data, SessionInfoDecoded):
-            self._apply_session_info(data)
-            return []
+            return self._session_info_events(data, ts, seq)
         if message.family is Family.SESSION_DATA and isinstance(data, SessionDataDecoded):
             return self._apply_session_data(data, ts, seq)
         if message.family is Family.LAP_COUNT and isinstance(data, LapCountDecoded):
-            self._apply_lap_count(data)
-            return []
+            return self._lap_count_events(data, ts, seq)
         if message.family is Family.DRIVER_LIST and isinstance(data, dict):
             return self._apply_driver_list(data, ts, seq)
         # Family.UNKNOWN (or a decoder degradation): preserve verbatim —
@@ -434,10 +462,16 @@ class SessionStateMachine:
 
         Called directly by a live consumer at connect time, and by
         `apply()` for every `_meta.subscribe_snapshot` record (initial
-        connect on replay, and every reconnect on both paths). NEVER
-        emits: unchanged values must not fire, and changes that happened
-        during a connection gap surface in `state` only — an event stream
-        should contain transitions that were actually observed.
+        connect on replay, and every reconnect on both paths). Returns
+        nothing and emits nothing itself.
+
+        The machine's FIRST seed also queues a baseline — every known
+        position and the roster — that `apply()` emits ahead of the next
+        real record's events, stamped with that record's
+        `ts_utc`/`source_seq` (module docstring: why, and why not stints).
+        Every later seed is silent: changes that happened during a
+        connection gap surface in `state` only, so the event stream keeps
+        containing transitions that were actually observed.
 
         Per-topic snapshot content REPLACES that topic's merged state
         (the snapshot is the feed's authoritative full state); topics
@@ -446,6 +480,56 @@ class SessionStateMachine:
         snapshot = as_dict(subscribe_snapshot)
         if snapshot is None:
             return
+        self._absorb_snapshot(snapshot)
+        if not self._seeded:
+            self._seeded = True
+            self._baseline_pending = True
+
+    def _take_baseline(self, ts: datetime, seq: int) -> list[DomainEvent]:
+        """The first seed's queued baseline, stamped with the real record
+        about to be applied — or [] when none is pending (the usual case).
+
+        Order mirrors `_apply_driver_list`, the path that carries the same
+        facts when they arrive as a delta: positions, then the roster. Both
+        come from state the seed already absorbed, so no dedup gate moves
+        and the next genuine change still emits exactly once."""
+        if not self._baseline_pending:
+            return []
+        self._baseline_pending = False
+        events: list[DomainEvent] = []
+        for number in sorted(self._drivers, key=_number_sort_key):
+            position = self._drivers[number].position
+            if position is not None:
+                events.append(
+                    PositionChanged(**self._envelope(ts, seq), driver=number, position=position)
+                )
+        if self._identities:
+            roster = [self._identities[n] for n in sorted(self._identities, key=_number_sort_key)]
+            events.append(DriverListUpdated(**self._envelope(ts, seq), drivers=roster))
+        if self._meeting_name is not None or self._circuit_name is not None:
+            # Which race this is, so the store can name the session and the
+            # map can find its circuit (see `SessionInfoUpdated`).
+            events.append(
+                SessionInfoUpdated(
+                    **self._envelope(ts, seq),
+                    meeting_name=self._meeting_name,
+                    circuit_short_name=self._circuit_name,
+                )
+            )
+        if self._current_lap is not None:
+            # Joining mid-race, the lap the race is ON is the first thing a
+            # viewer needs; without it they wait for the next lap tick.
+            events.append(
+                LapCounterUpdated(
+                    **self._envelope(ts, seq),
+                    current_lap=self._current_lap,
+                    total_laps=self._total_laps,
+                )
+            )
+        return events
+
+    def _absorb_snapshot(self, snapshot: Mapping[str, JsonValue]) -> None:
+        """Fold one full-state snapshot into the machine's state (see `seed`)."""
         info = snapshot.get("SessionInfo")
         if info is not None:
             self._apply_session_info(decode_session_info(info))
@@ -858,6 +942,27 @@ class SessionStateMachine:
     def _apply_session_info(self, decoded: SessionInfoDecoded) -> None:
         if decoded.path is not None:
             self._session_path = decoded.path
+        if decoded.meeting_name is not None:
+            self._meeting_name = decoded.meeting_name
+        if decoded.circuit is not None:
+            self._circuit_name = decoded.circuit
+
+    def _session_info_events(
+        self, decoded: SessionInfoDecoded, ts: datetime, seq: int
+    ) -> list[DomainEvent]:
+        """Change-detected around the same silent `_apply_session_info` that
+        seeding uses, so the feed re-sending identical info emits nothing."""
+        before = (self._meeting_name, self._circuit_name)
+        self._apply_session_info(decoded)
+        if (self._meeting_name, self._circuit_name) == before:
+            return []
+        return [
+            SessionInfoUpdated(
+                **self._envelope(ts, seq),
+                meeting_name=self._meeting_name,
+                circuit_short_name=self._circuit_name,
+            )
+        ]
 
     def _apply_session_data(
         self, decoded: SessionDataDecoded, ts: datetime, seq: int
@@ -887,6 +992,23 @@ class SessionStateMachine:
             self._current_lap = decoded.current_lap
         if decoded.total_laps is not None:
             self._total_laps = decoded.total_laps
+
+    def _lap_count_events(
+        self, decoded: LapCountDecoded, ts: datetime, seq: int
+    ) -> list[DomainEvent]:
+        """Change-detected around the same silent `_apply_lap_count` seeding
+        uses, so a re-sent identical counter emits nothing."""
+        before = (self._current_lap, self._total_laps)
+        self._apply_lap_count(decoded)
+        if (self._current_lap, self._total_laps) == before:
+            return []
+        return [
+            LapCounterUpdated(
+                **self._envelope(ts, seq),
+                current_lap=self._current_lap,
+                total_laps=self._total_laps,
+            )
+        ]
 
     def _apply_driver_list(
         self, entries: Mapping[str, object], ts: datetime, seq: int
@@ -926,6 +1048,11 @@ class SessionStateMachine:
         updated = DriverRef(
             number=number,
             code=entry.tla if entry.tla is not None else (current.code if current else None),
+            full_name=(
+                entry.full_name
+                if entry.full_name is not None
+                else (current.full_name if current else None)
+            ),
             team=(
                 entry.team_name
                 if entry.team_name is not None

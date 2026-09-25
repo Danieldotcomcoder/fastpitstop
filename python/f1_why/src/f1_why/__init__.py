@@ -76,13 +76,22 @@ from f1_why.narration import (
     explain,
     explain_cached,
 )
+from f1_why.openrouter import (
+    DEFAULT_OPENROUTER_MODEL,
+    OpenRouterModel,
+    openrouter_model_name,
+    parse_narration_json,
+)
 from f1_why.params import AnomalyParams
+from f1_why.store import NARRATION_VERSION, PostgresExplanationStore
 
 __all__ = [
     "ANOMALY_SCHEMA",
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_MODEL",
+    "DEFAULT_OPENROUTER_MODEL",
     "FALLBACK_TEXT",
+    "NARRATION_VERSION",
     "SYSTEM_PROMPT",
     "Anomaly",
     "AnomalyKind",
@@ -102,6 +111,8 @@ __all__ = [
     "ModelNarration",
     "NarrationModel",
     "NarrationParams",
+    "OpenRouterModel",
+    "PostgresExplanationStore",
     "anomalies_to_frame",
     "anomaly_id",
     "assemble_evidence",
@@ -109,6 +120,8 @@ __all__ = [
     "detect_anomalies",
     "explain",
     "explain_cached",
+    "openrouter_model_name",
+    "parse_narration_json",
 ]
 
 __version__ = "0.0.1"

@@ -33,6 +33,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from itertools import pairwise
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
 
 # A closed lap needs enough samples to describe a shape at all; below this
@@ -76,6 +77,157 @@ class TrackOutline(BaseModel):
     kernel's own reliability verdicts elsewhere. Not a promise that this many
     points survived: a sparse or noisy source still produces `points` with
     exactly `target_points` entries."""
+
+
+class PitLane(BaseModel):
+    """One circuit's pit lane: an OPEN polyline from pit entry to pit exit,
+    in the same raw units as `TrackOutline.points` (and every position
+    sample), so a car in the pits plots on it with no transform.
+
+    Without it the map drew only the racing line, and every car in the pit
+    lane or its garage sat in empty space beside the track: in practice and
+    qualifying that was a fifth to two thirds of all position samples."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    points: list[tuple[float, float]]
+    length_m: float = Field(ge=0)
+    source_stops: int = Field(ge=0)
+    """How many real pit stops the shape was derived from."""
+
+
+MIN_PIT_STOPS = 3
+"""Fewer stops than this and a median path is just one car's path."""
+
+# Consecutive samples closer than this (raw units, ~1 m) are one point: the
+# car standing in its box, which says nothing about where the lane runs.
+_PIT_POINT_SPACING = 10.0
+
+
+def derive_pit_lane(
+    traverses: Sequence[Sequence[tuple[float, float]]],
+    *,
+    target_points: int = 80,
+    iterations: int = 3,
+    units_per_metre: float = DEFAULT_UNITS_PER_METRE,
+) -> PitLane:
+    """The pit lane's centreline from real pit stops.
+
+    Each traverse is one car's time-ordered samples from pit entry to pit
+    exit. Every car swerves into its own box somewhere along the lane, so
+    no single traverse is the lane; the MEDIAN of all of them is, because
+    at any point along it most cars are driving straight through. The first
+    shape is the pointwise median of every traverse resampled to the same
+    number of points by arc length. Starting from any one traverse instead
+    kept that car's own swerve: its samples were the only ones near it.
+    Each refining round then assigns every sample to its nearest point on
+    the shape, moves that point to the median of what it was given, and
+    resamples. Raises `ValueError` with fewer than `MIN_PIT_STOPS` usable
+    traverses."""
+    paths = [
+        np.asarray(_thin(traverse), dtype=float)
+        for traverse in traverses
+        if len(traverse) >= MIN_SOURCE_POINTS
+    ]
+    paths = [path for path in paths if len(path) >= MIN_SOURCE_POINTS]
+    if len(paths) < MIN_PIT_STOPS:
+        raise ValueError(
+            f"need at least {MIN_PIT_STOPS} pit-lane traverses, got {len(paths)} usable"
+        )
+    shape = np.median(np.stack([_resample_open(path, target_points) for path in paths]), axis=0)
+    shape = _resample_open(shape, target_points)
+    samples = np.concatenate(paths)
+    for _ in range(iterations):
+        nearest = np.argmin(
+            (samples[:, None, 0] - shape[None, :, 0]) ** 2
+            + (samples[:, None, 1] - shape[None, :, 1]) ** 2,
+            axis=1,
+        )
+        moved = shape.copy()
+        for i in range(len(shape)):
+            assigned = samples[nearest == i]
+            if len(assigned) >= MIN_PIT_STOPS:
+                moved[i] = np.median(assigned, axis=0)
+        shape = _resample_open(moved, target_points)
+    length = float(np.hypot(*np.diff(shape, axis=0).T).sum())
+    return PitLane(
+        points=[(float(x), float(y)) for x, y in shape],
+        length_m=length / units_per_metre,
+        source_stops=len(paths),
+    )
+
+
+def derive_track_outline_from_laps(
+    laps: Sequence[Sequence[tuple[float, float]]],
+    *,
+    target_points: int = 200,
+    iterations: int = 3,
+    units_per_metre: float = DEFAULT_UNITS_PER_METRE,
+) -> TrackOutline:
+    """A racing line from several laps' samples, each a time-ordered trace
+    that starts where the lap did (the timing line).
+
+    The median-length lap is the first shape; each round assigns every
+    sample of every lap to its nearest point on the shape, moves that point
+    to the median of what it was given and resamples the closed loop by
+    arc length. Laps start a sample or two apart and never at exactly the
+    same place, so points are matched by nearness rather than by index.
+    Raises `ValueError` without at least one usable lap."""
+    paths = [np.asarray(_dedupe(lap), dtype=float) for lap in laps if len(lap) >= MIN_SOURCE_POINTS]
+    if not paths:
+        raise ValueError("need at least one lap of position samples to derive a racing line")
+    lengths = [float(np.hypot(*np.diff(path, axis=0).T).sum()) for path in paths]
+    reference = paths[int(np.argsort(lengths)[len(lengths) // 2])]
+    shape = _resample_closed(reference, target_points)
+    samples = np.concatenate(paths)
+    for _ in range(iterations):
+        nearest = np.argmin(
+            (samples[:, None, 0] - shape[None, :, 0]) ** 2
+            + (samples[:, None, 1] - shape[None, :, 1]) ** 2,
+            axis=1,
+        )
+        moved = shape.copy()
+        for i in range(len(shape)):
+            assigned = samples[nearest == i]
+            if len(assigned) >= min(2, len(paths)):
+                moved[i] = np.median(assigned, axis=0)
+        shape = _resample_closed(moved, target_points)
+    outline = derive_track_outline(
+        [(float(x), float(y)) for x, y in shape],
+        target_points=target_points,
+        units_per_metre=units_per_metre,
+    )
+    return outline.model_copy(update={"source_points": int(sum(len(path) for path in paths))})
+
+
+def _resample_closed(points: np.ndarray, target_points: int) -> np.ndarray:
+    """`target_points` points evenly spaced around the closed loop, the
+    first one kept."""
+    loop = np.vstack([points, points[:1]])
+    steps: np.ndarray = np.hypot(*np.diff(loop, axis=0).T)
+    cumulative: np.ndarray = np.concatenate([[0.0], np.cumsum(steps)])
+    targets: np.ndarray = np.linspace(0.0, float(cumulative[-1]), target_points, endpoint=False)
+    xs: np.ndarray = np.interp(targets, cumulative, loop[:, 0])
+    ys: np.ndarray = np.interp(targets, cumulative, loop[:, 1])
+    return np.column_stack([xs, ys])
+
+
+def _thin(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    kept = [points[0]]
+    for point in points[1:]:
+        if _distance(kept[-1], point) >= _PIT_POINT_SPACING:
+            kept.append(point)
+    return kept
+
+
+def _resample_open(points: np.ndarray, target_points: int) -> np.ndarray:
+    """Evenly spaced by arc length, first and last point kept."""
+    steps: np.ndarray = np.hypot(*np.diff(points, axis=0).T)
+    cumulative: np.ndarray = np.concatenate([[0.0], np.cumsum(steps)])
+    targets: np.ndarray = np.linspace(0.0, float(cumulative[-1]), target_points)
+    xs: np.ndarray = np.interp(targets, cumulative, points[:, 0])
+    ys: np.ndarray = np.interp(targets, cumulative, points[:, 1])
+    return np.column_stack([xs, ys])
 
 
 def derive_track_outline(
@@ -174,4 +326,13 @@ def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
-__all__ = ["DEFAULT_UNITS_PER_METRE", "MIN_SOURCE_POINTS", "TrackOutline", "derive_track_outline"]
+__all__ = [
+    "DEFAULT_UNITS_PER_METRE",
+    "MIN_PIT_STOPS",
+    "MIN_SOURCE_POINTS",
+    "PitLane",
+    "TrackOutline",
+    "derive_pit_lane",
+    "derive_track_outline",
+    "derive_track_outline_from_laps",
+]

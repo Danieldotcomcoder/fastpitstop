@@ -284,6 +284,11 @@
             "title": "Drs Zones",
             "type": "array"
           },
+          "geometry_from_session": {
+            "default": false,
+            "title": "Geometry From Session",
+            "type": "boolean"
+          },
           "lap_distance_m": {
             "title": "Lap Distance M",
             "type": "number"
@@ -296,6 +301,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pit_lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PitLaneOut"
               },
               {
                 "type": "null"
@@ -388,6 +403,17 @@
             ],
             "title": "Best Lap S"
           },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
           "compound": {
             "anyOf": [
               {
@@ -402,6 +428,17 @@
           "driver": {
             "title": "Driver",
             "type": "string"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
           },
           "gap_to_leader_s": {
             "anyOf": [
@@ -457,6 +494,17 @@
               }
             ],
             "title": "Position"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
           },
           "tyre_age": {
             "anyOf": [
@@ -1619,6 +1667,17 @@
             ],
             "title": "Lap Start Utc"
           },
+          "lap_time_fuel_corrected_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lap Time Fuel Corrected S"
+          },
           "lap_time_s": {
             "anyOf": [
               {
@@ -1846,6 +1905,43 @@
           "is_anomalous"
         ],
         "title": "LapSummaryRowOut",
+        "type": "object"
+      },
+      "PitLaneOut": {
+        "description": "`f1_kernel.PitLane` \u2014 the pit lane as an open polyline from entry to\nexit, derived from the reference race's real pit stops, in the same\nunits as the outline.",
+        "properties": {
+          "length_m": {
+            "title": "Length M",
+            "type": "number"
+          },
+          "points": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "source_stops": {
+            "title": "Source Stops",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "points",
+          "length_m",
+          "source_stops"
+        ],
+        "title": "PitLaneOut",
         "type": "object"
       },
       "RadioClipOut": {
@@ -2256,6 +2352,11 @@
             "title": "Key",
             "type": "string"
           },
+          "live": {
+            "default": false,
+            "title": "Live",
+            "type": "boolean"
+          },
           "live_recorded": {
             "default": false,
             "title": "Live Recorded",
@@ -2307,6 +2408,30 @@
         ],
         "title": "SessionType",
         "type": "string"
+      },
+      "StoryMomentOut": {
+        "description": "One entry of `GET /sessions/{key}/story` \u2014 an anomaly together with\nits grounded explanation, resolved in the SAME pass.\n\nExists because the alternative the frontend used to do (list anomalies,\nthen one `GET /anomalies/{id}/explanation` per row) re-ran the whole\n`analyze_session` + `detect_anomalies` chain once per request: seconds\nof work per row, times a few hundred rows. Detection is a per-session\ncomputation, so the story is served as a per-session read.\n\n`explanation` is `None` only when narration for that moment could not\nbe produced at all; a moment with no clear cause still carries a real\n`ExplanationOut` whose `text` is the canonical fallback and whose\n`grounded` is False \u2014 the honest \"we don't know\" the UI renders\ndifferently, never a missing row.",
+        "properties": {
+          "anomaly": {
+            "$ref": "#/components/schemas/AnomalyOut"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExplanationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "anomaly",
+          "explanation"
+        ],
+        "title": "StoryMomentOut",
+        "type": "object"
       },
       "TrackOutlineOut": {
         "description": "`f1_kernel.TrackOutline` \u2014 the real 2D lap shape Phase 3.4's track map\nrenders, derived from position telemetry by `tools/build_circuits.py`.",
@@ -2957,6 +3082,25 @@
               "title": "Key",
               "type": "string"
             }
+          },
+          {
+            "description": "Keep only the N most salient anomalies. Omitted returns every one the detector found \u2014 a few hundred on a real race, which is the right answer for an analysis client and the wrong one for a UI list.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only the N most salient anomalies. Omitted returns every one the detector found \u2014 a few hundred on a real race, which is the right answer for an analysis client and the wrong one for a UI list.",
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -3180,6 +3324,72 @@
         "summary": "Get Session Radio",
         "tags": [
           "radio"
+        ]
+      }
+    },
+    "/sessions/{key}/story": {
+      "get": {
+        "description": "The race story: the most salient moments with their grounded\nexplanations, resolved in ONE pass over the session.\n\nThe whole point of this route is that it detects once. Building the\nsame list from `/anomalies` + one `/anomalies/{id}/explanation` per row\nre-ran `analyze_session` and `detect_anomalies` for every single row \u2014\nseconds of duplicated work each, hundreds of times over. Detection is a\nper-session computation, so this is a per-session read; the per-anomaly\nroute stays for a client that wants exactly one moment's citations.",
+        "operationId": "get_session_story_sessions__key__story_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many moments to narrate. Defaults to the server's own F1_WHY_MAX_EXPLANATIONS budget.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How many moments to narrate. Defaults to the server's own F1_WHY_MAX_EXPLANATIONS budget.",
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StoryMomentOut"
+                  },
+                  "title": "Response Get Session Story Sessions  Key  Story Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Story",
+        "tags": [
+          "why"
         ]
       }
     },

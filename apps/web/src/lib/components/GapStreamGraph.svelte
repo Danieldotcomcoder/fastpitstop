@@ -9,6 +9,9 @@
 	 * same "framework-agnostic core, thin Svelte glue" split
 	 * `TrackMap.svelte` uses over `$lib/track-map`. */
 	import { onDestroy } from 'svelte';
+	import { namesFromEvents } from '$lib/driver-events';
+	import { driverName, type DriverNames } from '$lib/drivers';
+	let names = $state<DriverNames>({});
 	import type { DelaySyncController } from '$lib/delay-sync';
 	import { buildGapStreamFrame, GapStreamReducer, GapStreamRenderer } from '$lib/kernel-views';
 	import LoadingState from './LoadingState.svelte';
@@ -28,6 +31,7 @@
 	let reducedMotion = $state(false);
 
 	const reducer = new GapStreamReducer();
+	let identityEventCount = -1;
 	let renderer: GapStreamRenderer | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let frameHandle: number | null = null;
@@ -41,6 +45,10 @@
 		if (!renderer) return;
 		const { events } = controller.visibleState.get();
 		reducer.update(events);
+		if (events.length !== identityEventCount) {
+			names = namesFromEvents(events);
+			identityEventCount = events.length;
+		}
 		const frame = buildGapStreamFrame(reducer.state);
 		hasData = frame.bands.length > 0;
 		legendDrivers = frame.bands.map((b) => ({ driver: b.driver, code: b.code, color: b.color }));
@@ -62,6 +70,8 @@
 		// accumulated for the old one.
 		void controller;
 		reducer.reset();
+		identityEventCount = -1;
+		names = {};
 		highlightDriver = null;
 	});
 
@@ -116,7 +126,7 @@
 
 <Panel
 	title="Gap to leader"
-	subtitle="Every driver's gap over race laps — undercuts and DRS trains as shapes"
+	subtitle="See who is closing in. Tap a driver to follow their gap to the leader."
 >
 	<div class="gap-stream" bind:this={container}>
 		<canvas bind:this={canvas}></canvas>
@@ -134,9 +144,10 @@
 					class="chip"
 					class:dimmed={highlightDriver !== null && highlightDriver !== d.driver}
 					style:--chip-color={d.color}
+					aria-pressed={highlightDriver === d.driver}
 					onclick={() => toggleHighlight(d.driver)}
 				>
-					{d.code ?? d.driver}
+					{names[d.driver] ?? driverName(d.driver, null, d.code)}
 				</button>
 			{/each}
 		</div>
@@ -147,7 +158,8 @@
 	.gap-stream {
 		position: relative;
 		width: 100%;
-		aspect-ratio: 4 / 3;
+		aspect-ratio: 16 / 7;
+		min-height: 260px;
 		background: var(--color-bg-elevated);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
@@ -175,14 +187,14 @@
 	}
 
 	.chip {
-		padding: 0.1875rem var(--space-3);
-		border-radius: 999px;
+		padding: 0.6rem var(--space-3);
+		border-radius: 5px;
 		border: 1px solid var(--chip-color);
 		background: color-mix(in srgb, var(--chip-color) 16%, var(--color-bg-elevated));
 		color: var(--color-text);
-		font-size: var(--font-size-xs);
+		font-size: var(--font-size-sm);
 		font-weight: 600;
-		font-family: var(--font-mono);
+		font-family: var(--font-ui);
 		cursor: pointer;
 	}
 

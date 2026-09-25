@@ -12,12 +12,29 @@
  * this module's. Delay Sync's job stops at "here is everything due so far,
  * in order, spoiler-safe" — a later reducer can fold `events` into whatever
  * shape a specific view needs without ever touching the buffer directly. */
-import { type Envelope, type KernelSnapshotPayload, isKernelSnapshot } from './envelope';
+import {
+	type Envelope,
+	type KernelSnapshotPayload,
+	isCarPositions,
+	isKernelSnapshot
+} from './envelope';
+
+/** How many released `car_positions` frames `positionFrames` keeps: about
+ * a minute of race time at the feed's ~4 frames a second, whatever the
+ * replay speed. A map draws from the last second or so; the rest is slack
+ * for a car the feed briefly skips. */
+export const POSITION_FRAME_WINDOW = 256;
 
 export interface VisibleSessionState {
 	/** Released envelopes whose kind is a domain event (i.e. not
-	 * `kernel_snapshot`), in event-time order. */
+	 * `kernel_snapshot` or `car_positions`), in event-time order. */
 	events: Envelope[];
+	/** The most recent released `car_positions` frames, oldest first, at
+	 * most `POSITION_FRAME_WINDOW` of them. A window rather than part of
+	 * `events` because a race sends ~30k of them: kept forever, they would
+	 * be most of the page's memory, and every reducer that scans `events`
+	 * would wade through them for nothing. */
+	positionFrames: Envelope[];
 	/** The most recently released `kernel_snapshot` payload, if any has been
 	 * released yet. */
 	latestSnapshot: KernelSnapshotPayload | null;
@@ -28,6 +45,7 @@ export interface VisibleSessionState {
 
 export const EMPTY_VISIBLE_STATE: VisibleSessionState = Object.freeze({
 	events: [],
+	positionFrames: [],
 	latestSnapshot: null,
 	lastEventTimeUtc: null
 });
@@ -43,6 +61,13 @@ export function applyReleasedEnvelope(
 		return {
 			...state,
 			latestSnapshot: envelope.payload as unknown as KernelSnapshotPayload,
+			lastEventTimeUtc: envelope.event_time_utc
+		};
+	}
+	if (isCarPositions(envelope)) {
+		return {
+			...state,
+			positionFrames: [...state.positionFrames, envelope].slice(-POSITION_FRAME_WINDOW),
 			lastEventTimeUtc: envelope.event_time_utc
 		};
 	}
@@ -77,11 +102,14 @@ export function applyReleasedEnvelopes(
 	let latestSnapshot = state.latestSnapshot;
 	let lastEventTimeUtc = state.lastEventTimeUtc;
 	const newDomainEvents: Envelope[] = [];
+	const newFrames: Envelope[] = [];
 
 	for (const envelope of envelopes) {
 		lastEventTimeUtc = envelope.event_time_utc;
 		if (isKernelSnapshot(envelope)) {
 			latestSnapshot = envelope.payload as unknown as KernelSnapshotPayload;
+		} else if (isCarPositions(envelope)) {
+			newFrames.push(envelope);
 		} else {
 			newDomainEvents.push(envelope);
 		}
@@ -89,6 +117,10 @@ export function applyReleasedEnvelopes(
 
 	return {
 		events: newDomainEvents.length > 0 ? [...state.events, ...newDomainEvents] : state.events,
+		positionFrames:
+			newFrames.length > 0
+				? [...state.positionFrames, ...newFrames].slice(-POSITION_FRAME_WINDOW)
+				: state.positionFrames,
 		latestSnapshot,
 		lastEventTimeUtc
 	};

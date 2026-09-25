@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import polars as pl
 
@@ -38,18 +39,21 @@ from f1_api.schemas import (
 )
 from f1_api.sessions import SessionEntry, session_key_path
 from f1_api.why import anomaly_id_path, evidence_href
-from f1_domain import DomainEvent, SessionKey, SessionStatusChanged
+from f1_domain import DomainEvent, DriverListUpdated, SessionKey, SessionStatusChanged
 from f1_kernel import BrakingDrift, Circuit, CrossoverResult, DegradationFit, KernelReport
-from f1_kernel.circuit import circuit_for_event
+from f1_kernel.circuit import circuit_for_session
 from f1_kernel.status import track_status_timeline
 from f1_radio.search import SearchResult
 from f1_radio.store import TranscriptRecord
 from f1_why import Anomaly, EvidenceBundle, Explanation
 
+if TYPE_CHECKING:  # geometry imports the stream, which imports this module
+    from f1_api.geometry import SessionGeometry
+
 
 def session_summary(entry: SessionEntry) -> SessionSummaryOut:
     """`GET /sessions` row — metadata + data badges, no frame load."""
-    circuit = circuit_for_event(entry.event_name)
+    circuit = circuit_for_session(entry.event_name, entry.circuit_name)
     tables = {name.casefold() for name in entry.tables}
     has_radio = any("radio" in name for name in tables)
     has_telemetry = any(
@@ -65,6 +69,7 @@ def session_summary(entry: SessionEntry) -> SessionSummaryOut:
         has_radio=has_radio,
         has_telemetry=has_telemetry,
         live_recorded=entry.provenance == "live",
+        live=entry.live,
     )
 
 
@@ -134,13 +139,21 @@ def classification_from_laps(laps: pl.DataFrame) -> list[ClassificationEntryOut]
     )
 
 
-def circuit_out(circuit: Circuit) -> CircuitOut:
+def circuit_out(circuit: Circuit, geometry: SessionGeometry | None = None) -> CircuitOut:
     """`GET /sessions/{key}/circuit` — `f1_kernel.Circuit`'s geometry,
     reshaped field-for-field. `outline` passes through `None` untouched
     (`f1_kernel.circuit_for_event`'s own "not every venue is present" and
     `Circuit.outline`'s own "not every circuit has run the outline step
-    yet" both degrade the same way: a null field, never a guess)."""
-    return CircuitOut.model_validate(circuit.model_dump())
+    yet" both degrade the same way: a null field, never a guess).
+
+    With `geometry`, its lines replace the circuit file's: the session's own
+    when the file's did not fit its measured positions (`f1_api.geometry`)."""
+    document = circuit.model_dump()
+    if geometry is not None:
+        document["outline"] = geometry.outline.model_dump() if geometry.outline else None
+        document["pit_lane"] = geometry.pit_lane.model_dump() if geometry.pit_lane else None
+        document["geometry_from_session"] = geometry.from_session
+    return CircuitOut.model_validate(document)
 
 
 def session_detail(
@@ -166,6 +179,18 @@ def session_detail(
     track_status = timeline[-1].status.value if timeline else None
     max_lap = laps["lap_number"].max() if not laps.is_empty() else None
     current_lap = int(max_lap) if isinstance(max_lap, int | float) else None
+    identities = {
+        ref.number: ref
+        for event in status_events
+        if isinstance(event, DriverListUpdated)
+        for ref in (event.drivers or [])
+    }
+    classification = classification_from_laps(laps)
+    for row in classification:
+        if (identity := identities.get(row.driver)) is not None:
+            row.full_name = identity.full_name
+            row.code = identity.code
+            row.team = identity.team
     return SessionDetailOut(
         key=session_key_path(entry.session_key),
         session_key=entry.session_key,
@@ -174,7 +199,7 @@ def session_detail(
         status=status,
         current_lap=current_lap,
         track_status=track_status,
-        classification=classification_from_laps(laps),
+        classification=classification,
     )
 
 

@@ -32,6 +32,7 @@ class FakeSession:
             {"Driver": ["VER"], "LapNumber": [1], "Stint": [1], "Compound": ["SOFT"]}
         )
         self.car_data: Mapping[str, pd.DataFrame] = {}
+        self.pos_data: Mapping[str, pd.DataFrame] = {}
         self.weather_data = pd.DataFrame({"AirTemp": [23.0]})
         self.results = pd.DataFrame({"Driver": ["VER"], "Position": [1]})
 

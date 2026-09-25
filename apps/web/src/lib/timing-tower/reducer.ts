@@ -49,6 +49,8 @@ export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope):
 				if (number === null) continue;
 				const row = rowOrDefault(state, number);
 				const code = asString(record.code);
+				const name = asString(record.full_name);
+				if (name !== null) row.name = name;
 				const team = asString(record.team);
 				if (code !== null) row.code = code;
 				if (team !== null) row.team = team;
@@ -60,7 +62,14 @@ export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope):
 			const position = asNumber(payload.position);
 			if (driver === null) return;
 			const row = rowOrDefault(state, driver);
-			if (position !== null) row.position = position;
+			if (position !== null) {
+				row.position = position;
+				// Latched once, never revised: the first position the released
+				// log ever shows for a driver is the closest thing to a grid
+				// slot a spoiler-safe view can know, and every later "+3 / -2"
+				// is measured against it.
+				if (row.startPosition === null) row.startPosition = position;
+			}
 			return;
 		}
 		case 'gap_updated': {

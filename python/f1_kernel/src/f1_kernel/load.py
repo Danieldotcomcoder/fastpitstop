@@ -17,7 +17,6 @@ from __future__ import annotations
 import polars as pl
 
 from f1_domain import SessionKey
-from f1_kernel.circuit import circuit_for_event
 from f1_kernel.frames import (
     SessionFrames,
     lap_frame_from_events,
@@ -69,13 +68,13 @@ def session_frames(
     resolved = event_name if event_name is not None else _event_name(source, session_key)
     events = list(source.events(session_key, kinds=LAP_FRAME_KINDS))
     frames = session_frames_from_events(events, session_key, event_name=resolved)
-    if frames.circuit is None and resolved is not None:
+    if frames.event_name is None and resolved is not None:
         # Keep the resolved name even when no circuit file matches it.
         return SessionFrames(
             session_key=frames.session_key,
             laps=frames.laps,
             stints=frames.stints,
-            circuit=circuit_for_event(resolved),
+            circuit=frames.circuit,
             event_name=resolved,
         )
     return frames

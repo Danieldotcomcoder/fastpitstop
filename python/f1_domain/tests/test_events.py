@@ -23,11 +23,13 @@ from f1_domain import (
     EventBase,
     GapUpdated,
     LapCompleted,
+    LapCounterUpdated,
     PitEntry,
     PitExit,
     PositionChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionInfoUpdated,
     SessionKey,
     SessionStatusChanged,
     SessionType,
@@ -136,6 +138,10 @@ EXAMPLES: Sequence[EventBase] = [
         captured_at=_TS,
     ),
     SessionStatusChanged(**_envelope(), status="Started"),
+    LapCounterUpdated(**_envelope(), current_lap=21, total_laps=57),
+    SessionInfoUpdated(
+        **_envelope(), meeting_name="Azerbaijan Grand Prix", circuit_short_name="Baku"
+    ),
     DriverListUpdated(
         **_envelope(),
         drivers=[

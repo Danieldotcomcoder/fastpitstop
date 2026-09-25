@@ -7,29 +7,31 @@
 	 * gate: every field here comes from an envelope Delay Sync has already
 	 * released, the same reasoning `GapStreamGraph` gives for skipping
 	 * `RevealTracker`. */
-	import { EMPTY_VISIBLE_STATE, type DelaySyncController, type VisibleSessionState } from '$lib/delay-sync';
-	import { TimingTowerReducer, type DriverRow } from '$lib/timing-tower';
+	import {
+		EMPTY_VISIBLE_STATE,
+		type DelaySyncController,
+		type VisibleSessionState
+	} from '$lib/delay-sync';
+	import { TimingTowerReducer, positionsGained, type DriverRow } from '$lib/timing-tower';
+	import { driverName, lapTime } from '$lib/drivers';
 	import LoadingState from './LoadingState.svelte';
 	import Panel from './Panel.svelte';
 
 	interface Props {
 		controller: DelaySyncController;
+		year?: number;
 	}
 
-	let { controller }: Props = $props();
+	let { controller, year }: Props = $props();
 
 	const reducer = new TimingTowerReducer();
 
 	let visible = $state<VisibleSessionState>(EMPTY_VISIBLE_STATE);
 	$effect(() => {
-		return controller.visibleState.subscribe((state) => (visible = state));
-	});
-
-	$effect(() => {
-		// A different controller means a different session: drop every row
-		// accumulated for the old one rather than mixing two sessions' fields.
-		void controller;
+		// Reset before publishing the new controller's state so the derived
+		// rows cannot retain the previous replay during the empty start window.
 		reducer.reset();
+		return controller.visibleState.subscribe((state) => (visible = state));
 	});
 
 	let rows = $derived.by((): DriverRow[] => {
@@ -77,15 +79,21 @@
 	}
 
 	function fmtLapTime(row: DriverRow): string {
-		return row.lastLapTimeS !== null ? row.lastLapTimeS.toFixed(3) : '—';
+		return lapTime(row.lastLapTimeS);
 	}
+
+	/** Places gained/lost since this driver was first placed. */
+	const gained = positionsGained;
 
 	function rowKey(row: DriverRow): string {
 		return row.driver;
 	}
 </script>
 
-<Panel title="Timing tower" subtitle="Classification, gaps and tyres — released lap by lap, never ahead of your delay">
+<Panel
+	title="Timing tower"
+	subtitle="Classification, gaps and tyres — released lap by lap, never ahead of your delay"
+>
 	{#if rows.length === 0}
 		<LoadingState label="Waiting for the driver list…" />
 	{:else}
@@ -104,9 +112,22 @@
 				<tbody>
 					{#each rows as row (rowKey(row))}
 						<tr data-testid="tower-row" data-driver={row.driver} class:in-pit={row.inPit}>
-							<td class="col-pos font-mono">{row.position ?? '—'}</td>
+							<td class="col-pos font-mono">
+								{row.position ?? '—'}
+								{#if gained(row) !== null && gained(row) !== 0}
+									<span
+										class="delta"
+										class:up={(gained(row) ?? 0) > 0}
+										title="{Math.abs(gained(row) ?? 0)} place{Math.abs(gained(row) ?? 0) === 1
+											? ''
+											: 's'} {(gained(row) ?? 0) > 0 ? 'gained' : 'lost'} since the start"
+										>{(gained(row) ?? 0) > 0 ? '▲' : '▼'}{Math.abs(gained(row) ?? 0)}</span
+									>
+								{/if}
+							</td>
 							<td class="col-driver">
-								<span class="code">{row.code ?? row.driver}</span>
+								<span class="code">{driverName(row.driver, row.name, row.code, year)}</span>
+								<small class="driver-team">{row.team ?? row.code ?? `#${row.driver}`}</small>
 								{#if row.inPit}<span class="pit-badge">PIT</span>{/if}
 							</td>
 							<td class="col-gap font-mono">{fmtGap(row)}</td>
@@ -129,6 +150,26 @@
 </Panel>
 
 <style>
+	.delta {
+		font-size: 0.6rem;
+		margin-left: 0.25rem;
+		color: var(--flag-red);
+		letter-spacing: -0.02em;
+	}
+
+	.delta.up {
+		color: var(--timing-green);
+	}
+
+	.driver-team {
+		display: block;
+		color: var(--text-secondary);
+		font: 0.75rem var(--font-ui);
+	}
+	.col-driver .code {
+		font-family: var(--font-ui);
+		font-weight: 600;
+	}
 	.tower-scroll {
 		overflow-x: auto;
 	}
@@ -153,6 +194,9 @@
 	}
 
 	.tower td {
+		/* Note: inside the race dashboard's timing rail this is overridden by
+		   `.timing-rail :global(.tower td)` in RaceWorkspace.svelte, which is
+		   where the dense row height actually lives. */
 		padding: var(--space-2) var(--space-2);
 		border-bottom: 1px solid var(--color-border);
 		white-space: nowrap;

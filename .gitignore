@@ -35,6 +35,7 @@ build/
 
 # --- Env ---
 .env
+.env.*-backup
 .env.local
 
 # --- Editors / OS ---
@@ -42,3 +43,4 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+compose.localdev.yml

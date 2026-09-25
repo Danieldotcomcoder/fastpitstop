@@ -129,7 +129,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(radio_router)
     app.include_router(why_router)
-    app.include_router(feedback_router)
+    # Dropped entirely rather than served-and-failing when disabled: a
+    # route that exists but rejects every submission is worse than a 404.
+    if resolved_settings.feedback_enabled:
+        app.include_router(feedback_router)
     app.include_router(stream_router)
 
     if settings is not None:

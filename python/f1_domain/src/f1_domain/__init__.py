@@ -18,11 +18,13 @@ from f1_domain.events import (
     EventBase,
     GapUpdated,
     LapCompleted,
+    LapCounterUpdated,
     PitEntry,
     PitExit,
     PositionChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionInfoUpdated,
     SessionStatusChanged,
     StintStarted,
     TeamRadioClip,
@@ -37,6 +39,7 @@ from f1_domain.identity import (
     SessionKey,
     SessionType,
     TrackStatusKind,
+    session_type_from_label,
 )
 from f1_domain.state import DriverState, SessionState
 
@@ -52,12 +55,14 @@ __all__ = [
     "EventBase",
     "GapUpdated",
     "LapCompleted",
+    "LapCounterUpdated",
     "PitEntry",
     "PitExit",
     "PositionChanged",
     "Provenance",
     "RaceControlMessage",
     "SectorCompleted",
+    "SessionInfoUpdated",
     "SessionKey",
     "SessionState",
     "SessionStatusChanged",
@@ -68,4 +73,5 @@ __all__ = [
     "TrackStatusKind",
     "UnknownEvent",
     "WeatherSample",
+    "session_type_from_label",
 ]

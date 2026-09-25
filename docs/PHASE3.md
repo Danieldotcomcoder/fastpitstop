@@ -614,14 +614,16 @@ dashboard could reuse the exact same conversion rather than a second copy.
   it got fixed rather than left as steady state. The graceful-degradation
   path itself is still real and still covered (an event with no shipped
   circuit file at all, e.g. a season this repo hasn't backfilled).
-- No environment this was built against has real `car_position` data
-  flowing through `/stream/{key}` — that needs either a real recording
-  ingested through the live pipeline into a store-backed session, or an
-  actual live weekend. The WebSocket protocol needs no change to carry it
-  (`car_position` already passes through as a `DomainEvent` kind); this is
-  a data-availability gap, not an architecture one. It is also why the race
-  dashboard's own map panel (3.6) always shows the graceful-degradation
-  state today, for every session in this repo.
+- (Superseded 2026-09-24.) This originally noted that no session had real
+  `car_position` data. Replays now do: the backfill keeps F1's measured
+  positions (`car_positions`, from the static archive's `Position.z`), the
+  WebSocket sends them as one `car_positions` frame per feed instant (never
+  one envelope per sample; see `f1_api.stream.replay`), Delay Sync keeps
+  the released frames in a bounded `positionFrames` window, and the race
+  desk's map (`DeskMap`) draws them through `MeasuredPositions`. The live
+  feed still withholds positions from an unauthenticated client, so a live
+  session is estimated until its positions are imported after the session
+  (`f1-backfill --positions-only --uncatalogued`).
 
 ## Kernel-analytics views (3.5)
 
@@ -883,3 +885,146 @@ previously guarded on the way IN.
   shipped circuit has a real outline yet — so the race dashboard's map
   panel has never been exercised against real telemetry, live or replayed.
 - No auth/accounts (CLAUDE.md's explicit instruction for these prompts).
+
+
+## Session dashboard UI refresh
+
+Opening `/sessions/[year]/[round]` starts the race's normal paced replay (20×,
+with speed/restart and Delay Sync controls). It does not render final REST
+classification or link elsewhere to start a second replay. The same page uses
+`mode=live` for live-backed sessions. All timing and headline metrics come from
+released events. REST lap history is filtered through `RevealTracker` before
+position charts or stint bars receive it. Tyre fits and braking trends retain
+their completed-stint reveal gates; pit projections use released kernel snapshots.
+
+The timing rail sits beside a switchable analysis stage: positions, tyre
+performance, pit strategy and braking. All known drivers are included by default.
+Projection details expand on demand. Braking lists only drivers with a revealed
+measured trend, automatically opens their trace, and distinguishes missing data
+from a stint that has not yet finished on the playback clock.
+
+`DriverRef.full_name` is additive and optional. Names flow from DriverList and
+historical results to the API and timing tower. Supplied names/codes take priority;
+legacy number-only responses can use explicit 2024–2026 season fallbacks, never
+the current calendar year's roster. Unknown numbers remain unknown. The 2026
+fallback uses F1's published driver-number list. `features.ts` gates the Story
+and Radio surfaces; Story is now ON (see "The race story" below), Radio stays
+off until a transcribed corpus exists to serve.
+
+`session-review.spec.ts` verifies lap-by-lap progression, no final classification
+at entry, reset on restart, all-driver names, mobile overflow, measured braking
+and a single missing-data state. `dashboard.spec.ts` retains Delay Sync checks.
+
+
+## One dashboard for replay and live
+
+`$lib/session-detail/RaceWorkspace.svelte` is the race dashboard, and BOTH
+`/sessions/[year]/[round]` (a replay) and `/live` (a session in progress)
+render it. The routes only resolve *which* session — the URL for one, a
+15s poll of `/sessions` for `provenance === 'live'` for the other — then
+hand the same `SessionSummaryOut` to the same component.
+
+This is what makes "test against a replay" mean something. The two pages
+previously composed the same panels into two different arrangements, kept
+in step by hand, so a fix to one silently missed the other. The only
+differences that remain are the ones that genuinely exist: a live session
+has no playback speed to choose and nothing to restart (`isLive` drops
+those controls and opens a `mode: 'live'` stream), and `/live` hides the
+back-link to the session list.
+
+## The stream had a two-minute cold start
+
+Building this pass surfaced the single biggest reason the dashboard looked
+broken: **`/stream/{key}` took ~121 seconds to send its first envelope** on
+a real race. `replay_envelopes` called `precompute_session_explanations`
+INLINE before yielding anything, and a 2024 race detects ~302 anomalies at
+~0.19 s of evidence assembly each. The timing tower, the tyre-performance
+panel and every other view sat empty for two minutes and then, at
+`speed>=20`, missed most of the race.
+
+Two changes, both in `f1_api`:
+
+- **The batch is capped.** `Settings.max_explanations`
+  (`F1_WHY_MAX_EXPLANATIONS`, default 12) narrates only the most salient
+  moments. `f1_api.why.most_salient` is the one place that trims.
+  DETECTION stays uncapped — `GET /sessions/{key}/anomalies` still returns
+  everything, now with an optional `?limit=`.
+- **The batch no longer blocks the stream.** `f1_api.why.ExplanationSchedule`
+  is a thread-safe hand-off; `_stream_replay` starts a worker that builds
+  the batch against its OWN `resolve_session` source (never sharing a
+  `StoreSource`'s database connection across threads) while events are
+  already flowing. `replay_envelopes` picks the batch up whenever it lands.
+
+Time to first envelope on 2024 round 1 went from **121.6 s to 2.8 s**.
+Spoiler-safety is unchanged: an explanation arriving LATE is always safe
+(it is still paced to at-or-after its own `anomaly_time`, through the same
+wall-clock remap as every other envelope); only arriving early would leak,
+and nothing here can cause that.
+
+`GET /sessions/{key}/story` exists for the same reason: the story page used
+to list anomalies and then fetch one explanation per row, each of which
+re-ran `analyze_session` + `detect_anomalies` server-side. One route now
+detects once and returns ranked, narrated moments.
+
+## The race story
+
+`features.SHOW_RACE_STORY` is on. Three surfaces:
+
+- **The `Race story` tab** on the race workspace
+  (`$lib/session-detail/RaceStoryPanel.svelte`) — one `GET /sessions/{key}/story`
+  call, gated by `RevealTracker.isLapRevealed` so a moment appears only
+  once the lap it happened on has been completed on the playback clock. A
+  story describes the whole race up front, so without that gate opening
+  the tab would hand the user the ending; the panel says how many later
+  moments are still hidden.
+- **The `Why` lane** in the timing rail (`ExplanationLane`) — live
+  `explanation` envelopes, newest first. Needs no second gate: the
+  envelopes are paced on `anomaly_time` already.
+- **`/story`** — the standalone, shareable ranked narrative.
+
+Narration backends are resolved in `f1_api.why.get_narration_model`:
+`F1_API_WHY_FIXTURE` → the citing fixture model, else `OPENROUTER_API_KEY`
+→ `f1_why.OpenRouterModel` (`OPENROUTER_MODEL`, default
+`minimax/minimax-m3:free`), else `ANTHROPIC_API_KEY` → `ClaudeHaikuModel`,
+else a declining mock. With no key at all, every explanation is the honest
+canonical fallback — never a guess, and no test or CI run needs a key. See
+docs/PHASE5.md for the OpenRouter backend's own guarantees.
+
+## Charts
+
+- **Race positions** (`RaceShapeChart`) is the lap-by-lap position chart,
+  with gap-to-leader as a second mode in the dropdown. It is team-coloured
+  with the second car of each team dashed (`teammateDashOrder`), labels
+  each line with the driver's code at the right-hand edge in running order,
+  marks every pit stop with a compound-coloured diamond, shades safety-car
+  and VSC laps (`trackStatusBands`, taken across the whole field so a
+  driver who was in the pits cannot hide a neutralisation), and reads out
+  the running order at any lap on hover. The previous version cycled a
+  10-colour palette across 20 drivers, so two drivers shared a colour and
+  no line could be identified without hovering.
+- **Braking** (`BrakingOverview` + `$lib/session-detail/braking.ts`) is now
+  a corner map for ONE driver: median brake-application distance per
+  corner with its lap-to-lap spread, the fitted trend, and a per-lap trace
+  on expand. It previously requested `/analysis?braking_drivers=` for the
+  whole field — a telemetry load per driver, minutes of server work — and
+  never finished rendering. `driftDirection` reports "steady" whenever a
+  fit's own confidence interval spans zero rather than reading a direction
+  off the point estimate.
+- **Tyre performance** needed no code change: it was empty only because
+  nothing streamed for two minutes, so `RevealTracker` never saw a stint
+  end.
+
+## Layout
+
+The rail (timing tower → undercut countdown → why lane) sizes to its
+content rather than taking a fixed fraction of the width, and sticks on
+tall viewports with the TOWER capped and internally scrolled — capping the
+rail itself clipped the panels below it. The undercut countdown moved out
+of the analysis tabs (where it was duplicated across two of them) into the
+rail, since "what happens next" should stay on screen whichever deeper
+read is open.
+
+Below 640px `AppHeader` pins the Delay Sync pill to the bottom of the
+viewport. The app shell now reserves room for it (it was covering the
+bottom of the timing tower) and the workspace's own duplicate sync button
+stands down at that width.

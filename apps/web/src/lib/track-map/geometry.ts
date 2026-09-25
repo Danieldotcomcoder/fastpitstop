@@ -45,7 +45,10 @@ export function fitOutlineToCanvas(
 }
 
 export function project(viewport: Viewport, point: Point): Point {
-	return [point[0] * viewport.scale + viewport.offsetX, point[1] * viewport.scale + viewport.offsetY];
+	return [
+		point[0] * viewport.scale + viewport.offsetX,
+		point[1] * viewport.scale + viewport.offsetY
+	];
 }
 
 /** Loosely-typed shape of `GET /sessions/{key}/circuit`'s `outline` field —

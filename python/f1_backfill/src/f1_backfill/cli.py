@@ -4,6 +4,12 @@
 `data/historical/` plus an updated `manifest.json`; re-running it makes no
 redundant network calls (already-acquired sessions are skipped unless
 `--refresh` is passed).
+
+`f1-backfill --season 2025 --positions-only` adds the `car_positions` table
+to sessions acquired before it existed, from FastF1's cache (see
+`f1_backfill.positions`). With `--round`, `--session` and `--uncatalogued`
+it targets one session the catalog does not list: a live-ingested race
+whose car positions only exist in F1's post-session archive.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from pathlib import Path
 
 from f1_backfill.fastf1_source import configure_cache
 from f1_backfill.pipeline import DEFAULT_OUT_DIR, run_backfill
+from f1_backfill.positions import run_positions
 
 logger = logging.getLogger("f1_backfill")
 
@@ -28,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     configure_cache(args.fastf1_cache)
+    if args.positions_only:
+        return _positions(args)
     report = run_backfill(
         args.season,
         round_filter=args.round,
@@ -39,6 +48,27 @@ def main(argv: list[str] | None = None) -> int:
     logger.info(
         "Done: %d acquired, %d skipped (already in catalog), %d failed",
         len(report.acquired),
+        len(report.skipped),
+        len(report.failed),
+    )
+    for key, error in report.failed:
+        logger.error("  %s: %s", key.catalog_key, error)
+    return 1 if report.failed else 0
+
+
+def _positions(args: argparse.Namespace) -> int:
+    report = run_positions(
+        args.season,
+        round_filter=args.round,
+        session_filter=args.session,
+        out_dir=args.out,
+        catalog_path=args.catalog,
+        refresh=args.refresh,
+        include_uncatalogued=args.uncatalogued,
+    )
+    logger.info(
+        "Done: positions written for %d sessions, %d skipped, %d failed",
+        len(report.written),
         len(report.skipped),
         len(report.failed),
     )
@@ -76,6 +106,27 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_FASTF1_CACHE_DIR,
         help=f"FastF1 on-disk cache directory (default: {DEFAULT_FASTF1_CACHE_DIR})",
+    )
+    parser.add_argument(
+        "--positions-only",
+        action="store_true",
+        help=(
+            "only write the car_positions table, from FastF1's cache, for sessions "
+            "already in the catalog"
+        ),
+    )
+    parser.add_argument(
+        "--session",
+        default=None,
+        help="with --positions-only: restrict to one session name, e.g. Race",
+    )
+    parser.add_argument(
+        "--uncatalogued",
+        action="store_true",
+        help=(
+            "with --positions-only: also write sessions the catalog does not list "
+            "(a live-ingested session served from the store)"
+        ),
     )
     parser.add_argument(
         "--refresh",

@@ -33,12 +33,12 @@ on every push is simply not worth the complexity a stateful diff would add.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import polars as pl
 
-from f1_domain import DomainEvent, SessionKey
+from f1_domain import DomainEvent, LapCounterUpdated, SessionKey
 from f1_kernel.braking import BrakingDrift, braking_drift, braking_points
 from f1_kernel.cleaning import annotate_laps, clean_lap_summary
 from f1_kernel.degradation import (
@@ -291,6 +291,10 @@ class LiveKernelSession:
     params: KernelParams = field(default_factory=KernelParams)
     event_name: str | None = None
     braking_drivers: frozenset[str] = frozenset()
+    total_laps: int | None = None
+    """The race distance, when the caller knows it (a replay of a finished
+    race does). Otherwise read from the stream's own lap counter. Never
+    inferred from the laps pushed so far: see `race_distance_laps`."""
     _events: list[DomainEvent] = field(default_factory=list[DomainEvent], repr=False)
 
     @property
@@ -319,7 +323,20 @@ class LiveKernelSession:
             if self.braking_drivers
             else None
         )
-        return analyze_session_from_frames(frames, self.params, telemetry=telemetry)
+        total_laps = self.total_laps if self.total_laps is not None else _race_counter(self._events)
+        return analyze_session_from_frames(
+            frames, self.params, telemetry=telemetry, total_laps=total_laps
+        )
+
+
+def _race_counter(events: Sequence[DomainEvent]) -> int | None:
+    """The feed's own race distance, if the stream carries its lap counter.
+    Deliberately NOT the furthest lap completed: mid-race that is the slice,
+    the exact mis-reading `LiveKernelSession.total_laps` exists to prevent."""
+    for event in reversed(events):
+        if isinstance(event, LapCounterUpdated) and event.total_laps is not None:
+            return event.total_laps
+    return None
 
 
 __all__ = [

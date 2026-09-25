@@ -105,7 +105,8 @@ export class DominanceTracker {
 
 		const transitMs = crossingMs - priorCrossingMs;
 		if (transitMs <= 0) return;
-		const segmentIndex = (((boundary - 1) % this.segmentCount) + this.segmentCount) % this.segmentCount;
+		const segmentIndex =
+			(((boundary - 1) % this.segmentCount) + this.segmentCount) % this.segmentCount;
 		const best = this.segmentBest[segmentIndex];
 		if (best === undefined) return; // segmentIndex is always < segmentBest.length by construction
 		if (best.timeMs === null || transitMs < best.timeMs) {

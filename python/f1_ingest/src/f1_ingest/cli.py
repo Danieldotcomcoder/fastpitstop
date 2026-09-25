@@ -18,7 +18,7 @@ from types import FrameType
 from typing import Any, cast
 
 from f1_ingest import __version__
-from f1_ingest.client import LiveFeedClient, check_live
+from f1_ingest.client import LiveFeedClient, LiveFeedConnectionError, check_live
 from f1_ingest.recording_session import RecordingSession
 from f1_ingest.topics import default_topics
 
@@ -100,7 +100,14 @@ def run_dry_run(*, connect_timeout: float) -> int:
     # non-interactive connectivity check, and FastF1's real auth flow needs
     # an F1TV subscription plus an interactive browser sign-in - see
     # docs/PHASE0.md. `--no-auth` only affects `run_recorder`.
-    snapshot = check_live(no_auth=True, connect_timeout=connect_timeout)
+    try:
+        snapshot = check_live(no_auth=True, connect_timeout=connect_timeout)
+    except LiveFeedConnectionError as exc:
+        # Never report a broken connection as "no session live" - see
+        # `check_live`'s own docstring for why that conflation is expensive.
+        print(f"CONNECTION FAILED: {exc}")
+        print("This is a client/connectivity fault, NOT a 'no session live' result.")
+        return 2
     session_info_raw = snapshot.get("SessionInfo") if snapshot else None
 
     if isinstance(session_info_raw, dict) and session_info_raw:

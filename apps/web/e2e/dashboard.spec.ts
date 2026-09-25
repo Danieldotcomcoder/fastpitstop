@@ -15,7 +15,9 @@ test.describe('race dashboard', () => {
 		await expect(page.getByRole('heading', { name: 'Race dashboard' })).toBeVisible();
 		await expect(page.getByTestId('session-select')).toBeVisible();
 		await expect(page.getByTestId('speed-select')).toBeVisible();
-		await expect(page.getByText('is unofficial and is not associated', { exact: false })).toBeVisible();
+		await expect(
+			page.getByText('is unofficial and is not associated', { exact: false })
+		).toBeVisible();
 		// Nothing race-specific renders until a session is chosen.
 		await expect(page.getByTestId('tower-panel')).toHaveCount(0);
 	});
@@ -30,13 +32,11 @@ test.describe('race dashboard', () => {
 		await expect(page.getByTestId('speed-select')).toHaveValue('0');
 		await expect(page.getByText(`${E2E_DELAY_SECONDS}s delay`)).toBeVisible();
 
-		// The map panel mounts and renders SOMETHING for every session — real
-		// replayed historical sessions never carry car_position telemetry
-		// (DATA_CONTRACTS.md: f1_backfill exports no position table, and no
-		// shipped circuit has an outline yet either), so this only asserts the
-		// panel's documented graceful-degradation state, never car movement.
-		// See track-map-preview.spec.ts for a genuine animation proof against
-		// the synthetic preview `/track-map` ships for exactly this gap.
+		// The map panel mounts and renders SOMETHING for every session. The
+		// checked-in fixture race carries no `car_positions` table, so this
+		// only asserts the panel's documented graceful-degradation state,
+		// never car movement. See track-map-animation.spec.ts for an
+		// animation proof against the synthetic preview `/track-map` ships.
 		await expect(page.getByTestId('map-panel')).toBeVisible();
 		await expect(page.getByTestId('map-panel')).toContainText('Track map');
 
@@ -53,7 +53,7 @@ test.describe('race dashboard', () => {
 		});
 	});
 
-	test('a session with no undercut battle yet shows the countdown panel\'s own waiting state', async ({
+	test("a session with no undercut battle yet shows the countdown panel's own waiting state", async ({
 		page
 	}) => {
 		// Not asserting content here (timing-dependent) — just that the panel
@@ -75,12 +75,12 @@ test.describe('race dashboard', () => {
 		await expect(panel.getByText('Gap to leader')).toBeVisible();
 
 		await panel.getByRole('tab', { name: 'Degradation' }).click();
-		await expect(panel.getByText('Degradation curves')).toBeVisible();
+		await expect(panel.getByText('Tyre life, in lap time')).toBeVisible();
 		await expect(panel.getByText('Gap to leader')).toHaveCount(0);
 
 		await panel.getByRole('tab', { name: 'Braking' }).click();
-		await expect(panel.getByText('Braking-point drift')).toBeVisible();
-		await expect(panel.getByText('Degradation curves')).toHaveCount(0);
+		await expect(panel.getByText('The braking trace')).toBeVisible();
+		await expect(panel.getByText('Tyre life, in lap time')).toHaveCount(0);
 	});
 
 	test('spoiler safety: the released event log is never ahead of the playback clock', async ({
@@ -110,7 +110,11 @@ test.describe('race dashboard', () => {
 		// proven exhaustively by a 200-trial property test in vitest) exercised
 		// here through the real running app: nothing released is ever ahead of
 		// the playback clock it was released at, whenever sampled.
-		function assertSpoilerSafe(sample: { lastEventMs: number; clockMs: number; visibleEvents: number }): void {
+		function assertSpoilerSafe(sample: {
+			lastEventMs: number;
+			clockMs: number;
+			visibleEvents: number;
+		}): void {
 			if (sample.visibleEvents > 0) {
 				expect(sample.lastEventMs).toBeLessThanOrEqual(sample.clockMs);
 			} else {
@@ -131,7 +135,10 @@ test.describe('race dashboard', () => {
 		// Poll (never a fixed sleep) until the delay has clearly elapsed and
 		// the whole batch has released, then re-check the same invariant.
 		await expect
-			.poll(async () => (await sampleSyncState()).visibleEvents, { timeout: 40_000, intervals: [500] })
+			.poll(async () => (await sampleSyncState()).visibleEvents, {
+				timeout: 40_000,
+				intervals: [500]
+			})
 			.toBeGreaterThan(0);
 		const late = await sampleSyncState();
 		assertSpoilerSafe(late);

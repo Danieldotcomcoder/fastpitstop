@@ -111,7 +111,12 @@ export default defineConfig({
 			command: `pnpm exec vite dev --port ${RADIO_WEB_PORT} --host 127.0.0.1 --strictPort`,
 			url: RADIO_WEB_BASE_URL,
 			env: {
-				PUBLIC_F1_API_BASE_URL: RADIO_API_BASE_URL
+				PUBLIC_F1_API_BASE_URL: RADIO_API_BASE_URL,
+				// The radio surfaces are off by default (no deployment has a
+				// transcribed corpus) — but THIS pair is pointed at a fixture
+				// that does, which is the whole point of the suite. See
+				// `src/lib/features.ts`.
+				PUBLIC_SHOW_RADIO: '1'
 			},
 			reuseExistingServer: REUSE_EXISTING,
 			timeout: 60_000,

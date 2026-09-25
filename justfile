@@ -166,7 +166,7 @@ web-generate-client:
 up:
     docker compose -f compose.yml -f compose.dev.yml up -d --build --wait
     uv run f1-store-migrate
-    uv run f1-pipeline replay python/f1_pipeline/src/f1_pipeline/fixtures/replay_race/stream.jsonl --round 1
+    uv run f1-pipeline replay python/f1_pipeline/src/f1_pipeline/fixtures/replay_race --round 1
 
 # Stop the local containerised stack (data survives — named volumes aren't
 # removed; add `-v` by hand if you actually want to wipe it).
@@ -202,6 +202,18 @@ record-check:
 # manual during the beta.
 deploy:
     uv run python deploy/deploy.py
+
+# Roll the VPS onto the image CI already built and pushed for THIS commit
+# (.github/workflows/ci.yml build-and-push). Builds nothing locally --
+# push to main, wait for CI to go green, then run this.
+deploy-ci:
+    uv run python deploy/deploy.py --no-build
+
+# Deploy WITHOUT a registry: stream this checkout to the VM, build both
+# images there, bring the stack up and migrate. No GHCR, no CI, no local
+# docker build. See deploy/deploy_host.py.
+deploy-host:
+    uv run python deploy/deploy_host.py
 
 # Redeploy the previous image tag on the VPS (writes nothing new — just
 # points IMAGE_TAG back at deploy.py's own .last-deployed-sha).

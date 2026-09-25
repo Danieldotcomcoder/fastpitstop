@@ -12,6 +12,12 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
+# Re-exported by fastf1 from signalrcore. `f1_ingest.client._run` swaps this
+# module attribute for a subclass for the duration of one call (the
+# signalrcore>=1.0 no-auth shim — see that module's docstring), so it has to
+# be declared here or every line of that swap is an unknown attribute.
+HubConnectionBuilder: type[Any]
+
 class SignalRClient:
     topics: list[str]
     filename: str

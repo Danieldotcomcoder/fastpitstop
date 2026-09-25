@@ -148,6 +148,279 @@ SPECS: tuple[CircuitSpec, ...] = (
         pit_loss_s=24.0,
         pit_loss_note="Provisional: long pit lane, commonly quoted ~23-25s.",
     ),
+    # The rest of the calendar (added 2026-09-23 so every race has a map).
+    # Pit loss starts from the measured 2024 median in calibration/pit_loss.json;
+    # `calibrate_pit_loss.py --write-circuits` marks it calibrated where the
+    # sample clears the floor, and it stays provisional where it does not.
+    CircuitSpec(
+        circuit_id="shanghai",
+        name="Shanghai International Circuit",
+        country="China",
+        event_names=("Chinese Grand Prix",),
+        season=2024,
+        round_no=5,
+        session="Race",
+        pit_loss_s=23.33,
+        pit_loss_note=(
+            "Measured median of 9 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="miami",
+        name="Miami International Autodrome",
+        country="United States",
+        event_names=("Miami Grand Prix",),
+        season=2024,
+        round_no=6,
+        session="Race",
+        pit_loss_s=20.08,
+        pit_loss_note=(
+            "Measured median of 5 green-flag stops (2024), below the 8-stop calibration floor, so"
+            " provisional. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="imola",
+        name="Autodromo Enzo e Dino Ferrari",
+        country="Italy",
+        event_names=("Emilia Romagna Grand Prix",),
+        season=2024,
+        round_no=7,
+        session="Race",
+        pit_loss_s=28.5,
+        pit_loss_note=(
+            "Measured median of 18 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="montreal",
+        name="Circuit Gilles Villeneuve",
+        country="Canada",
+        event_names=("Canadian Grand Prix",),
+        season=2024,
+        round_no=9,
+        session="Race",
+        pit_loss_s=26.28,
+        pit_loss_note=(
+            "Measured median of 8 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="barcelona",
+        name="Circuit de Barcelona-Catalunya",
+        country="Spain",
+        event_names=("Spanish Grand Prix", "Barcelona-Catalunya Grand Prix"),
+        season=2024,
+        round_no=10,
+        session="Race",
+        pit_loss_s=23.03,
+        pit_loss_note=(
+            "Measured median of 35 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="red_bull_ring",
+        name="Red Bull Ring",
+        country="Austria",
+        event_names=("Austrian Grand Prix",),
+        season=2024,
+        round_no=11,
+        session="Race",
+        pit_loss_s=21.0,
+        pit_loss_note=(
+            "Measured median of 31 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="silverstone",
+        name="Silverstone Circuit",
+        country="United Kingdom",
+        event_names=("British Grand Prix",),
+        season=2024,
+        round_no=12,
+        session="Race",
+        pit_loss_s=26.42,
+        pit_loss_note=(
+            "Measured median of 33 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="hungaroring",
+        name="Hungaroring",
+        country="Hungary",
+        event_names=("Hungarian Grand Prix",),
+        season=2024,
+        round_no=13,
+        session="Race",
+        pit_loss_s=21.33,
+        pit_loss_note=(
+            "Measured median of 27 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="spa",
+        name="Circuit de Spa-Francorchamps",
+        country="Belgium",
+        event_names=("Belgian Grand Prix",),
+        season=2024,
+        round_no=14,
+        session="Race",
+        pit_loss_s=18.78,
+        pit_loss_note=(
+            "Measured median of 18 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="zandvoort",
+        name="Circuit Zandvoort",
+        country="Netherlands",
+        event_names=("Dutch Grand Prix",),
+        season=2024,
+        round_no=15,
+        session="Race",
+        pit_loss_s=23.54,
+        pit_loss_note=(
+            "Measured median of 21 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="baku",
+        name="Baku City Circuit",
+        country="Azerbaijan",
+        event_names=("Azerbaijan Grand Prix",),
+        season=2024,
+        round_no=17,
+        session="Race",
+        pit_loss_s=22.29,
+        pit_loss_note=(
+            "Measured median of 11 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="marina_bay",
+        name="Marina Bay Street Circuit",
+        country="Singapore",
+        event_names=("Singapore Grand Prix",),
+        season=2024,
+        round_no=18,
+        session="Race",
+        pit_loss_s=30.13,
+        pit_loss_note=(
+            "Measured median of 18 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="cota",
+        name="Circuit of the Americas",
+        country="United States",
+        event_names=("United States Grand Prix",),
+        season=2024,
+        round_no=19,
+        session="Race",
+        pit_loss_s=21.7,
+        pit_loss_note=(
+            "Measured median of 20 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="mexico_city",
+        name="Autodromo Hermanos Rodriguez",
+        country="Mexico",
+        event_names=("Mexico City Grand Prix",),
+        season=2024,
+        round_no=20,
+        session="Race",
+        pit_loss_s=23.5,
+        pit_loss_note=(
+            "Measured median of 17 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="interlagos",
+        name="Autodromo Jose Carlos Pace",
+        country="Brazil",
+        event_names=("São Paulo Grand Prix",),
+        season=2024,
+        round_no=21,
+        session="Race",
+        pit_loss_s=23.03,
+        pit_loss_note=(
+            "No green-flag stops to measure in 2024 (a wet, red-flagged race), so provisional at "
+            "the cross-circuit median 23.03 s. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="las_vegas",
+        name="Las Vegas Strip Circuit",
+        country="United States",
+        event_names=("Las Vegas Grand Prix",),
+        season=2024,
+        round_no=22,
+        session="Race",
+        pit_loss_s=22.54,
+        pit_loss_note=(
+            "Measured median of 22 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="lusail",
+        name="Lusail International Circuit",
+        country="Qatar",
+        event_names=("Qatar Grand Prix",),
+        season=2024,
+        round_no=23,
+        session="Race",
+        pit_loss_s=27.69,
+        pit_loss_note=(
+            "Measured median of 2 green-flag stops (2024), below the 8-stop calibration floor, so"
+            " provisional. See calibration/pit_loss.json."
+        ),
+    ),
+    CircuitSpec(
+        circuit_id="yas_marina",
+        name="Yas Marina Circuit",
+        country="United Arab Emirates",
+        event_names=("Abu Dhabi Grand Prix",),
+        season=2024,
+        round_no=24,
+        session="Race",
+        pit_loss_s=22.87,
+        pit_loss_note=(
+            "Measured median of 16 green-flag stops (2024), pending `calibrate_pit_loss.py "
+            "--write-circuits`. See calibration/pit_loss.json."
+        ),
+    ),
+    # New for 2026. No Grand Prix name on purpose: "Spanish Grand Prix" is
+    # Barcelona's name through 2025 (see `barcelona`), so Madring is found
+    # only by the feed's own venue name, which is unambiguous.
+    CircuitSpec(
+        circuit_id="madring",
+        name="Madring",
+        country="Spain",
+        event_names=(),
+        season=2026,
+        round_no=14,
+        session="Race",
+        pit_loss_s=23.03,
+        pit_loss_note=(
+            "New venue with no measured stops yet: provisional at the 2024 cross-circuit "
+            "median. See calibration/pit_loss.json."
+        ),
+    ),
 )
 
 
@@ -196,16 +469,27 @@ def build_circuit(fastf1: Any, spec: CircuitSpec) -> dict[str, Any]:
     session = fastf1.get_session(spec.season, spec.round_no, spec.session)
     session.load(laps=True, telemetry=True, weather=False, messages=False)
 
-    info = session.get_circuit_info()
-    corners = [
-        {
-            "number": int(row["Number"]),
-            "letter": str(row["Letter"]) or None,
-            "distance_m": round(float(row["Distance"]), 1),
-            "angle_deg": round(float(row["Angle"]), 1),
-        }
-        for _, row in info.corners.iterrows()
-    ]
+    # FastF1 takes corners from a circuit-info service that lags a brand-new
+    # venue (Madring, 2026). No corner list is the honest answer then --
+    # corners are never guessed -- and it must not cost the venue its map:
+    # the outline and DRS zones come from telemetry, which is there.
+    try:
+        info = session.get_circuit_info()
+    except Exception:
+        info = None
+    if info is None:
+        print(f"  {spec.circuit_id}: no circuit info from FastF1; shipping without corners")
+        corners: list[dict[str, Any]] = []
+    else:
+        corners = [
+            {
+                "number": int(row["Number"]),
+                "letter": str(row["Letter"]) or None,
+                "distance_m": round(float(row["Distance"]), 1),
+                "angle_deg": round(float(row["Angle"]), 1),
+            }
+            for _, row in info.corners.iterrows()
+        ]
 
     # Lap distance and DRS zones come from the SAME sample of laps. Telemetry
     # distance is integrated per lap, so it varies by a few metres between
@@ -219,6 +503,7 @@ def build_circuit(fastf1: Any, spec: CircuitSpec) -> dict[str, Any]:
         "name": spec.name,
         "country": spec.country,
         "event_names": list(spec.event_names),
+        "feed_circuit_names": feed_circuit_names(session),
         "lap_distance_m": lap_distance_m,
         "pit_loss_s": spec.pit_loss_s,
         "pit_loss_provenance": "provisional",
@@ -230,6 +515,17 @@ def build_circuit(fastf1: Any, spec: CircuitSpec) -> dict[str, Any]:
         "drs_zones": derive_drs_zones(sampled, lap_distance_m),
         "outline": _build_outline(session, spec),
     }
+
+
+def feed_circuit_names(session: Any) -> list[str]:
+    """The feed's own name for the venue (`Meeting.Circuit.ShortName`), the
+    identity a live session carries. Empty when FastF1 does not expose it,
+    in which case the circuit is still found by Grand Prix name."""
+    try:
+        short_name = session.session_info["Meeting"]["Circuit"]["ShortName"]
+    except (AttributeError, KeyError, TypeError):
+        return []
+    return [str(short_name)] if short_name else []
 
 
 def _build_outline(session: Any, spec: CircuitSpec) -> dict[str, Any] | None:

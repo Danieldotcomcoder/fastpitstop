@@ -36,7 +36,7 @@ export interface BuildDrawFrameOptions {
 	 * known sample — `prefers-reduced-motion`'s effect on this view. The
 	 * data shown is identical either way; only the between-samples motion
 	 * changes. */
-	reducedMotion?: boolean
+	reducedMotion?: boolean;
 }
 
 export function buildDrawFrame(

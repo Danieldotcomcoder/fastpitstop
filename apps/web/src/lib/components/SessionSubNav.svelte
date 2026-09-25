@@ -17,7 +17,7 @@
 </script>
 
 <nav class="subnav" aria-label="Session sections">
-	{#each SESSION_SECTIONS as section}
+	{#each SESSION_SECTIONS as section (section.id)}
 		<button
 			type="button"
 			class="chip"

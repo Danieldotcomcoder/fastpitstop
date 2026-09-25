@@ -64,6 +64,7 @@ from f1_kernel.circuit import (
     Corner,
     DrsZone,
     circuit_for_event,
+    circuit_for_session,
     list_circuits,
     load_circuit,
 )
@@ -89,6 +90,7 @@ from f1_kernel.degradation import (
 from f1_kernel.frames import (
     SessionFrames,
     lap_frame_from_events,
+    race_distance_laps,
     session_frames_from_events,
     stint_frame_from_events,
     telemetry_frame_from_events,
@@ -116,6 +118,18 @@ from f1_kernel.pit_loss import (
     PitLossSample,
     calibrate_pit_loss,
     pit_loss_samples,
+)
+from f1_kernel.positions import (
+    POSITION_TRACK_SCHEMA,
+    PositionFrame,
+    PositionTrackSource,
+    distance_to_lines,
+    near_lines,
+    position_frames,
+    session_clock_offset,
+    shift_track,
+    track_from_events,
+    window_traces,
 )
 from f1_kernel.report import (
     KernelReport,
@@ -145,7 +159,13 @@ from f1_kernel.status import (
     statuses_during,
     track_status_timeline,
 )
-from f1_kernel.track_outline import TrackOutline, derive_track_outline
+from f1_kernel.track_outline import (
+    PitLane,
+    TrackOutline,
+    derive_pit_lane,
+    derive_track_outline,
+    derive_track_outline_from_laps,
+)
 from f1_kernel.undercut import (
     CROSSOVER_RESULT_SCHEMA,
     Confidence,
@@ -175,6 +195,7 @@ __all__ = [
     "LAP_FRAME_DOCS",
     "LAP_FRAME_SCHEMA",
     "PARAM_PROVENANCE",
+    "POSITION_TRACK_SCHEMA",
     "REASON_COLUMNS",
     "STINT_FRAME_SCHEMA",
     "TELEMETRY_FRAME_SCHEMA",
@@ -203,8 +224,11 @@ __all__ = [
     "LiveKernelSession",
     "MemorySource",
     "ParamProvenance",
+    "PitLane",
     "PitLossCalibrationResult",
     "PitLossSample",
+    "PositionFrame",
+    "PositionTrackSource",
     "Reliability",
     "SessionFailure",
     "SessionFrames",
@@ -226,12 +250,16 @@ __all__ = [
     "calibrate_fuel_coefficient_from_frames",
     "calibrate_pit_loss",
     "circuit_for_event",
+    "circuit_for_session",
     "clean_lap_summary",
     "clean_laps",
     "crossover_results_to_frame",
     "degradation_fits_to_frame",
+    "derive_pit_lane",
     "derive_track_outline",
+    "derive_track_outline_from_laps",
     "describe_params",
+    "distance_to_lines",
     "empty_frame",
     "estimate_fuel_load_kg",
     "evaluate_session_stops",
@@ -244,11 +272,16 @@ __all__ = [
     "list_circuits",
     "list_historical_sessions",
     "load_circuit",
+    "near_lines",
     "overcut_window",
     "pit_loss_samples",
+    "position_frames",
+    "race_distance_laps",
+    "session_clock_offset",
     "session_frames",
     "session_frames_from_events",
     "session_type_from_label",
+    "shift_track",
     "status_during",
     "statuses_during",
     "stint_frame",
@@ -256,9 +289,11 @@ __all__ = [
     "summarize_degradation_by_compound",
     "telemetry_frame",
     "telemetry_frame_from_events",
+    "track_from_events",
     "track_status_timeline",
     "undercut_snapshot",
     "undercut_window",
+    "window_traces",
 ]
 
 __version__ = "0.0.1"

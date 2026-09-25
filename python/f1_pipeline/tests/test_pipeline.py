@@ -7,7 +7,7 @@ from collections.abc import Iterator
 
 from pydantic import JsonValue
 
-from f1_domain import DomainEvent
+from f1_domain import DomainEvent, DriverListUpdated, PositionChanged
 from f1_pipeline import Pipeline, run
 from f1_pipeline.replay_source import replay_records
 from f1_pipeline.verify import RECORDING_DIR, SESSION_KEY
@@ -32,6 +32,36 @@ def test_unknown_topics_are_counted_for_early_warning() -> None:
     assert metrics.events_by_kind.get("unknown") == 2
     assert metrics.unknown_topics_total == 2
     assert metrics.unknown_topics_by_topic == {"Heartbeat": 2}
+
+
+def test_live_seed_publishes_the_running_order_on_the_next_record() -> None:
+    """The live path seeds through `Pipeline.seed` (no snapshot record), yet
+    must publish the same one-off baseline replay does — otherwise a live
+    ingest that joins mid-race shows no leader until the order changes."""
+    sink = MemorySink()
+    pipeline = Pipeline(SESSION_KEY, sink)
+    pipeline.seed(
+        {
+            "DriverList": {
+                "44": {"Tla": "HAM", "TeamName": "Ferrari", "Line": 2},
+                "1": {"Tla": "NOR", "TeamName": "McLaren", "Line": 1},
+            }
+        }
+    )
+    assert sink.events == []  # seeding alone writes nothing
+
+    pipeline.process(_rec("Heartbeat", {"beat": 1}, 7))
+    positions = {e.driver: e.position for e in sink.events if isinstance(e, PositionChanged)}
+    assert positions == {"1": 1, "44": 2}
+    rosters = [e for e in sink.events if isinstance(e, DriverListUpdated)]
+    assert len(rosters) == 1
+    assert {e.source_seq for e in sink.events} == {7}
+
+    # A reconnect re-seed is silent: no second baseline, even though the
+    # order changed during the gap.
+    pipeline.seed({"DriverList": {"44": {"Line": 1}, "1": {"Line": 2}}})
+    pipeline.process(_rec("Heartbeat", {"beat": 2}, 8))
+    assert [e.kind for e in sink.events if e.source_seq == 8] == ["unknown"]
 
 
 def test_replay_is_deterministic_and_idempotent() -> None:

@@ -15,11 +15,14 @@
 		type DelaySyncController,
 		type VisibleSessionState
 	} from '$lib/delay-sync';
+	import { namesFromEvents } from '$lib/driver-events';
+	import { driverName } from '$lib/drivers';
 	import { formatSigned } from '$lib/estimate';
 	import Estimate from './Estimate.svelte';
 	import LoadingState from './LoadingState.svelte';
 	import Panel from './Panel.svelte';
 	import Stat from './Stat.svelte';
+	import ConfidenceBadge from './ConfidenceBadge.svelte';
 
 	type Crossover = components['schemas']['CrossoverResultOut'];
 
@@ -55,6 +58,8 @@
 		return controller.visibleState.subscribe((state) => (visible = state));
 	});
 
+	let names = $derived(namesFromEvents(visible.events));
+	const name = (driver: string) => names[driver] ?? driverName(driver);
 	let crossovers = $derived((visible.latestSnapshot?.crossovers ?? []).filter(isCrossover));
 
 	function battleKey(c: Crossover): string {
@@ -75,7 +80,7 @@
 
 	function headline(c: Crossover): string {
 		const verb = c.kind === 'undercut' ? 'Undercut' : 'Overcut';
-		const subject = c.kind === 'undercut' ? c.defender : c.attacker;
+		const subject = name(c.kind === 'undercut' ? c.defender : c.attacker);
 		switch (c.window) {
 			case 'open':
 				return `${verb} on ${subject} is OPEN — pit now`;
@@ -108,7 +113,7 @@
 
 <Panel
 	title="Undercut / overcut countdown"
-	subtitle="The focused battle, projected from fitted pace over the stop stagger"
+	subtitle="One battle at a time, based on the laps completed so far."
 >
 	{#if crossovers.length === 0}
 		<LoadingState label="Waiting for a live battle to project…" />
@@ -117,7 +122,7 @@
 			<select onchange={onBattleChange}>
 				{#each crossovers as c (battleKey(c))}
 					<option value={battleKey(c)} selected={battleKey(c) === battleKey(focused)}>
-						{c.attacker} vs {c.defender} ({c.kind})
+						{name(c.attacker)} vs {name(c.defender)} ({c.kind})
 					</option>
 				{/each}
 			</select>
@@ -131,50 +136,63 @@
 			{headline(focused)}
 		</p>
 
-		<div class="stats-row">
-			<Estimate
-				label="Margin if covered"
-				value={focused.projected_gap_if_covered_s}
-				unit="s"
-				ciLow={focused.projected_gap_if_covered_low_s}
-				ciHigh={focused.projected_gap_if_covered_high_s}
-				sampleSize={fitSamples}
-				method="pace projection over pit stagger"
-				format={formatSigned}
-			/>
-			<Estimate
-				label="Rejoin gap"
-				value={focused.projected_rejoin_gap_s}
-				unit="s"
-				sampleSize={fitSamples}
-				method="pace projection over pit stagger"
-				format={formatSigned}
-			/>
-			<Stat label="Decision lap" value={focused.decision_lap} />
-			<Stat label="Pit loss" value={focused.pit_loss_s.toFixed(1)} unit="s" />
-		</div>
+		<ConfidenceBadge level={focused.confidence} />
+		<details>
+			<summary>See projection details</summary>
+			<div class="stats-row">
+				<Estimate
+					label="Margin if covered"
+					value={focused.projected_gap_if_covered_s}
+					unit="s"
+					ciLow={focused.projected_gap_if_covered_low_s}
+					ciHigh={focused.projected_gap_if_covered_high_s}
+					sampleSize={fitSamples}
+					method="pace projection over pit stagger"
+					format={formatSigned}
+				/>
+				<Estimate
+					label="Rejoin gap"
+					value={focused.projected_rejoin_gap_s}
+					unit="s"
+					sampleSize={fitSamples}
+					method="pace projection over pit stagger"
+					format={formatSigned}
+				/>
+				<Stat label="Decision lap" value={focused.decision_lap} />
+				<Stat label="Pit loss" value={focused.pit_loss_s.toFixed(1)} unit="s" />
+			</div>
 
-		{#if focused.crossover_lap !== null}
-			<Estimate
-				label="Predicted crossover lap"
-				value={focused.crossover_lap}
-				sampleSize={fitSamples}
-				method="pace projection over pit stagger"
-				digits={0}
-			/>
-		{/if}
+			{#if focused.crossover_lap !== null}
+				<Estimate
+					label="Predicted crossover lap"
+					value={focused.crossover_lap}
+					sampleSize={fitSamples}
+					method="pace projection over pit stagger"
+					digits={0}
+				/>
+			{/if}
 
-		{#if focused.window === 'unknown' || focused.confidence === 'low'}
-			<ul class="reasons">
-				{#each focused.reasons as reason (reason)}
-					<li>{reason}</li>
-				{/each}
-			</ul>
-		{/if}
+			{#if focused.window === 'unknown' || focused.confidence === 'low'}
+				<ul class="reasons">
+					{#each focused.reasons as reason (reason)}
+						<li>{reason}</li>
+					{/each}
+				</ul>
+			{/if}
+		</details>
 	{/if}
 </Panel>
 
 <style>
+	summary {
+		cursor: pointer;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		padding: 0.5rem 0;
+	}
+	details[open] summary {
+		margin-bottom: 1rem;
+	}
 	select {
 		width: 100%;
 		padding: var(--space-2) var(--space-3);

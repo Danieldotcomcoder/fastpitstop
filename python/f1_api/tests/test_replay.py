@@ -154,9 +154,8 @@ def test_replay_envelopes_excludes_car_telemetry_by_default() -> None:
 
 
 def test_replay_envelopes_includes_car_telemetry_on_request() -> None:
-    """The on-demand escape hatch: passing `kinds=None` (what
-    `include_telemetry=true` maps to at the WebSocket route) still streams
-    it — excluding it by default must not delete the capability."""
+    """The on-demand escape hatch: passing `kinds=None` still streams it —
+    excluding it by default must not delete the capability."""
     source = HistoricalSource(HISTORICAL_ROOT)
     fake = _FakeClock()
 
@@ -415,3 +414,22 @@ def test_envelope_for_event_live_mode_uses_captured_at_over_ts_utc() -> None:
 
     assert envelope.event_time_utc == clip_event.captured_at
     assert envelope.event_time_utc != clip_event.ts_utc
+
+
+def test_snapshots_use_the_circuit_the_event_name_names() -> None:
+    """A replayed backfill session finds its circuit (and so its calibrated
+    pit loss) only through its event name. The snapshot feed used to be
+    built without one, so every undercut call on the pit board fell back
+    to the cross-circuit default pit loss."""
+    from f1_api.stream.replay import LapSnapshotFeed
+
+    source = HistoricalSource(HISTORICAL_ROOT)
+    events = sorted(source.events(SESSION_KEY), key=lambda e: e.ts_utc)
+    named = LapSnapshotFeed(SESSION_KEY, event_name="Bahrain Grand Prix")
+    anonymous = LapSnapshotFeed(SESSION_KEY)
+    named_reports = [r for e in events if (r := named.feed(e)) is not None]
+    anonymous_reports = [r for e in events if (r := anonymous.feed(e)) is not None]
+
+    assert named_reports[-1].frames.circuit is not None
+    assert named_reports[-1].frames.circuit.circuit_id == "bahrain"
+    assert anonymous_reports[-1].frames.circuit is None

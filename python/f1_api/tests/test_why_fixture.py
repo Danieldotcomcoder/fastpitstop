@@ -8,27 +8,30 @@ env-var wiring those overrides stand in for during a pytest run.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from api_fixture import HISTORICAL_ROOT, SESSION_KEY
 from fastapi.testclient import TestClient
 
 from f1_api.config import WHY_FIXTURE_ENV_VAR, Settings, get_settings
 from f1_api.main import create_app
-from f1_api.why import get_explanation_store, get_narration_model
+from f1_api.why import get_explanation_store, get_narration_model, reset_narration_model
 from f1_api.why_fixture import GROUNDED_FIXTURE_TEXT, CitingNarrationModel
 from f1_why import FALLBACK_TEXT, MemoryExplanationStore
 
 
 @pytest.fixture(autouse=True)
-def _reset_narration_singleton() -> None:
+def _reset_narration_singleton() -> Iterator[None]:  # pyright: ignore[reportUnusedFunction]
     """`get_narration_model` is a process-level lazy singleton — clear it
     between tests so an earlier resolution can't leak into a later env
-    change in this file."""
-    import f1_api.why as why_mod
+    change in this file.
 
-    why_mod._narration_model = None  # test seam: clear process singleton
+    An autouse fixture is invoked by pytest, never by name, which is why
+    pyright cannot see it being used."""
+    reset_narration_model()
     yield
-    why_mod._narration_model = None
+    reset_narration_model()
 
 
 def test_settings_reads_why_fixture_flag_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

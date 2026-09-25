@@ -83,7 +83,7 @@ races on any weekday instead of only during live sessions.
   `docs/DATA_CONTRACTS.md`'s "Historical backfill tables" section for the
   table schema and idempotency/`--refresh` behavior.
 
-## Phase 1 (current): Ingest + store
+## Phase 1 (done): Ingest + store
 
 Goal: normalize the raw stream into domain events and persist them. LIVE and
 REPLAY feed the exact same pipeline (an iterator of `RawRecord`s — the
@@ -127,9 +127,11 @@ RawRecord -> decoded payload -> state mutation -> domain event -> sink (DB)
   deduplicated against one canonical value), track/session status, weather,
   race control, team radio (URLs resolved via SessionInfo's path). Emission
   is change-detected per driver per field, a monotonic-seq guard makes
-  re-applied records inert, and seeding — initial or on the recorder's
-  `_meta.*` reconnect sentinels — silently adopts the snapshot as the new
-  baseline. Backtested end-to-end against a synthetic full-race recording
+  re-applied records inert, and seeding adopts the snapshot as the new
+  baseline — the FIRST seed also publishes the running order and roster
+  once (on the next real record, so replay stays deterministic), while the
+  recorder's `_meta.*` reconnect re-seeds stay silent. Backtested
+  end-to-end against a synthetic full-race recording
   (tests/race_sim.py) replayed through the real `f1_replay` path, with
   exact assertions: lap counts and times, pit laps, stint compounds, final
   classification, determinism (byte-identical event streams), idempotency.
@@ -228,7 +230,7 @@ DomainEvent ─► lap/stint/telemetry frames ─► clean_laps ─► analytic(
   verify-phase2` runs the kernel over the checked-in fixture and checks the
   release-gate exit criteria — see docs/PHASE2.md.
 
-## Phase 3 (current): Frontend
+## Phase 3 (done): Frontend
 
 Goal: the first thing a user sees — live and replayed races, spoiler-safe
 by construction. See CLAUDE.md's "Phase 3 status" for the full invariants
@@ -317,7 +319,7 @@ f1_kernel / f1_store ─► f1_api (REST + /stream WebSocket) ─► apps/web (S
   (`f1_api.stream.replay`). See docs/PHASE3.md's "The race dashboard"
   section for the full module map and why.
 
-## Phase 4 (current): Team radio corpus
+## Phase 4 (done): Team radio corpus
 
 Goal: a genuinely new dataset — searchable driver-pit radio — feeding
 Phase 5's "why" engine. See CLAUDE.md's "Phase 4 status" for the full

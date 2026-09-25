@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from f1_api.config import Settings
 from f1_api.feedback import (
+    RATE_LIMIT_PER_IP_HOUR,
     FeedbackIn,
     FeedbackRecord,
     FeedbackRejected,
     MemoryFeedbackStore,
-    RATE_LIMIT_PER_IP_HOUR,
     submit_feedback,
 )
 from f1_api.main import create_app
@@ -56,8 +57,9 @@ def test_submit_persists_when_email_fails() -> None:
     )
     assert out.ok
     assert store.count_since(since=datetime(2026, 7, 30, tzinfo=UTC)) == 1
-    assert store._rows[0].email_sent is False
-    assert store._rows[0].email_error is not None
+    stored = store.records()
+    assert stored[0].email_sent is False
+    assert stored[0].email_error is not None
     assert len(sent) == 1
 
 
@@ -131,14 +133,16 @@ def test_rate_limit_per_ip() -> None:
         )
 
 
-def test_http_endpoint_friendly_error(tmp_path) -> None:
+def test_http_endpoint_friendly_error(tmp_path: Path) -> None:
     settings = Settings(historical_root=tmp_path)
     store = MemoryFeedbackStore()
     app = create_app(settings)
     app.dependency_overrides[feedback_routes.get_feedback_store] = lambda: store
-    app.dependency_overrides[feedback_routes.get_turnstile] = lambda: (
-        lambda token, remote_ip=None: True
-    )
+
+    def _accept_any_token(token: str, remote_ip: str | None = None) -> bool:
+        return True
+
+    app.dependency_overrides[feedback_routes.get_turnstile] = lambda: _accept_any_token
     app.dependency_overrides[feedback_routes.get_mail_sender] = lambda: None
     client = TestClient(app)
     response = client.post(

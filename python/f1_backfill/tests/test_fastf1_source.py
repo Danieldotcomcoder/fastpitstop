@@ -20,9 +20,11 @@ class FakeSession:
         car_data: Mapping[str, pd.DataFrame],
         weather_data: pd.DataFrame,
         results: pd.DataFrame,
+        pos_data: Mapping[str, pd.DataFrame] | None = None,
     ) -> None:
         self.laps = laps
         self.car_data = car_data
+        self.pos_data: Mapping[str, pd.DataFrame] = pos_data or {}
         self.weather_data = weather_data
         self.results = results
 
@@ -41,7 +43,7 @@ def _laps() -> pd.DataFrame:
     )
 
 
-def test_extract_tables_returns_all_five_tables() -> None:
+def test_extract_tables_returns_every_table() -> None:
     session = FakeSession(
         laps=_laps(),
         car_data={"1": pd.DataFrame({"Speed": [300, 310]}), "44": pd.DataFrame({"Speed": [295]})},
@@ -51,7 +53,14 @@ def test_extract_tables_returns_all_five_tables() -> None:
 
     tables = extract_tables(session)
 
-    assert set(tables) == {"laps", "car_telemetry", "weather", "results", "stints"}
+    assert set(tables) == {
+        "laps",
+        "car_telemetry",
+        "car_positions",
+        "weather",
+        "results",
+        "stints",
+    }
     assert len(tables["laps"]) == 4
     assert len(tables["weather"]) == 1
     assert len(tables["results"]) == 2
@@ -105,3 +114,28 @@ def test_stints_is_empty_with_expected_columns_when_laps_lacks_required_columns(
     stints = extract_tables(session)["stints"]
     assert stints.empty
     assert list(stints.columns) == ["Driver", "Stint", "Compound", "LapStart", "LapEnd", "LapCount"]
+
+
+def test_car_positions_come_from_pos_data() -> None:
+    session = FakeSession(
+        laps=_laps(),
+        car_data={},
+        weather_data=pd.DataFrame(),
+        results=pd.DataFrame(),
+        pos_data={
+            "1": pd.DataFrame(
+                {
+                    "Date": pd.to_datetime(["2024-03-02 15:00:00.000", "2024-03-02 15:00:00.250"]),
+                    "X": [100, 120],
+                    "Y": [-50, -40],
+                    "Z": [3, 3],
+                    "Status": ["OnTrack", "OnTrack"],
+                }
+            )
+        },
+    )
+
+    positions = extract_tables(session)["car_positions"]
+
+    assert list(positions["X"]) == [100, 120]
+    assert set(positions["DriverNumber"]) == {"1"}

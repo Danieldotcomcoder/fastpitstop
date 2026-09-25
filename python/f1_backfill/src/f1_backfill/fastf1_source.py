@@ -1,4 +1,5 @@
-"""FastF1 extraction: laps, car telemetry, weather, results, stints/compounds.
+"""FastF1 extraction: laps, car telemetry, car positions, weather, results,
+stints/compounds.
 
 `load_session` is the single boundary with the real `fastf1` library — it
 returns a `SessionLike`, a small Protocol declaring only the attributes
@@ -20,6 +21,8 @@ from typing import Any, Protocol, cast
 
 import pandas as pd
 
+from f1_backfill.positions import POSITIONS_TABLE, position_table
+
 # FastF1's HTTP layer has no default timeout; a hung F1 CDN request can
 # block the whole backfill indefinitely. Apply a per-request deadline.
 _FASTF1_REQUEST_TIMEOUT_S = 120.0
@@ -28,6 +31,7 @@ _FASTF1_REQUEST_TIMEOUT_S = 120.0
 class SessionLike(Protocol):
     laps: pd.DataFrame
     car_data: Mapping[str, pd.DataFrame]
+    pos_data: Mapping[str, pd.DataFrame]
     weather_data: pd.DataFrame
     results: pd.DataFrame
 
@@ -79,8 +83,9 @@ def load_session(season: int, round_no: int, session_type: str) -> SessionLike:
 
 def extract_tables(session: SessionLike) -> dict[str, pd.DataFrame]:
     """Pull the CLEAN historical tables this project keeps out of a loaded
-    FastF1 session: laps, car telemetry (all drivers concatenated), weather,
-    session results, and a derived stints/tyre-compound summary.
+    FastF1 session: laps, car telemetry (all drivers concatenated), measured
+    car positions (`f1_backfill.positions`), weather, session results, and a
+    derived stints/tyre-compound summary.
 
     Every table is normalized to a plain `pandas.DataFrame` (dropping
     FastF1's `Laps`/`Telemetry`/`SessionResults` subclasses) since nothing
@@ -91,6 +96,7 @@ def extract_tables(session: SessionLike) -> dict[str, pd.DataFrame]:
     return {
         "laps": laps,
         "car_telemetry": _concat_car_data(session.car_data),
+        POSITIONS_TABLE: position_table(session.pos_data),
         "weather": pd.DataFrame(session.weather_data).reset_index(drop=True),
         "results": pd.DataFrame(session.results).reset_index(drop=True),
         "stints": _derive_stints(laps),

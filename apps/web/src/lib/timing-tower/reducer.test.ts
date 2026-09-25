@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Envelope } from '$lib/delay-sync';
 import { applyTowerEnvelope, createTimingTowerState, sortedRows, TimingTowerReducer } from './reducer';
+import { positionsGained } from './types';
 
 function envelope(kind: string, payload: Record<string, unknown>): Envelope {
 	return { event_time_utc: new Date(0).toISOString(), kind, payload };
@@ -209,5 +210,36 @@ describe('TimingTowerReducer', () => {
 		reducer.update([envelope('position_changed', { driver: '1', position: 1 })]);
 		reducer.reset();
 		expect(reducer.rows).toHaveLength(0);
+	});
+});
+
+describe('start position and places gained', () => {
+	it('latches the first position seen and never revises it', () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '1', position: 8 }));
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '1', position: 3 }));
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '1', position: 5 }));
+		const row = state.rows.get('1')!;
+		expect(row.startPosition).toBe(8);
+		expect(row.position).toBe(5);
+		expect(positionsGained(row)).toBe(3);
+	});
+
+	it('reports a loss as a negative number', () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '4', position: 2 }));
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '4', position: 7 }));
+		expect(positionsGained(state.rows.get('4')!)).toBe(-5);
+	});
+
+	it('distinguishes "held station" (0) from unknown (null)', () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '9', position: 6 }));
+		expect(positionsGained(state.rows.get('9')!)).toBe(0);
+
+		// A driver the feed has only ever mentioned via a lap time has no
+		// position at either end — that is unknown, not "no change".
+		applyTowerEnvelope(state, envelope('lap_completed', { driver: '10', lap_number: 3 }));
+		expect(positionsGained(state.rows.get('10')!)).toBeNull();
 	});
 });

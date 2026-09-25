@@ -21,6 +21,13 @@ COPY apps/web apps/web
 RUN pnpm --filter @pitwall/web generate-client
 RUN pnpm --filter @pitwall/web build
 
+# ---------------------------------------------------------------------------
+# Production packaging only. Split into its own stage so the dev overlay
+# (compose.dev.yml pins web to `target: build`, then bind-mounts the repo and
+# runs `pnpm dev`) stops at the stage above and never pays for -- or breaks
+# on -- a step whose output it immediately discards.
+FROM build AS deploy
+
 # `pnpm deploy` is pnpm's own "produce a self-contained, prod-only
 # node_modules for one workspace package" command — this is what gives us
 # just the production node_modules, per this prompt's own "copy only
@@ -28,7 +35,10 @@ RUN pnpm --filter @pitwall/web build
 # by npm's own packlist rules (respects .gitignore, which excludes build/),
 # so the built output is copied into the runtime stage separately below
 # rather than relying on `deploy` to carry it along.
-RUN pnpm --filter @pitwall/web deploy --prod /deploy
+# --legacy: pnpm 10 refuses `deploy` unless the workspace sets
+# inject-workspace-packages=true, and injected dependencies buy us
+# nothing here (one deployable package, no workspace deps to inject).
+RUN pnpm --filter @pitwall/web deploy --legacy --prod /deploy
 
 # ---------------------------------------------------------------------------
 FROM node:22-slim AS runtime
@@ -36,8 +46,8 @@ FROM node:22-slim AS runtime
 RUN groupadd --system pitwall && useradd --system --gid pitwall --create-home pitwall
 
 WORKDIR /app
-COPY --from=build /deploy/package.json ./package.json
-COPY --from=build /deploy/node_modules ./node_modules
+COPY --from=deploy /deploy/package.json ./package.json
+COPY --from=deploy /deploy/node_modules ./node_modules
 COPY --from=build /repo/apps/web/build ./build
 
 ARG GIT_SHA=dev

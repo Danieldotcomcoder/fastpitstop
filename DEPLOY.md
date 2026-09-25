@@ -19,6 +19,12 @@ Five services (`compose.yml`), always run as base + one overlay:
 - **worker** — same image as `api`; runs the recorder long-lived by default,
   or one-shot jobs (backfill, radio ingest, an ad-hoc migration) via
   `docker compose run --rm worker <command>`.
+- **positions** — same image; `f1-pipeline archive-positions --watch 600`.
+  The live feed withholds car positions from our unauthenticated client,
+  so after each live session this imports them from F1's post-session
+  archive (once the session has been quiet 90 minutes) into
+  `data/historical/.../car_positions.parquet`, where replays read them.
+  Idle between sessions.
 - **proxy** — Caddy: automatic TLS, reverse-proxies `/api/*` (prefix
   stripped) to `api` and everything else to `web`, including the
   `/stream/{key}` WebSocket upgrade (automatic in Caddy, no special config).
@@ -63,6 +69,30 @@ backend/frontend work doesn't need `just up` at all — `just serve-api` /
 `just web-dev` against the existing `python/f1_store/docker-compose.yml`
 Postgres is still the fastest inner loop. `just up` is for proving the
 *container* path works, and for demos.
+
+Two things `compose.dev.yml` deliberately overrides from the shared
+`compose.yml`, because each is right for a deployment and wrong for a
+laptop:
+
+- **`./data` is bind-mounted**, not the `pitwall-data` named volume. In
+  production the volume is the point (a live recording must outlive its
+  container). In dev, the backfill you already ran on the host with
+  `uv run f1-backfill` lives in `./data` — without the bind, the
+  containerised API serves an EMPTY session list and the stack looks broken
+  for a reason unrelated to the code.
+- **`PUBLIC_F1_API_BASE_URL` is forced to `http://localhost:8000`.** `.env`
+  holds the deployed value (compose reads the same file in production), so
+  a dev `web` container would otherwise point your local frontend at the
+  live site. It must be a URL the BROWSER can reach, so `http://api:8000`
+  (the compose-network name) would not work either.
+
+**Heads-up on the first build:** the api image installs the whole Python
+workspace, and `f1_api` depends on `f1_radio`, which pulls
+`faster-whisper` + `sentence-transformers` and with them torch and the
+CUDA wheels. The first `just up` therefore downloads several GB and can
+take 30-60 minutes on a normal connection; later builds hit the layer
+cache. The API itself never loads those models unless a radio corpus is
+configured — it is the dependency graph, not the runtime, that is heavy.
 
 ## First-time host setup (the VPS)
 
@@ -176,6 +206,26 @@ gap, see `CLAUDE.md`'s Phase 3 status):
 ```sh
 docker compose -f compose.yml -f compose.prod.yml run --rm worker \
   f1-pipeline replay /app/data/recordings/<session-dir> --round <N>
+```
+
+### Car positions for the track map
+
+Replays draw measured car positions (`car_positions.parquet` per session).
+Backfilled sessions get them from `f1-backfill`; sessions acquired before
+that table existed are retrofitted from the FastF1 cache already on the
+volume, without re-downloading anything:
+
+```sh
+docker compose -f compose.yml -f compose.prod.yml run --rm positions \
+  f1-backfill --season 2025 --positions-only
+```
+
+Live-ingested sessions are handled by the `positions` service on its own.
+To import one by hand (e.g. right after a race, without waiting):
+
+```sh
+docker compose -f compose.yml -f compose.prod.yml run --rm positions \
+  f1-pipeline archive-positions --settle-minutes 0
 ```
 
 ## Backup and restore

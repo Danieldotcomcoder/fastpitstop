@@ -27,6 +27,7 @@ from f1_domain import (
     DriverState,
     SessionKey,
     SessionState,
+    SessionType,
 )
 from f1_store.rows import derive_rows
 from f1_store.schema import DRIVERS_COLUMNS, SESSION_COLUMNS, SESSIONS_COLUMNS, TABLE_COLUMNS
@@ -197,6 +198,7 @@ def replay_events(
     session_key: SessionKey,
     *,
     kinds: Collection[str] | None = None,
+    after: tuple[int, int] | None = None,
 ) -> Iterator[DomainEvent]:
     """Read the append-only log back out for one session, in original
     emission order, revalidating each payload into a `DomainEvent`.
@@ -222,11 +224,128 @@ def replay_events(
     if kinds is not None:
         conditions.append(sql.SQL("kind = ANY(%(kinds)s)"))
         params["kinds"] = list(kinds)
+    if after is not None:
+        # Row-wise comparison on the SAME pair the ORDER BY uses, so "everything
+        # after this cursor" means exactly "everything this caller has not been
+        # handed yet" — no per-row bookkeeping, no overlap, no gap.
+        conditions.append(sql.SQL("(source_seq, event_index) > (%(after_seq)s, %(after_index)s)"))
+        params["after_seq"], params["after_index"] = after
 
     stmt = sql.SQL(
-        "SELECT payload FROM events WHERE {where} ORDER BY source_seq, event_index, ts_utc"
+        "SELECT payload, source_seq, event_index FROM events WHERE {where} "
+        "ORDER BY source_seq, event_index, ts_utc"
     ).format(where=sql.SQL(" AND ").join(conditions))
     with conn.cursor() as cur:
         cur.execute(stmt, params)
         for row in cur:
             yield DOMAIN_EVENT_ADAPTER.validate_python(row[0])
+
+
+def replay_events_with_cursor(
+    conn: psycopg.Connection[TupleRow],
+    session_key: SessionKey,
+    *,
+    kinds: Collection[str] | None = None,
+    after: tuple[int, int] | None = None,
+) -> Iterator[tuple[DomainEvent, tuple[int, int]]]:
+    """`replay_events`, but each event is paired with its own
+    `(source_seq, event_index)` cursor.
+
+    A long-lived follower (the live WebSocket) needs to resume exactly where
+    it stopped. Without this it has to re-read and re-validate the entire
+    session on every poll: at one poll a second on a real race that is tens
+    of thousands of rows rebuilt per second, per connected client, which is
+    what pinned the API at 100% CPU during the 2026 Spanish GP.
+    """
+    conditions = [
+        sql.SQL("session_year = %(year)s AND session_round = %(round)s AND session_type = %(type)s")
+    ]
+    params: dict[str, object] = {
+        "year": session_key.year,
+        "round": session_key.round,
+        "type": session_key.session_type.value,
+    }
+    if kinds is not None:
+        conditions.append(sql.SQL("kind = ANY(%(kinds)s)"))
+        params["kinds"] = list(kinds)
+    if after is not None:
+        conditions.append(sql.SQL("(source_seq, event_index) > (%(after_seq)s, %(after_index)s)"))
+        params["after_seq"], params["after_index"] = after
+
+    stmt = sql.SQL(
+        "SELECT payload, source_seq, event_index FROM events WHERE {where} "
+        "ORDER BY source_seq, event_index, ts_utc"
+    ).format(where=sql.SQL(" AND ").join(conditions))
+    with conn.cursor() as cur:
+        cur.execute(stmt, params)
+        for row in cur:
+            yield DOMAIN_EVENT_ADAPTER.validate_python(row[0]), (int(row[1]), int(row[2]))
+
+
+DEFAULT_LIVE_WINDOW = timedelta(minutes=10)
+"""How recent the newest event must be for a session to count as in progress.
+
+Generous on purpose. A live session emits timing updates continuously, so
+the honest signal is "the log is still growing"; the window only has to
+survive a red flag or a feed reconnect, both of which are minutes, not tens
+of minutes. Erring long is the cheap direction: a session stays "live" for a
+few extra minutes after the flag (it is still finalising), whereas erring
+short would blank the dashboard mid-race.
+"""
+
+TERMINAL_SESSION_STATUSES = ("Ends", "Finished", "Finalised")
+"""Feed statuses that mean the session is definitively over.
+
+Deliberately NOT a full denylist of the feed's vocabulary: "Inactive"
+precedes a session, and "Aborted" is a red flag the session can resume from.
+Matching only the three unambiguous values keeps an unrecognised status
+falling through to the freshness test rather than being guessed at.
+"""
+
+
+def live_session_keys(
+    conn: psycopg.Connection[TupleRow],
+    *,
+    within: timedelta = DEFAULT_LIVE_WINDOW,
+) -> set[SessionKey]:
+    """The sessions whose event log is still growing right now.
+
+    "Present in the store" is NOT "in progress" — every session ever
+    ingested stays in the log forever. Conflating the two made the 2026
+    Spanish GP read as live for the whole following week: `/live` rendered
+    a six-day-old race as though it were running, opened a `mode=live`
+    WebSocket against it, and re-derived its 33k events (and narrated its
+    anomalies at an LLM) for every visitor.
+
+    Liveness is measured from EVENT time, not a row's write time. The feed
+    keeps serving the previous session's snapshot between race weekends, so
+    an idle ingest re-seeds and touches `sessions.updated_at` indefinitely;
+    the event timestamps it writes stay correctly in the past. A terminal
+    `sessions.status` disqualifies regardless, which retires a session
+    promptly after the flag instead of waiting out the window.
+    """
+    stmt = sql.SQL(
+        "SELECT e.session_year, e.session_round, e.session_type "
+        "FROM events e "
+        "LEFT JOIN sessions s ON s.session_year = e.session_year "
+        "  AND s.session_round = e.session_round "
+        "  AND s.session_type = e.session_type "
+        "WHERE e.ts_utc >= now() - %(within)s "
+        "  AND (s.status IS NULL OR NOT (s.status = ANY(%(terminal)s))) "
+        "GROUP BY e.session_year, e.session_round, e.session_type"
+    )
+    params: dict[str, object] = {
+        "within": within,
+        "terminal": list(TERMINAL_SESSION_STATUSES),
+    }
+    with conn.cursor() as cur:
+        cur.execute(stmt, params)
+        rows = cur.fetchall()
+    return {
+        SessionKey(
+            year=int(year),
+            round=int(round_no),
+            session_type=SessionType(str(session_type)),
+        )
+        for year, round_no, session_type in rows
+    }

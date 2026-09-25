@@ -4,6 +4,7 @@ invariant that explanations pass the same product surface (and Delay Sync
 gate, via the WebSocket) as every other derived value. Two routes:
 
     GET /sessions/{key}/anomalies       detected anomalies with salience (no prose)
+    GET /sessions/{key}/story           the salience-ranked story, narrated in one pass
     GET /anomalies/{id}/explanation     grounded Explanation + cited evidence links
 
 `/anomalies/{id}/explanation` is registered on this router (not under
@@ -15,12 +16,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from f1_api.convert import anomaly_out, explanation_out
 from f1_api.radio import SearchIndexDep
 from f1_api.routes.sessions import SessionKeyDep, SettingsDep
-from f1_api.schemas import AnomalyOut, ExplanationOut
+from f1_api.schemas import AnomalyOut, ExplanationOut, StoryMomentOut
 from f1_api.sessions import resolve_session
 from f1_api.sessions import session_key_path as _session_key_path
 from f1_api.why import (
@@ -29,7 +30,9 @@ from f1_api.why import (
     detect_session_anomalies,
     explain_session_anomaly,
     find_anomaly_by_why_id,
+    most_salient,
     parse_anomaly_id,
+    precompute_session_explanations,
 )
 from f1_domain import SessionKey
 
@@ -57,7 +60,22 @@ AnomalyPathIdDep = Annotated[tuple[SessionKey, str], Depends(get_anomaly_path_id
 
 
 @router.get("/sessions/{key}/anomalies", response_model=list[AnomalyOut])
-def get_session_anomalies(session_key: SessionKeyDep, settings: SettingsDep) -> list[AnomalyOut]:
+def get_session_anomalies(
+    session_key: SessionKeyDep,
+    settings: SettingsDep,
+    limit: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            description=(
+                "Keep only the N most salient anomalies. Omitted returns "
+                "every one the detector found — a few hundred on a real "
+                "race, which is the right answer for an analysis client "
+                "and the wrong one for a UI list."
+            ),
+        ),
+    ] = None,
+) -> list[AnomalyOut]:
     """Every `f1_why.Anomaly` this session's own kernel report surfaces,
     already sorted most-salient-first. Detection only — no prose, no
     evidence bundle, no LLM call. An empty list (not an error) when the
@@ -70,7 +88,61 @@ def get_session_anomalies(session_key: SessionKeyDep, settings: SettingsDep) -> 
             session_key,
             event_name=resolved.entry.event_name,
         )
-        return [anomaly_out(session_key, anomaly) for anomaly in anomalies]
+        return [anomaly_out(session_key, anomaly) for anomaly in most_salient(anomalies, limit)]
+
+
+@router.get("/sessions/{key}/story", response_model=list[StoryMomentOut])
+def get_session_story(
+    session_key: SessionKeyDep,
+    settings: SettingsDep,
+    model: NarrationModelDep,
+    store: ExplanationStoreDep,
+    radio_index: SearchIndexDep,
+    limit: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            description=(
+                "How many moments to narrate. Defaults to the server's own "
+                "F1_WHY_MAX_EXPLANATIONS budget."
+            ),
+        ),
+    ] = None,
+) -> list[StoryMomentOut]:
+    """The race story: the most salient moments with their grounded
+    explanations, resolved in ONE pass over the session.
+
+    The whole point of this route is that it detects once. Building the
+    same list from `/anomalies` + one `/anomalies/{id}/explanation` per row
+    re-ran `analyze_session` and `detect_anomalies` for every single row —
+    seconds of duplicated work each, hundreds of times over. Detection is a
+    per-session computation, so this is a per-session read; the per-anomaly
+    route stays for a client that wants exactly one moment's citations."""
+    budget = settings.max_explanations if limit is None else limit
+    with resolve_session(settings, session_key) as resolved:
+        if resolved is None:
+            raise _not_found(session_key)
+        scheduled = precompute_session_explanations(
+            resolved.source,
+            session_key,
+            model,
+            store,
+            radio_index=radio_index,
+            event_name=resolved.entry.event_name,
+            max_explanations=budget,
+        )
+        # `precompute_session_explanations` orders by anomaly_time (the WS
+        # needs that for pacing); a story reads most-important-first.
+        scheduled.sort(key=lambda item: item.anomaly.salience, reverse=True)
+        return [
+            StoryMomentOut(
+                anomaly=anomaly_out(session_key, item.anomaly),
+                explanation=explanation_out(
+                    session_key, item.anomaly, item.explanation, item.bundle
+                ),
+            )
+            for item in scheduled
+        ]
 
 
 @router.get("/anomalies/{anomaly_id}/explanation", response_model=ExplanationOut)

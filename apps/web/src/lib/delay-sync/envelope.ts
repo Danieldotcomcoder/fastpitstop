@@ -34,6 +34,15 @@ export function isKernelSnapshot(envelope: Envelope): boolean {
 	return envelope.kind === KERNEL_SNAPSHOT_KIND;
 }
 
+/** `f1_api.stream.replay.CAR_POSITIONS_KIND`: one instant's measured
+ * position for every car, `{cars: {driver: [x, y]}}`. Kept in sync by hand
+ * like `KERNEL_SNAPSHOT_KIND`. */
+export const CAR_POSITIONS_KIND = 'car_positions';
+
+export function isCarPositions(envelope: Envelope): boolean {
+	return envelope.kind === CAR_POSITIONS_KIND;
+}
+
 /** Parses `event_time_utc` once, in one place, so every caller sorts and
  * compares the same way. Throws on an unparseable timestamp — a malformed
  * `event_time_utc` is a contract violation, not a value to guess about. */

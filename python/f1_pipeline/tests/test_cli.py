@@ -30,9 +30,13 @@ def test_ingest_historical_parses() -> None:
     assert args.round == 5
 
 
-def test_live_requires_year_and_round() -> None:
-    with pytest.raises(SystemExit):
-        parse_args(["live", "--year", "2024"])  # missing --round
+def test_live_needs_no_session_arguments() -> None:
+    """The feed names its own session (`SessionInfo`), so a deployment is
+    not pinned to one race. Requiring these is what left production still
+    configured for `--year 2026 --round 14` a week after that race."""
+    args = parse_args(["live"])
+    assert args.func.__name__ == "_cmd_live"
+    assert (args.year, args.round, args.session_type) == (None, None, None)
 
 
 def test_live_parses() -> None:

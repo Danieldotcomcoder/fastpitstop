@@ -18,7 +18,7 @@
 				<button type="button" class="close" onclick={onClose}>Close</button>
 			</header>
 			<ul>
-				{#each SESSION_SECTIONS as section}
+				{#each SESSION_SECTIONS as section (section.id)}
 					<li>
 						<kbd class="tabular">{section.shortcut}</kbd>
 						<span>{section.label}</span>

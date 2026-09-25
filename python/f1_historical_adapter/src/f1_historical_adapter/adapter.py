@@ -15,11 +15,17 @@ What historical CANNOT provide (documented so the kernel never assumes it):
   session-relative `Time`; we rebuild absolute UTC from the session start
   (`reader.session_start_utc`). Sub-second alignment across channels is
   therefore approximate, unlike the live feed's own timestamps.
-- No `CarPosition` (f1_backfill exports no position table) and no
-  track/session-status delta stream. `CarTelemetry` is available but
+- No track/session-status delta stream. `CarTelemetry` is available but
   OFF BY DEFAULT (`include_telemetry`): FastF1's telemetry is resampled and
   gap-filled (its `Source` column flags interpolated rows), so it is not
   the feed's raw per-delta channel — treat it as a lower-fidelity stand-in.
+- `CarPosition` is available, also OFF BY DEFAULT (`include_positions`),
+  from the `car_positions` table (`f1_backfill.positions`). Unlike
+  telemetry it is NOT resampled: it is the feed's own `Position.z` channel,
+  timestamped by the feed, from F1's post-session archive. A race is
+  ~640k samples, so a consumer that only wants to draw them should read
+  the table columnar (`f1_kernel.HistoricalSource.position_track`) rather
+  than build an event per sample.
 - Delta-level granularity is lost generally: history gives per-lap and
   per-event facts, not the constant re-send/partial-update stream the state
   machine folds live.
@@ -35,6 +41,7 @@ from typing import TypedDict
 import pandas as pd
 
 from f1_domain import (
+    CarPosition,
     CarTelemetry,
     DomainEvent,
     DriverListUpdated,
@@ -107,19 +114,26 @@ def events_from_parquet(
     session_key: SessionKey,
     *,
     include_telemetry: bool = False,
+    include_positions: bool = False,
 ) -> Iterator[DomainEvent]:
     """Yield the `DomainEvent` stream for one historical session, in
     chronological order. See the module docstring for the fidelity caveats.
 
     `include_telemetry` opts into the (large, resampled) `CarTelemetry`
-    channel; it is off by default.
+    channel and `include_positions` into the (large, measured)
+    `CarPosition` channel; both are off by default.
     """
     tables = load_session_tables(historical_root, session_key)
-    return build_events(tables, include_telemetry=include_telemetry)
+    return build_events(
+        tables, include_telemetry=include_telemetry, include_positions=include_positions
+    )
 
 
 def build_events(
-    tables: SessionTables, *, include_telemetry: bool = False
+    tables: SessionTables,
+    *,
+    include_telemetry: bool = False,
+    include_positions: bool = False,
 ) -> Iterator[DomainEvent]:
     """`events_from_parquet` split from the I/O, so tests can drive it with
     in-memory `SessionTables`."""
@@ -162,6 +176,11 @@ def build_events(
         telemetry = tables.get("car_telemetry")
         if telemetry is not None:
             _emit_telemetry(telemetry, env, collector)
+
+    if include_positions:
+        positions = tables.get("car_positions")
+        if positions is not None:
+            _emit_positions(positions, env, collector)
 
     # Identities first (at session start), final classification last (at
     # session end), so a fold of the stream ends on the results positions.
@@ -377,6 +396,24 @@ def _emit_telemetry(telemetry: pd.DataFrame, env: EnvFactory, collector: _Collec
         )
 
 
+def _emit_positions(positions: pd.DataFrame, env: EnvFactory, collector: _Collector) -> None:
+    for rec in positions.to_dict("records"):
+        ts = to_utc(rec.get("Date"))
+        if ts is None:
+            continue
+        collector.add(
+            ts,
+            CarPosition(
+                **env(ts),
+                driver=driver_number(rec.get("DriverNumber")),
+                x=opt_float(rec.get("X")),
+                y=opt_float(rec.get("Y")),
+                z=opt_float(rec.get("Z")),
+                status=opt_str(rec.get("Status")),
+            ),
+        )
+
+
 def _emit_driver_list(
     results: pd.DataFrame, start: datetime | None, env: EnvFactory, collector: _Collector
 ) -> None:
@@ -391,6 +428,7 @@ def _emit_driver_list(
             DriverRef(
                 number=number,
                 code=opt_str(rec.get("Abbreviation")),
+                full_name=opt_str(rec.get("FullName")),
                 team=opt_str(rec.get("TeamName")),
             )
         )

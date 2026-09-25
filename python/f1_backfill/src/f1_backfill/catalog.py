@@ -67,6 +67,14 @@ class Catalog(BaseModel):
             acquired_at=acquired_at,
         )
 
+    def record_table(self, key: SessionKey, table: str, rows: int) -> None:
+        """Add (or replace) one table's row count on an existing entry — a
+        table exported after the session itself was acquired."""
+        entry = self.sessions[key.catalog_key]
+        self.sessions[key.catalog_key] = entry.model_copy(
+            update={"tables": {**entry.tables, table: rows}}
+        )
+
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.model_dump_json(indent=2), encoding="utf-8")

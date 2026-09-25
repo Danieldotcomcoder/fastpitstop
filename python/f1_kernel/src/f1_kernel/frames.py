@@ -42,14 +42,16 @@ from f1_domain import (
     DomainEvent,
     GapUpdated,
     LapCompleted,
+    LapCounterUpdated,
     PitEntry,
     PitExit,
     PositionChanged,
     Provenance,
+    SessionInfoUpdated,
     SessionKey,
     StintStarted,
 )
-from f1_kernel.circuit import Circuit, circuit_for_event
+from f1_kernel.circuit import Circuit, circuit_for_session
 from f1_kernel.schemas import (
     DRS_OPEN_CODES,
     LAP_FRAME_SCHEMA,
@@ -501,17 +503,55 @@ def session_frames_from_events(
     *,
     event_name: str | None = None,
 ) -> SessionFrames:
-    """Build every frame for one session in a single pass over the events."""
+    """Build every frame for one session in a single pass over the events.
+
+    The circuit comes from the stream's own `SessionInfoUpdated` when there
+    is one (a live session: by the feed's venue name, which is unambiguous
+    across seasons), else from `event_name` (a historical session)."""
     materialized = list(events)
     laps = lap_frame_from_events(materialized, session_key)
     stints = stint_frame_from_events(materialized, session_key, laps=laps)
+    meeting_name, venue = _session_info(materialized)
+    name = event_name if event_name is not None else meeting_name
     return SessionFrames(
         session_key=session_key,
         laps=laps,
         stints=stints,
-        circuit=circuit_for_event(event_name),
-        event_name=event_name,
+        circuit=circuit_for_session(name, venue),
+        event_name=name,
     )
+
+
+def race_distance_laps(events: Iterable[DomainEvent]) -> int | None:
+    """How long this race is, in laps: the feed's own `LapCounterUpdated`
+    total when the stream carries one, else the furthest lap anyone
+    completed. None when the stream says neither.
+
+    The fuel model's burn rate depends on it, so it must be the WHOLE race,
+    never the laps seen so far: inferred mid-race from a slice, a 57-lap race
+    read as 20 laps long over-removes the fuel trend and biases every
+    degradation rate the undercut call is built on (`fuel_correct`'s own
+    docstring). The distance is not a spoiler -- it is on screen as "38/57"
+    from the first lap."""
+    counter: int | None = None
+    furthest: int | None = None
+    for event in events:
+        if isinstance(event, LapCounterUpdated) and event.total_laps is not None:
+            counter = event.total_laps
+        elif isinstance(event, LapCompleted) and event.lap_number is not None:
+            furthest = event.lap_number if furthest is None else max(furthest, event.lap_number)
+    return counter if counter is not None else furthest
+
+
+def _session_info(events: Sequence[DomainEvent]) -> tuple[str | None, str | None]:
+    """The latest meeting name and venue short name the stream carries."""
+    meeting: str | None = None
+    venue: str | None = None
+    for event in events:
+        if isinstance(event, SessionInfoUpdated):
+            meeting = event.meeting_name or meeting
+            venue = event.circuit_short_name or venue
+    return meeting, venue
 
 
 # ---------------------------------------------------------------------------

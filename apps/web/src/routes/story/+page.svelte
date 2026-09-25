@@ -18,7 +18,6 @@
 	} from '$lib/why';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
-	type AnomalyOut = components['schemas']['AnomalyOut'];
 
 	let sessionsStatus = $state<'loading' | 'error' | 'ready'>('loading');
 	let storyStatus = $state<'idle' | 'loading' | 'error' | 'ready'>('idle');
@@ -50,32 +49,41 @@
 		}
 	}
 
+	/** One request, not one per moment.
+	 *
+	 * This used to list `/sessions/{key}/anomalies` and then fire a
+	 * `/anomalies/{id}/explanation` per row in a `Promise.all`. Every one of
+	 * those re-ran the whole `analyze_session` + `detect_anomalies` chain
+	 * server-side — seconds each — and a real race detects a few hundred
+	 * anomalies, so the page fired hundreds of concurrent multi-second
+	 * requests and never finished. `GET /sessions/{key}/story` detects once
+	 * and returns the salience-ranked, already-narrated moments. */
 	async function loadStory(key: string): Promise<void> {
 		selectedKey = key;
 		storyStatus = 'loading';
 		moments = [];
 		try {
-			const { data: anomalies, error } = await api.GET('/sessions/{key}/anomalies', {
+			const { data, error } = await api.GET('/sessions/{key}/story', {
 				params: { path: { key } }
 			});
-			if (error || !anomalies) {
+			if (error || !data) {
 				storyStatus = 'error';
-				errorMessage = 'Could not load anomalies for this session.';
+				errorMessage = 'Could not load the story for this session.';
 				return;
 			}
+			// A local lookup built once inside this load and then read;
+			// never reactive state, so SvelteMap is not needed.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			const explanationsById = new Map<string, ExplanationView>();
-			await Promise.all(
-				anomalies.map(async (anomaly: AnomalyOut) => {
-					const { data, error: explError } = await api.GET(
-						'/anomalies/{anomaly_id}/explanation',
-						{ params: { path: { anomaly_id: anomaly.anomaly_id } } }
-					);
-					if (!explError && data) {
-						explanationsById.set(anomaly.anomaly_id, explanationViewFromApi(data));
-					}
-				})
+			for (const moment of data) {
+				if (moment.explanation) {
+					explanationsById.set(moment.anomaly.anomaly_id, explanationViewFromApi(moment.explanation));
+				}
+			}
+			moments = buildStoryMoments(
+				data.map((moment) => moment.anomaly),
+				explanationsById
 			);
-			moments = buildStoryMoments(anomalies, explanationsById);
 			storyStatus = 'ready';
 		} catch {
 			storyStatus = 'error';

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { driverName, type DriverNames } from '$lib/drivers';
+	import { namesFromEvents } from '$lib/driver-events';
 	/** Per-corner brake-application distance across a stint, for a selected
 	 * driver — Phase 2.6's novel dataset (`f1_kernel.braking_points`), the
 	 * telemetry answer to "tyre wear from images." SVG for the same reason
@@ -24,6 +26,7 @@
 	import { RaceStateReducer } from '$lib/track-map';
 	import { formatSigned } from '$lib/estimate';
 	import Estimate from './Estimate.svelte';
+	import ConfidenceBadge from './ConfidenceBadge.svelte';
 	import LoadingState from './LoadingState.svelte';
 	import Panel from './Panel.svelte';
 
@@ -31,6 +34,8 @@
 	type BrakingDrift = components['schemas']['BrakingDriftOut'];
 
 	interface Props {
+		names?: DriverNames;
+		initialCorner?: number;
 		apiKey: string;
 		controller: DelaySyncController;
 		/** When false, show every lap/fit immediately (completed-session view). */
@@ -39,9 +44,17 @@
 		drivers?: string[];
 	}
 
-	let { apiKey, controller, gateReveals = true, drivers = [] }: Props = $props();
+	let {
+		apiKey,
+		controller,
+		gateReveals = true,
+		drivers = [],
+		names = {},
+		initialCorner
+	}: Props = $props();
 
 	let visible = $state<VisibleSessionState>(EMPTY_VISIBLE_STATE);
+	let labels = $derived({ ...namesFromEvents(visible.events), ...names });
 	$effect(() => {
 		return controller.visibleState.subscribe((state) => (visible = state));
 	});
@@ -54,7 +67,8 @@
 		const fromStream = Array.from(raceReducer.raceState.cars.values())
 			.filter((c) => c.driver)
 			.sort((a, b) => Number(a.driver) - Number(b.driver));
-		if (fromStream.length > 0) return fromStream;
+		if (fromStream.length > 0)
+			return drivers.length ? fromStream.filter((c) => drivers.includes(c.driver)) : fromStream;
 		return drivers.map((driver) => ({
 			driver,
 			code: driver,
@@ -68,18 +82,24 @@
 	});
 
 	let selectedDriver = $state<string | null>(null);
-	let effectiveDriver = $derived(selectedDriver ?? driverOptions[0]?.driver ?? null);
+	let effectiveDriver = $derived(
+		driverOptions.some((d) => d.driver === selectedDriver)
+			? selectedDriver
+			: (driverOptions[0]?.driver ?? null)
+	);
 
 	function onDriverChange(event: Event): void {
 		selectedDriver = (event.currentTarget as HTMLSelectElement).value;
 	}
 
+	let requestVersion = 0;
 	let status = $state<'loading' | 'error' | 'ready'>('loading');
 	let errorMessage = $state('');
 	let allPoints = $state<BrakingPoint[]>([]);
 	let allDrift = $state<BrakingDrift[]>([]);
 
 	async function load(key: string, driver: string): Promise<void> {
+		const version = ++requestVersion;
 		status = 'loading';
 		allPoints = [];
 		allDrift = [];
@@ -91,6 +111,7 @@
 					params: { path: { key }, query: { braking_drivers: [driver] } }
 				})
 			]);
+			if (version !== requestVersion) return;
 			if (pointsRes.error) {
 				status = 'error';
 				errorMessage = 'The API responded with an error.';
@@ -105,6 +126,7 @@
 			allDrift = (analysisRes.data.braking_drift ?? []).filter((d) => d.driver === driver);
 			status = 'ready';
 		} catch {
+			if (version !== requestVersion) return;
 			status = 'error';
 			errorMessage = 'Could not reach f1_api — is it running?';
 		}
@@ -113,6 +135,9 @@
 	$effect(() => {
 		const driver = effectiveDriver;
 		if (driver) void load(apiKey, driver);
+		return () => {
+			requestVersion++;
+		};
 	});
 
 	let revealedPoints = $derived.by(() => {
@@ -138,7 +163,7 @@
 
 	let cornerOptions = $derived.by((): CornerOption[] => {
 		const result: CornerOption[] = [];
-		for (const p of allPoints) {
+		for (const p of revealedPoints) {
 			if (!result.some((c) => c.number === p.corner_number)) {
 				result.push({ number: p.corner_number, letter: p.corner_letter });
 			}
@@ -147,7 +172,13 @@
 	});
 
 	let selectedCorner = $state<number | null>(null);
-	let effectiveCorner = $derived(selectedCorner ?? cornerOptions[0]?.number ?? null);
+	let effectiveCorner = $derived(
+		cornerOptions.some((c) => c.number === selectedCorner)
+			? selectedCorner
+			: (cornerOptions.find((c) => c.number === initialCorner)?.number ??
+					cornerOptions[0]?.number ??
+					null)
+	);
 
 	function onCornerChange(event: Event): void {
 		selectedCorner = Number((event.currentTarget as HTMLSelectElement).value);
@@ -193,9 +224,9 @@
 		return laps;
 	});
 
-	const VB_W = 320;
-	const VB_H = 180;
-	const PAD = { top: 12, right: 12, bottom: 24, left: 42 };
+	const VB_W = 720;
+	const VB_H = 260;
+	const PAD = { top: 28, right: 24, bottom: 36, left: 55 };
 
 	let lapDomain = $derived.by(() => {
 		if (cornerPoints.length === 0) return { min: 0, max: 1 };
@@ -230,8 +261,8 @@
 </script>
 
 <Panel
-	title="Braking-point drift"
-	subtitle="Sustained brake-application distance before a corner, across a stint. Revealed lap by lap."
+	title="The braking trace"
+	subtitle="Higher points mean braking earlier before the corner. Each dot is one lap."
 >
 	{#if driverOptions.length === 0}
 		<LoadingState label="Waiting for the driver list…" />
@@ -242,7 +273,7 @@
 				<select onchange={onDriverChange}>
 					{#each driverOptions as d (d.driver)}
 						<option value={d.driver} selected={d.driver === effectiveDriver}
-							>{d.code ?? d.driver}</option
+							>{labels[d.driver] ?? driverName(d.driver, null, d.code)}</option
 						>
 					{/each}
 				</select>
@@ -278,49 +309,51 @@
 					to judge){/if}.
 			</p>
 		{:else}
-			<svg
-				viewBox="0 0 {VB_W} {VB_H}"
-				class="chart"
-				role="img"
-				aria-label="Braking distance before corner across a stint"
-			>
-				<line
-					x1={PAD.left}
-					y1={VB_H - PAD.bottom}
-					x2={VB_W - PAD.right}
-					y2={VB_H - PAD.bottom}
-					class="axis"
-				/>
-				<line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={VB_H - PAD.bottom} class="axis" />
-				<text x={PAD.left} y={VB_H - 4} class="axis-label">lap →</text>
-				<text x="4" y={PAD.top} class="axis-label">earlier</text>
-
-				{#each stintStartLaps as startLap (startLap)}
-					{#if startLap >= lapDomain.min && startLap <= lapDomain.max}
-						<line
-							x1={xFor(startLap)}
-							y1={PAD.top}
-							x2={xFor(startLap)}
-							y2={VB_H - PAD.bottom}
-							class="stint-boundary"
-						/>
-					{/if}
-				{/each}
-
-				<path
-					d={linePath()}
-					class="curve"
-					stroke-dasharray={cornerDrift && cornerDrift.reliability !== 'good' ? '6 4' : undefined}
-				/>
-				{#each cornerPoints as p (p.lap_number)}
-					<circle
-						cx={xFor(p.lap_number)}
-						cy={yFor(p.distance_before_corner_m as number)}
-						r="2"
-						class="point"
+			<div class="plot-scroll">
+				<svg
+					viewBox="0 0 {VB_W} {VB_H}"
+					class="chart"
+					role="img"
+					aria-label="Braking distance before corner across a stint"
+				>
+					<line
+						x1={PAD.left}
+						y1={VB_H - PAD.bottom}
+						x2={VB_W - PAD.right}
+						y2={VB_H - PAD.bottom}
+						class="axis"
 					/>
-				{/each}
-			</svg>
+					<line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={VB_H - PAD.bottom} class="axis" />
+					<text x={PAD.left} y={VB_H - 4} class="axis-label">lap →</text>
+					<text x="4" y={PAD.top} class="axis-label">earlier</text>
+
+					{#each stintStartLaps as startLap (startLap)}
+						{#if startLap >= lapDomain.min && startLap <= lapDomain.max}
+							<line
+								x1={xFor(startLap)}
+								y1={PAD.top}
+								x2={xFor(startLap)}
+								y2={VB_H - PAD.bottom}
+								class="stint-boundary"
+							/>
+						{/if}
+					{/each}
+
+					<path
+						d={linePath()}
+						class="curve"
+						stroke-dasharray={cornerDrift && cornerDrift.reliability !== 'good' ? '6 4' : undefined}
+					/>
+					{#each cornerPoints as p (p.lap_number)}
+						<circle
+							cx={xFor(p.lap_number)}
+							cy={yFor(p.distance_before_corner_m as number)}
+							r="2"
+							class="point"
+						/>
+					{/each}
+				</svg>
+			</div>
 
 			<div class="footnote">
 				{#if unknownCount > 0}
@@ -336,6 +369,7 @@
 			</div>
 
 			{#if cornerDrift}
+				<ConfidenceBadge level={cornerDrift.reliability} />
 				<Estimate
 					label="Braking drift"
 					value={cornerDrift.drift_m_per_lap}
@@ -357,6 +391,12 @@
 </Panel>
 
 <style>
+	.plot-scroll {
+		overflow-x: auto;
+	}
+	.plot-scroll .chart {
+		min-width: 540px;
+	}
 	.hint {
 		color: var(--color-text-muted);
 		font-size: var(--font-size-sm);
@@ -398,7 +438,7 @@
 	}
 
 	.axis-label {
-		font-size: 7px;
+		font-size: 12px;
 		fill: var(--color-text-faint);
 	}
 

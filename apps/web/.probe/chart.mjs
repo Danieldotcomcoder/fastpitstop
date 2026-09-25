@@ -1,0 +1,15 @@
+import { chromium } from '@playwright/test';
+const OUT = process.env.SP;
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1500, height: 1200 } });
+const errs = [];
+page.on('pageerror', (e) => errs.push('[pageerror] ' + String(e).slice(0, 300)));
+page.on('console', (m) => { if (m.type() === 'error') errs.push('[console] ' + m.text().slice(0, 300)); });
+await page.goto('http://127.0.0.1:4400/sessions/2024/1?speed=300', { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(75000);
+console.log('LAP:', await page.getByTestId('session-lap').textContent().catch(() => '?'));
+await page.locator('.chart').first().hover({ position: { x: 400, y: 200 } }).catch(() => {});
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${OUT}/chart-new.png`, fullPage: true });
+console.log('ERRORS:', errs.slice(0, 8).join('\n') || 'none');
+await browser.close();

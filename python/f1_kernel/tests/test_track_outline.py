@@ -10,7 +10,12 @@ import math
 
 import pytest
 
-from f1_kernel.track_outline import MIN_SOURCE_POINTS, TrackOutline, derive_track_outline
+from f1_kernel.track_outline import (
+    MIN_SOURCE_POINTS,
+    TrackOutline,
+    derive_pit_lane,
+    derive_track_outline,
+)
 
 
 def _rectangle(width: float, height: float, n_per_side: int) -> list[tuple[float, float]]:
@@ -135,3 +140,36 @@ def test_already_closed_input_is_not_double_closed() -> None:
     outline = derive_track_outline(already_closed, target_points=50)
 
     assert len(outline.points) == 51
+
+
+# -- the pit lane -----------------------------------------------------------
+
+
+def _straight_lane_with_boxes() -> list[list[tuple[float, float]]]:
+    """Cars driving along y=0 from x=0 to x=4000 (a 400 m lane), each one
+    swerving 6 m into its own box somewhere along it and stopping there."""
+    traverses: list[list[tuple[float, float]]] = []
+    for box in range(300, 3800, 400):
+        path: list[tuple[float, float]] = []
+        for x in range(0, 4001, 50):
+            y = -60.0 if abs(x - box) <= 100 else 0.0
+            path.append((float(x), y))
+            if x == box:
+                path.extend([(float(x), -60.0)] * 10)  # standing in the box
+        traverses.append(path)
+    return traverses
+
+
+def test_the_pit_lane_is_the_median_path_not_any_one_stop() -> None:
+    lane = derive_pit_lane(_straight_lane_with_boxes())
+
+    ys = [y for _, y in lane.points]
+    assert max(abs(y) for y in ys) < 10  # every box swerve averaged out
+    assert lane.points[0][0] < 100 and lane.points[-1][0] > 3900
+    assert 395 < lane.length_m < 410
+    assert lane.source_stops == 9
+
+
+def test_too_few_stops_is_no_pit_lane() -> None:
+    with pytest.raises(ValueError, match="pit-lane traverses"):
+        derive_pit_lane(_straight_lane_with_boxes()[:2])

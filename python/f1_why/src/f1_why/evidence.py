@@ -69,18 +69,23 @@ by 5.3 to decide how much to trust what got cited. The two are independent
 questions: how RELEVANT a fact is to explaining this moment, and how much
 to TRUST it once used.
 
-`EvidenceBundle.low_evidence` is true unless a genuinely EXPLANATORY item
-(`RADIO_CLIP` or `RACE_CONTROL`) survived — CLAUDE.md's own bar for "empty/
-weak" is about WHY, not just "any context at all". `LAP_CONTEXT`/
-`DEGRADATION_FIT` are background (what tyre, how worn, how the pace was
-trending) — useful scene-setting, but "on medium tyres, tyre age 8" does
-not explain a sudden 8-second loss on its own. This is deliberately
-uniform across every `AnomalyKind`, even `DEG_CLIFF`/`PIT_ANOMALY` whose
-own numbers already read like a cause ("the tyre fell off a cliff", "the
-stop was slow") — the conservative reading is that WHY the cliff/slow-stop
-happened (a compound issue? damage? traffic?) still has no corroboration
-without external evidence, and CLAUDE.md's own honesty contract favours
-under- over over-claiming.
+`EvidenceBundle.low_evidence` is true when nothing beyond the anomaly's own
+numbers survived: no measured lap context, no degradation fit, no relevant
+race control, no radio. Only then is the model skipped. Anything measured
+counts as support, and the narrator decides whether it actually explains
+the moment -- it is told to decline when it does not, and every sentence it
+writes still has to cite the items it used or the grounding validator
+throws it away.
+
+This used to count only radio and race control, treating lap context and
+degradation as background. Two things made that wrong in practice. A tyre
+eight laps fresher and an interval closing from 0.59 s to 0.33 s IS why one
+car passed another; the product's own design reads exactly that way. And
+with the radio corpus empty, the only thing clearing the bar was whatever
+race-control message happened to fall in the lookback window -- usually a
+blue flag for some unrelated car -- so the rule admitted noise and
+excluded the facts that actually explained the moment. Race control is now
+also filtered for relevance (`_race_control_items`).
 """
 
 from __future__ import annotations
@@ -94,7 +99,7 @@ from enum import StrEnum
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
-from f1_domain import DomainEvent, RaceControlMessage
+from f1_domain import DomainEvent, DriverListUpdated, DriverRef, RaceControlMessage
 from f1_kernel import (
     Confidence,
     DegradationFit,
@@ -170,11 +175,17 @@ class EvidenceKind(StrEnum):
     lookback window."""
 
 
-_EXPLANATORY_KINDS: frozenset[EvidenceKind] = frozenset(
-    {EvidenceKind.RADIO_CLIP, EvidenceKind.RACE_CONTROL}
+_SUPPORTING_KINDS: frozenset[EvidenceKind] = frozenset(
+    {
+        EvidenceKind.RADIO_CLIP,
+        EvidenceKind.RACE_CONTROL,
+        EvidenceKind.LAP_CONTEXT,
+        EvidenceKind.DEGRADATION_FIT,
+    }
 )
-"""The only kinds that count towards `EvidenceBundle.low_evidence` — see
-that field's own docstring and the module docstring for the full reasoning."""
+"""Every kind except the anomaly's own fact: what counts towards
+`EvidenceBundle.low_evidence`. See the module docstring for why measured
+kernel facts are in this set."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,11 +245,9 @@ class EvidenceBundle:
     """Already ranked and trimmed — the anomaly's own fact first, then the
     rest by descending `salience`."""
     low_evidence: bool
-    """True unless a genuinely explanatory item (`RADIO_CLIP`/`RACE_CONTROL`)
-    survived — kernel-state context alone (`LAP_CONTEXT`/`DEGRADATION_FIT`)
-    is background, not a cause. The signal 5.3 uses to emit "no clear
-    cause" rather than ask a model to invent one. See the module docstring
-    for the full reasoning."""
+    """True when nothing beyond the anomaly's own fact survived. The signal
+    5.3 uses to emit "no clear cause" without asking a model to invent one.
+    See the module docstring for the full reasoning."""
     token_budget: int
     estimated_tokens: int
     """Sum of `_estimate_tokens` over the surviving `items` — an
@@ -247,6 +256,11 @@ class EvidenceBundle:
     notes: tuple[str, ...]
     """Anything about this bundle worth surfacing that is not itself
     evidence: no radio corpus configured, items dropped for budget."""
+    roster: tuple[DriverRef, ...] = ()
+    """Who the racing numbers in `items` are, for every driver the bundle
+    mentions. Identity, not evidence: it lets a narrator write "Russell"
+    instead of "driver 63", and is never citable. Empty when the session's
+    stream carried no driver list."""
 
 
 class EvidenceParams(BaseModel):
@@ -304,11 +318,9 @@ class EvidenceParams(BaseModel):
         default=1,
         ge=0,
         description=(
-            "Minimum number of EXPLANATORY items (RADIO_CLIP/RACE_CONTROL —"
-            " never LAP_CONTEXT/DEGRADATION_FIT, which are background, not"
-            " a cause) that must survive trimming before a bundle counts"
-            " as having a real cause to point to. Below this,"
-            " `low_evidence=True`."
+            "Minimum number of SUPPORTING items (anything but the"
+            " anomaly's own fact) that must survive trimming before the"
+            " narrator is asked at all. Below this, `low_evidence=True`."
         ),
     )
 
@@ -393,9 +405,10 @@ def assemble_evidence(
     if dropped:
         notes.append(f"{dropped} lower-salience evidence item(s) dropped to fit the token budget")
 
-    explanatory = sum(1 for item in items if item.kind in _EXPLANATORY_KINDS)
-    low_evidence = explanatory < params.low_evidence_min_supporting_items
+    supporting = sum(1 for item in items if item.kind in _SUPPORTING_KINDS)
+    low_evidence = supporting < params.low_evidence_min_supporting_items
 
+    mentioned = {*anomaly.drivers, *(driver for item in items for driver in item.drivers)}
     return EvidenceBundle(
         anomaly=anomaly,
         anomaly_id=anomaly_id(anomaly),
@@ -404,6 +417,34 @@ def assemble_evidence(
         token_budget=params.token_budget,
         estimated_tokens=estimated_tokens,
         notes=tuple(notes),
+        roster=_roster(sources.events, anomaly.anomaly_time, mentioned),
+    )
+
+
+def _roster(
+    events: Sequence[DomainEvent], at: datetime, mentioned: set[str]
+) -> tuple[DriverRef, ...]:
+    """The latest driver list at or before `at`, narrowed to the drivers the
+    bundle actually mentions and ordered by racing number.
+
+    At or before, like every other input here: a driver list is identity
+    rather than race data, but holding it to the same boundary costs nothing
+    and keeps "nothing after the anomaly" true without exceptions."""
+    latest: DriverListUpdated | None = None
+    for event in events:
+        if (
+            isinstance(event, DriverListUpdated)
+            and event.ts_utc <= at
+            and (latest is None or event.ts_utc >= latest.ts_utc)
+        ):
+            latest = event
+    if latest is None or not latest.drivers:
+        return ()
+    by_number = {ref.number: ref for ref in latest.drivers}
+    return tuple(
+        by_number[number]
+        for number in sorted(mentioned, key=lambda n: (len(n), n))
+        if number in by_number
     )
 
 
@@ -608,12 +649,20 @@ def _race_control_items(
     window_start: datetime,
     params: EvidenceParams,
 ) -> list[EvidenceItem]:
+    # Relevant means it names one of this anomaly's drivers or names nobody
+    # (a safety car, a red flag, DRS, a sector yellow). A message about some
+    # other car is not evidence about this moment: in the 2025 Spanish GP
+    # the five most recent messages before a Russell/Antonelli undercut
+    # verdict were blue flags for three uninvolved backmarkers, and they
+    # were the whole race-control contribution to its bundle.
+    involved = set(anomaly.drivers)
     messages = sorted(
         (
             event
             for event in events
             if isinstance(event, RaceControlMessage)
             and window_start <= event.ts_utc <= anomaly.anomaly_time
+            and (event.driver is None or event.driver in involved)
         ),
         key=lambda event: event.ts_utc,
         reverse=True,

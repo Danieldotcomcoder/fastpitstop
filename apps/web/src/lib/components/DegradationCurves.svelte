@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { driverName, type DriverNames } from '$lib/drivers';
+	import { namesFromEvents } from '$lib/driver-events';
 	/** Fuel-corrected pace vs tyre age per stint, with a crossover marked —
 	 * `f1_kernel.fit_degradation`'s output (`GET /sessions/{key}/degradation`)
 	 * rendered as an SVG curve chart. SVG rather than Canvas: at most a
@@ -36,6 +38,7 @@
 	type DegradationFit = components['schemas']['DegradationFitOut'];
 
 	interface Props {
+		names?: DriverNames;
 		apiKey: string;
 		controller: DelaySyncController;
 		/** When false, show every fit immediately (completed-session retrospective).
@@ -43,14 +46,16 @@
 		gateReveals?: boolean;
 	}
 
-	let { apiKey, controller, gateReveals = true }: Props = $props();
+	let { apiKey, controller, gateReveals = true, names = {} }: Props = $props();
 
+	let requestVersion = 0;
 	let status = $state<'loading' | 'error' | 'ready'>('loading');
 	let errorMessage = $state('');
 	let allFits = $state<DegradationFit[]>([]);
 
 	const revealTracker = new RevealTracker();
 	let visible = $state<VisibleSessionState>(EMPTY_VISIBLE_STATE);
+	let labels = $derived({ ...namesFromEvents(visible.events), ...names });
 	$effect(() => {
 		// Re-subscribes whenever a NEW `controller` prop arrives (a session
 		// switch in the harness passes a fresh controller) — returning the
@@ -60,6 +65,7 @@
 	});
 
 	async function load(key: string): Promise<void> {
+		const version = ++requestVersion;
 		status = 'loading';
 		allFits = [];
 		revealTracker.reset();
@@ -67,6 +73,7 @@
 			const { data, error } = await api.GET('/sessions/{key}/degradation', {
 				params: { path: { key } }
 			});
+			if (version !== requestVersion) return;
 			if (error) {
 				status = 'error';
 				errorMessage = 'The API responded with an error.';
@@ -75,6 +82,7 @@
 			allFits = data;
 			status = 'ready';
 		} catch {
+			if (version !== requestVersion) return;
 			status = 'error';
 			errorMessage = 'Could not reach f1_api — is it running?';
 		}
@@ -82,6 +90,9 @@
 
 	$effect(() => {
 		void load(apiKey);
+		return () => {
+			requestVersion++;
+		};
 	});
 
 	function fitKey(fit: DegradationFit): string {
@@ -89,7 +100,7 @@
 	}
 
 	function fitLabel(fit: DegradationFit): string {
-		return `${fit.driver} · stint ${fit.stint_number} · ${fit.compound}`;
+		return `${labels[fit.driver] ?? driverName(fit.driver)} · stint ${fit.stint_number} · ${fit.compound}`;
 	}
 
 	// Reading `visible.events` (a tracked `$state`) is what makes this
@@ -102,6 +113,12 @@
 		return allFits.filter((fit) => revealTracker.isStintRevealed(fit.driver, fit.stint_number));
 	});
 
+	let comparing = $state(false);
+	let stintNumber = $state(1);
+	let stintOptions = $derived(
+		[...new Set(revealedFits.map((f) => f.stint_number))].sort((a, b) => a - b)
+	);
+	let shownStint = $derived(stintOptions.includes(stintNumber) ? stintNumber : stintOptions[0]);
 	let selectedAKey = $state<string | null>(null);
 	let selectedBKey = $state<string | null>(null);
 
@@ -133,9 +150,9 @@
 			: null
 	);
 
-	const VB_W = 320;
-	const VB_H = 200;
-	const PAD = { top: 12, right: 12, bottom: 28, left: 42 };
+	const VB_W = 720;
+	const VB_H = 280;
+	const PAD = { top: 28, right: 24, bottom: 36, left: 55 };
 
 	let paceDomain = $derived.by(() => {
 		const values: number[] = [];
@@ -154,7 +171,7 @@
 		const { min, max } = paceDomain;
 		const span = Math.max(max - min, 0.01);
 		// faster (lower pace) plots higher on screen
-		return PAD.top + (1 - (pace - min) / span) * (VB_H - PAD.top - PAD.bottom);
+		return PAD.top + ((pace - min) / span) * (VB_H - PAD.top - PAD.bottom);
 	}
 	function linePath(curve: CurveSeries): string {
 		return curve.age
@@ -176,8 +193,8 @@
 </script>
 
 <Panel
-	title="Degradation curves"
-	subtitle="Fuel-corrected pace vs tyre age. Revealed only once a stint has fully finished on your delayed clock."
+	title="Tyre life, in lap time"
+	subtitle="Seconds lost per lap as the tyres age. Smaller positive values mean a gentler loss of pace."
 >
 	{#if status === 'loading'}
 		<LoadingState label="Loading degradation fits…" />
@@ -191,128 +208,252 @@
 			watching.
 		</p>
 	{:else}
-		<div class="selectors">
-			<label>
-				<span>Curve A</span>
-				<select onchange={onSelectA}>
-					{#each revealedFits as fit (fitKey(fit))}
-						<option
-							value={fitKey(fit)}
-							selected={selectedA !== null && fitKey(fit) === fitKey(selectedA)}
-						>
-							{fitLabel(fit)}
-						</option>
-					{/each}
-				</select>
-			</label>
-			{#if revealedFits.length > 1}
+		<div class="stint-tabs" role="group" aria-label="Tyre stint">
+			{#each stintOptions as n (n)}<button
+					class:active={shownStint === n}
+					onclick={() => (stintNumber = n)}>Stint {n}</button
+				>{/each}
+		</div>
+		<div class="stint-overview">
+			{#each revealedFits.filter((f) => f.stint_number === shownStint) as fit (fitKey(fit))}
+				<button
+					class="stint-card"
+					onclick={() => {
+						selectedAKey = fitKey(fit);
+						comparing = true;
+					}}
+					aria-label={`Inspect ${fitLabel(fit)}`}
+				>
+					<span class="stint-name">{labels[fit.driver] ?? driverName(fit.driver)}</span><span
+						class="stint-meta">{fit.compound} tyres</span
+					>
+					<strong
+						>{fit.deg_rate_s_per_lap >= 0 ? '+' : ''}{fit.deg_rate_s_per_lap.toFixed(3)}
+						<small>s / lap</small></strong
+					>
+					<ConfidenceBadge level={fit.reliability} /><span class="stint-meta"
+						>{fit.n_laps_used} clean laps · compare ↗</span
+					>
+				</button>
+			{/each}
+		</div>
+		<button
+			class="compare-toggle"
+			onclick={() => (comparing = !comparing)}
+			aria-expanded={comparing}
+			>{comparing ? 'Close pace comparison −' : 'Compare two stints +'}</button
+		>
+		{#if comparing}
+			<div class="selectors">
 				<label>
-					<span>Curve B</span>
-					<select onchange={onSelectB}>
+					<span>First stint</span>
+					<select onchange={onSelectA}>
 						{#each revealedFits as fit (fitKey(fit))}
 							<option
 								value={fitKey(fit)}
-								selected={selectedB !== null && fitKey(fit) === fitKey(selectedB)}
+								selected={selectedA !== null && fitKey(fit) === fitKey(selectedA)}
 							>
 								{fitLabel(fit)}
 							</option>
 						{/each}
 					</select>
 				</label>
-			{/if}
-		</div>
+				{#if revealedFits.length > 1}
+					<label>
+						<span>Compare with</span>
+						<select onchange={onSelectB}>
+							{#each revealedFits as fit (fitKey(fit))}
+								<option
+									value={fitKey(fit)}
+									selected={selectedB !== null && fitKey(fit) === fitKey(selectedB)}
+								>
+									{fitLabel(fit)}
+								</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
+			</div>
 
-		<svg
-			viewBox="0 0 {VB_W} {VB_H}"
-			class="chart"
-			role="img"
-			aria-label="Fuel-corrected pace vs tyre age"
-		>
-			<line
-				x1={PAD.left}
-				y1={VB_H - PAD.bottom}
-				x2={VB_W - PAD.right}
-				y2={VB_H - PAD.bottom}
-				class="axis"
-			/>
-			<line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={VB_H - PAD.bottom} class="axis" />
-			<text x={PAD.left} y={VB_H - 6} class="axis-label">tyre age (laps) →</text>
-			<text x="4" y={PAD.top} class="axis-label">faster</text>
-
-			{#if curveA}
-				<path d={bandPath(curveA)} class="ci-band curve-a" />
-				<path
-					d={linePath(curveA)}
-					class="curve curve-a"
-					stroke-dasharray={selectedA?.reliability === 'good' ? undefined : '6 4'}
-				/>
-			{/if}
-			{#if curveB}
-				<path d={bandPath(curveB)} class="ci-band curve-b" />
-				<path
-					d={linePath(curveB)}
-					class="curve curve-b"
-					stroke-dasharray={selectedB?.reliability === 'good' ? undefined : '6 4'}
-				/>
-			{/if}
-			{#if crossover}
-				<circle
-					cx={xFor(crossover.age)}
-					cy={yFor(crossover.value)}
-					r="4"
-					class="crossover-marker"
-				/>
-				<text x={xFor(crossover.age) + 6} y={yFor(crossover.value) - 6} class="crossover-label">
-					crossover
-				</text>
-			{/if}
-		</svg>
-
-		<div class="legend">
-			{#if selectedA}
-				<div class="legend-row">
-					<span class="swatch curve-a"></span>
-					<span>{fitLabel(selectedA)}</span>
-					<ConfidenceBadge level={selectedA.reliability} />
-					<Estimate
-						label="Deg rate"
-						value={selectedA.deg_rate_s_per_lap}
-						unit="s/lap"
-						ciLow={selectedA.deg_rate_ci_low_s_per_lap}
-						ciHigh={selectedA.deg_rate_ci_high_s_per_lap}
-						sampleSize={selectedA.n_laps_used}
-						method="robust regression"
-						format={formatSigned}
-						size="md"
+			<div class="plot-scroll">
+				<svg
+					viewBox="0 0 {VB_W} {VB_H}"
+					class="chart"
+					role="img"
+					aria-label="Fuel-corrected pace vs tyre age"
+				>
+					<line
+						x1={PAD.left}
+						y1={VB_H - PAD.bottom}
+						x2={VB_W - PAD.right}
+						y2={VB_H - PAD.bottom}
+						class="axis"
 					/>
-				</div>
-			{/if}
-			{#if selectedB && selectedB !== selectedA}
-				<div class="legend-row">
-					<span class="swatch curve-b"></span>
-					<span>{fitLabel(selectedB)}</span>
-					<ConfidenceBadge level={selectedB.reliability} />
-					<Estimate
-						label="Deg rate"
-						value={selectedB.deg_rate_s_per_lap}
-						unit="s/lap"
-						ciLow={selectedB.deg_rate_ci_low_s_per_lap}
-						ciHigh={selectedB.deg_rate_ci_high_s_per_lap}
-						sampleSize={selectedB.n_laps_used}
-						method="robust regression"
-						format={formatSigned}
-						size="md"
-					/>
-				</div>
-			{/if}
-			{#if revealedFits.length === 1}
-				<p class="hint">Only one stint revealed so far — comparison needs a second.</p>
-			{/if}
-		</div>
+					<line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={VB_H - PAD.bottom} class="axis" />
+					<text x={PAD.left} y={VB_H - 6} class="axis-label">tyre age (laps) →</text>
+					<text x="4" y={PAD.top} class="axis-label">faster</text>
+
+					{#if curveA}
+						<path d={bandPath(curveA)} class="ci-band curve-a" />
+						<path
+							d={linePath(curveA)}
+							class="curve curve-a"
+							stroke-dasharray={selectedA?.reliability === 'good' ? undefined : '6 4'}
+						/>
+					{/if}
+					{#if curveB}
+						<path d={bandPath(curveB)} class="ci-band curve-b" />
+						<path
+							d={linePath(curveB)}
+							class="curve curve-b"
+							stroke-dasharray={selectedB?.reliability === 'good' ? undefined : '6 4'}
+						/>
+					{/if}
+					{#if crossover}
+						<circle
+							cx={xFor(crossover.age)}
+							cy={yFor(crossover.value)}
+							r="4"
+							class="crossover-marker"
+						/>
+						<text x={xFor(crossover.age) + 6} y={yFor(crossover.value) - 6} class="crossover-label">
+							crossover
+						</text>
+					{/if}
+				</svg>
+			</div>
+
+			<div class="legend">
+				{#if selectedA}
+					<div class="legend-row">
+						<span class="swatch curve-a"></span>
+						<span>{fitLabel(selectedA)}</span>
+						<ConfidenceBadge level={selectedA.reliability} />
+						<Estimate
+							label="Pace lost per lap"
+							value={selectedA.deg_rate_s_per_lap}
+							unit="s/lap"
+							ciLow={selectedA.deg_rate_ci_low_s_per_lap}
+							ciHigh={selectedA.deg_rate_ci_high_s_per_lap}
+							sampleSize={selectedA.n_laps_used}
+							method="robust regression"
+							format={formatSigned}
+							size="md"
+						/>
+					</div>
+				{/if}
+				{#if selectedB && selectedB !== selectedA}
+					<div class="legend-row">
+						<span class="swatch curve-b"></span>
+						<span>{fitLabel(selectedB)}</span>
+						<ConfidenceBadge level={selectedB.reliability} />
+						<Estimate
+							label="Pace lost per lap"
+							value={selectedB.deg_rate_s_per_lap}
+							unit="s/lap"
+							ciLow={selectedB.deg_rate_ci_low_s_per_lap}
+							ciHigh={selectedB.deg_rate_ci_high_s_per_lap}
+							sampleSize={selectedB.n_laps_used}
+							method="robust regression"
+							format={formatSigned}
+							size="md"
+						/>
+					</div>
+				{/if}
+				{#if revealedFits.length === 1}
+					<p class="hint">Only one stint revealed so far — comparison needs a second.</p>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 </Panel>
 
 <style>
+	.plot-scroll {
+		overflow-x: auto;
+	}
+	.plot-scroll .chart {
+		min-width: 540px;
+	}
+	.stint-tabs {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.stint-tabs button {
+		padding: 0.6rem 1rem;
+		border: 1px solid var(--hairline);
+		border-radius: 5px;
+		background: transparent;
+		color: var(--text-secondary);
+		font: inherit;
+		cursor: pointer;
+	}
+	.stint-tabs .active {
+		background: var(--text-primary);
+		color: var(--surface-base);
+	}
+	.stint-overview {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(205px, 1fr));
+		gap: 0.75rem;
+	}
+	.stint-card {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 1rem;
+		border: 1px solid var(--hairline);
+		border-radius: 6px;
+		background: var(--surface-base);
+		color: var(--text-primary);
+		cursor: pointer;
+		text-align: left;
+		font: inherit;
+	}
+	.stint-card:hover {
+		border-color: var(--text-secondary);
+	}
+	.stint-name {
+		font-weight: 600;
+	}
+	.stint-meta {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+	.stint-card strong {
+		font: 1.6rem var(--font-mono);
+		letter-spacing: -0.06em;
+		margin: 0.2rem 0;
+	}
+	.stint-card small {
+		font: 0.75rem var(--font-ui);
+		letter-spacing: 0;
+		color: var(--text-secondary);
+	}
+	.compare-toggle {
+		align-self: flex-start;
+		background: var(--surface-overlay);
+		border: 1px solid var(--hairline-strong);
+		border-radius: 5px;
+		padding: 0.8rem 1rem;
+		color: var(--text-primary);
+		font: inherit;
+		cursor: pointer;
+	}
+	@media (max-width: 480px) {
+		.stint-overview {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.stint-card {
+			padding: 0.75rem;
+		}
+		.stint-card strong {
+			font-size: 1.25rem;
+		}
+	}
+
 	.hint {
 		color: var(--color-text-muted);
 		font-size: var(--font-size-sm);
@@ -354,7 +495,7 @@
 	}
 
 	.axis-label {
-		font-size: 7px;
+		font-size: 12px;
 		fill: var(--color-text-faint);
 	}
 
@@ -388,7 +529,7 @@
 	}
 
 	.crossover-label {
-		font-size: 8px;
+		font-size: 12px;
 		fill: var(--color-text-muted);
 	}
 

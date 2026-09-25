@@ -69,6 +69,11 @@ def test_laps(client: TestClient) -> None:
     assert any(not row.is_clean for row in rows)
     for row in rows:
         assert row.is_clean == (not any(row.exclusion_reasons))
+    # The kernel's own fuel-corrected time rides along, in the units the
+    # degradation fits use, so a chart can put points and fit on one axis.
+    timed = [row for row in rows if row.lap_time_s is not None]
+    assert timed and all(row.lap_time_fuel_corrected_s is not None for row in timed)
+    assert any(row.lap_time_fuel_corrected_s != row.lap_time_s for row in timed)
 
 
 def test_degradation(client: TestClient) -> None:
@@ -133,6 +138,10 @@ def test_circuit_for_a_shipped_venue(client: TestClient) -> None:
     assert circuit.drs_zones
     assert circuit.outline is not None
     assert len(circuit.outline.points) > 2
+    # The pit lane rides along, from the reference race's real stops.
+    assert circuit.pit_lane is not None
+    assert circuit.pit_lane.source_stops >= 3
+    assert 200 < circuit.pit_lane.length_m < 700
 
 
 def test_circuit_for_the_other_fixture_race_is_also_shipped(client: TestClient) -> None:
@@ -152,17 +161,14 @@ def test_circuit_for_an_unshipped_venue_degrades_to_null_not_404(
     exercises the degrade-gracefully path directly at its actual seam
     rather than skipping it: `None`, not a 404, is the contract for a
     session that exists but has no shipped circuit — the same rule
-    `f1_kernel.circuit_for_event` itself documents. `f1_kernel.load.
-    session_frames` looks `circuit_for_event` up twice on its own two
-    separately-bound imports (once inside `frames.session_frames_from_events`,
-    once in its own "keep the resolved name even with no circuit file"
-    fallback) — both must be patched for the lookup to genuinely miss."""
+    `f1_kernel.circuit_for_event` itself documents. Every session's circuit
+    is resolved in one place, `frames.session_frames_from_events` (by feed
+    venue, then Grand Prix name), so that is the one seam to make miss."""
 
-    def _no_circuit(event_name: str | None) -> None:
+    def _no_circuit(event_name: str | None, feed_circuit_name: str | None = None) -> None:
         return None
 
-    monkeypatch.setattr("f1_kernel.frames.circuit_for_event", _no_circuit)
-    monkeypatch.setattr("f1_kernel.load.circuit_for_event", _no_circuit)
+    monkeypatch.setattr("f1_kernel.frames.circuit_for_session", _no_circuit)
 
     response = client.get(f"/sessions/{SESSION_KEY}/circuit")
 

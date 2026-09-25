@@ -73,6 +73,21 @@ already-past `event_time_utc` would. A session with no `lap_completed` at
 all (a red-flagged or heavily disrupted one) falls back to the stream's own
 first event, unchanged from before.
 
+**Measured car positions ride this timeline as FRAMES, not events.** A
+race carries ~640k `car_position` samples (20 cars at ~4 Hz). One envelope
+per sample would be ~200 MB over the socket and, worse, 640k objects in the
+browser's released-event log; one pydantic event per sample server-side is
+half a gigabyte per viewer. So positions come from the session's POSITION
+TRACK (`f1_kernel.positions`, a columnar frame) and go out as one
+`car_positions` envelope per instant the feed sampled, every car in it:
+~30k envelopes of ~0.4 KB for a race. They are paced by their own
+timestamp through exactly the same `_emit_paced` remap as every other
+envelope, so Delay Sync gates them identically. Two kinds of frame are
+not sent: one more than `POSITION_STALE_AFTER_S` of race time before the
+pacing anchor (the pre-anchor burst would otherwise ship the whole
+pre-race hour, all of it superseded on arrival), and, when unpaced
+(`speed <= 0`), every frame but the last, since only the last can show.
+
 **Phase 4.4 — team radio joins this same timeline.** A `team_radio_clip`
 event already rode this stream (it is in `DEFAULT_STREAM_KINDS`); what this
 prompt adds is enrichment (`radio_clip_envelope`, joining in the clip's
@@ -99,34 +114,67 @@ every other envelope — never the raw historical `anomaly_time` on the wire.
 
 from __future__ import annotations
 
+import heapq
+import logging
+import queue
+import threading
 import time
-from collections.abc import Callable, Collection, Iterator
+from collections import deque
+from collections.abc import Callable, Collection, Generator, Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import polars as pl
 
 from f1_api.convert import crossover_rows
 from f1_api.schemas import StreamEnvelope
 from f1_api.why import (
     CitedEvidenceRef,
+    ExplanationSchedule,
     ScheduledExplanation,
     anomaly_id_path,
     precompute_session_explanations,
 )
 from f1_domain import DomainEvent, SessionKey, TeamRadioClip
 from f1_domain.events import DOMAIN_EVENT_ADAPTER
-from f1_kernel import EventSource, KernelParams, KernelReport, LiveKernelSession
+from f1_kernel import (
+    EventSource,
+    KernelParams,
+    KernelReport,
+    LiveKernelSession,
+    PositionFrame,
+    PositionTrackSource,
+    position_frames,
+    race_distance_laps,
+    track_from_events,
+)
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptRecord, TranscriptStore
 from f1_replay import pacing_offset_s, sleep_until
 from f1_why import Anomaly, Explanation, ExplanationStore, NarrationModel
 
+_log = logging.getLogger(__name__)
+
 KERNEL_SNAPSHOT_KIND = "kernel_snapshot"
 RADIO_CLIP_KIND = "radio_clip"
 EXPLANATION_KIND = "explanation"
+CAR_POSITIONS_KIND = "car_positions"
+POSITION_KIND = "car_position"
+
+POSITION_STALE_AFTER_S = 180.0
+"""Race seconds before the pacing anchor beyond which a position frame is
+not sent. A viewer sees the pre-anchor stretch only by delaying their clock
+(Delay Sync holds at most 120 s, `DelaySyncController`'s maximum), so at 1x
+nothing older can ever be shown. Measured in RACE time, not wall time, so
+the cut does not widen with replay speed: at 16x a wall-time cut would ship
+the whole pre-race hour (~11k frames) to every viewer to cover a 120 s
+delay nobody sets on a fast-forward. The price is that such a viewer sees
+the estimated map until their clock reaches the frames."""
 
 DEFAULT_STREAM_KINDS: frozenset[str] = frozenset(
     {
         "lap_completed",
+        "lap_counter_updated",
         "sector_completed",
         "car_position",
         "position_changed",
@@ -147,7 +195,57 @@ DEFAULT_STREAM_KINDS: frozenset[str] = frozenset(
 `kinds` pushdown (see this module's docstring). Kept as an explicit allowlist
 (mirroring `f1_kernel.sources.LAP_FRAME_KINDS`) rather than "all kinds minus
 telemetry" computed from `f1_domain`, so a new event kind added later is
-opt-in to the stream by a deliberate edit here, not silently included."""
+opt-in to the stream by a deliberate edit here, not silently included.
+`car_position` here means "stream positions"; they go out as
+`car_positions` frames, never one envelope per sample."""
+
+
+def _coordinate(value: float) -> float | int:
+    """The feed's positions are whole units (~1/10 m); sending them as ints
+    keeps a frame's JSON short. Anything finer is kept to one decimal."""
+    return int(value) if value.is_integer() else round(value, 1)
+
+
+def car_positions_envelope(event_time: datetime, frame: PositionFrame) -> StreamEnvelope:
+    """One instant's positions for every car the feed placed, as
+    `{"cars": {driver: [x, y]}}` in the feed's own units."""
+    payload: dict[str, Any] = {
+        "cars": {driver: [_coordinate(x), _coordinate(y)] for driver, x, y in frame.cars}
+    }
+    return StreamEnvelope(event_time_utc=event_time, kind=CAR_POSITIONS_KIND, payload=payload)
+
+
+def live_position_frames(events: Iterable[DomainEvent]) -> Iterator[DomainEvent | PositionFrame]:
+    """`events` with each run of `car_position` events sharing one
+    timestamp (one `Position.z` entry) folded into a `PositionFrame`, in
+    order. The live path's batching; replay reads a position track."""
+    pending: list[tuple[str, float, float]] = []
+    pending_ts: datetime | None = None
+    for event in events:
+        if event.kind == POSITION_KIND:
+            driver = getattr(event, "driver", None)
+            x = getattr(event, "x", None)
+            y = getattr(event, "y", None)
+            if pending_ts is not None and event.ts_utc != pending_ts:
+                yield PositionFrame(pending_ts, tuple(sorted(pending)))
+                pending = []
+            pending_ts = event.ts_utc
+            if isinstance(driver, str) and x is not None and y is not None:
+                pending.append((driver, float(x), float(y)))
+            continue
+        if pending_ts is not None:
+            yield PositionFrame(pending_ts, tuple(sorted(pending)))
+            pending, pending_ts = [], None
+        yield event
+    if pending_ts is not None:
+        yield PositionFrame(pending_ts, tuple(sorted(pending)))
+
+
+def source_position_track(source: EventSource, session_key: SessionKey) -> pl.DataFrame | None:
+    """The source's own measured positions, the cheapest way it offers."""
+    if isinstance(source, PositionTrackSource):
+        return source.position_track(session_key)
+    return track_from_events(source.events(session_key, kinds=[POSITION_KIND]))
 
 
 def domain_event_envelope(
@@ -287,30 +385,107 @@ class LapSnapshotFeed:
     recomputes the whole session up to 20-ish times more often than the
     "once per lap" cadence actually needs. This buffers every event and
     only flushes (and returns a fresh report) on the FIRST `lap_completed`
-    whose `lap_number` hasn't been flushed yet — the field's own pace, not
-    the field's fan-out.
+    of a lap number higher than any flushed so far — the leader's pace, not
+    the field's fan-out. Higher, not merely different: comparing with the
+    last flushed number alone re-flushed every time a lapped car completed
+    an older lap after the leader started a new one (260 full recomputes
+    for a 57-lap race instead of 57), and every one of them paused the
+    replay stream for up to a second.
     """
 
-    def __init__(self, session_key: SessionKey, params: KernelParams | None = None) -> None:
+    def __init__(
+        self,
+        session_key: SessionKey,
+        params: KernelParams | None = None,
+        *,
+        total_laps: int | None = None,
+        event_name: str | None = None,
+    ) -> None:
+        # The event name is how a backfilled session finds its circuit, and
+        # with it the calibrated pit loss every undercut call depends on.
+        # Without it each snapshot fell back to the cross-circuit default.
         self._live = LiveKernelSession(
-            session_key=session_key, params=params if params is not None else KernelParams()
+            session_key=session_key,
+            params=params if params is not None else KernelParams(),
+            total_laps=total_laps,
+            event_name=event_name,
         )
         self._pending: list[DomainEvent] = []
-        self._last_flushed_lap: int | None = None
+        self._highest_flushed_lap: int | None = None
 
     def feed(self, event: DomainEvent) -> KernelReport | None:
         """Buffer `event`; returns a fresh `KernelReport` exactly on the
-        event that completes a new lap number, `None` otherwise."""
+        event that completes a new lap number, `None` otherwise. Car
+        positions are not buffered: no analytic reads them, and a live
+        session would otherwise pile ~640k of them into the kernel."""
+        if event.kind == POSITION_KIND:
+            return None
         self._pending.append(event)
         if event.kind != "lap_completed":
             return None
         lap_number = getattr(event, "lap_number", None)
-        if lap_number is None or lap_number == self._last_flushed_lap:
+        if lap_number is None or (
+            self._highest_flushed_lap is not None and lap_number <= self._highest_flushed_lap
+        ):
             return None
         report = self._live.push(self._pending)
         self._pending = []
-        self._last_flushed_lap = lap_number
+        self._highest_flushed_lap = lap_number
         return report
+
+
+class _SnapshotWorker:
+    """Runs a `LapSnapshotFeed` on its own thread, so a replay keeps its
+    pace while the kernel recomputes.
+
+    A recompute takes up to a second on a real race. Run inline, it paused
+    everything behind it once a lap; with car positions on the stream that
+    froze every car and then jumped it forward (at 16x, ~250 m). Here the
+    pacing loop only hands events over and picks up finished reports. A
+    report is stamped with its lap's own instant and may go out a moment
+    after it: late is spoiler-safe (Delay Sync releases it on arrival),
+    early cannot happen. Reports come back in lap order; one thread, one
+    feed."""
+
+    def __init__(self, feed: LapSnapshotFeed) -> None:
+        self._feed = feed
+        self._closed = threading.Event()
+        self._inbox: queue.SimpleQueue[tuple[DomainEvent, datetime] | None] = queue.SimpleQueue()
+        self._ready: deque[tuple[datetime, KernelReport]] = deque()
+        self._thread = threading.Thread(target=self._run, name="f1-api-snapshots", daemon=True)
+        self._thread.start()
+
+    def submit(self, event: DomainEvent, live_ts: datetime) -> None:
+        if event.kind != POSITION_KIND:
+            self._inbox.put((event, live_ts))
+
+    def ready(self) -> Iterator[StreamEnvelope]:
+        """Snapshots finished since the last call, oldest first."""
+        while self._ready:
+            live_ts, report = self._ready.popleft()
+            yield kernel_snapshot_envelope(live_ts, report)
+
+    def finish(self) -> Iterator[StreamEnvelope]:
+        """Wait for everything submitted, then the remaining snapshots."""
+        self._inbox.put(None)
+        self._thread.join()
+        yield from self.ready()
+
+    def close(self) -> None:
+        """Stop now, dropping whatever was not computed yet."""
+        self._closed.set()
+        self._inbox.put(None)
+
+    def _run(self) -> None:
+        while (item := self._inbox.get()) is not None and not self._closed.is_set():
+            event, live_ts = item
+            try:
+                report = self._feed.feed(event)
+            except Exception:
+                _log.warning("kernel snapshot failed; the replay continues", exc_info=True)
+                continue
+            if report is not None and report.crossovers:
+                self._ready.append((live_ts, report))
 
 
 def _pacing_anchor_ts(events: list[DomainEvent], *, anchor_to_first_lap: bool) -> datetime:
@@ -407,11 +582,15 @@ def replay_envelopes(
     radio_store: TranscriptStore | None = None,
     narration_model: NarrationModel | None = None,
     explanation_store: ExplanationStore | None = None,
+    explanation_schedule: ExplanationSchedule | None = None,
+    max_explanations: int | None = None,
     radio_index: SearchIndex | None = None,
+    event_name: str | None = None,
+    positions: pl.DataFrame | None = None,
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-) -> Iterator[StreamEnvelope]:
+) -> Generator[StreamEnvelope]:
     """Yield one envelope per `DomainEvent` (in `ts_utc` order), paced by
     `f1_replay`'s elapsed/speed + delay formula, plus a `kernel_snapshot`
     envelope on the lap that first completes each new lap number (see
@@ -445,94 +624,194 @@ def replay_envelopes(
     see `envelope_for_event`'s docstring. `None` (the default) still emits
     the clip, just with every transcript field `None`.
 
+    Measured positions go out as `car_positions` frames (see this module's
+    docstring) whenever `kinds` asks for `car_position`: from `positions`
+    when the caller already has the track (the WebSocket looks in the
+    post-session archive too), otherwise from the source itself.
+
     Synchronous and real-sleeping (like `f1_replay.replay`), so a caller in
     an async context must run this in a thread — see
     `f1_api.stream.websocket`.
     """
-    events = sorted(source.events(session_key, kinds=kinds), key=lambda event: event.ts_utc)
+    event_kinds = None if kinds is None else frozenset(kinds) - {POSITION_KIND}
+    events: list[DomainEvent] = sorted(
+        (
+            event
+            for event in source.events(session_key, kinds=event_kinds)
+            if event.kind != POSITION_KIND
+        ),
+        key=lambda event: event.ts_utc,
+    )
     if not events:
         return
+    track: pl.DataFrame | None = None
+    if kinds is None or POSITION_KIND in kinds:
+        track = positions if positions is not None else source_position_track(source, session_key)
+    frames: Iterator[PositionFrame] = iter(())
+    if track is not None:
+        if speed <= 0:
+            # Unpaced, every frame is due at once; only the last can show.
+            track = track.filter(pl.col("ts_utc") == pl.col("ts_utc").max())
+        frames = position_frames(track)
 
-    feed = LapSnapshotFeed(session_key)
-    start_wall = clock()
-    start_wall_utc = wall_clock()
-    pacing_anchor_ts = _pacing_anchor_ts(events, anchor_to_first_lap=anchor_to_first_lap)
+    # A replay holds the whole race, so its snapshots can use the real
+    # distance from lap 1 rather than the slice seen so far.
+    snapshots = _SnapshotWorker(
+        LapSnapshotFeed(session_key, total_laps=race_distance_laps(events), event_name=event_name)
+    )
+    try:
+        start_wall = clock()
+        start_wall_utc = wall_clock()
+        pacing_anchor_ts = _pacing_anchor_ts(events, anchor_to_first_lap=anchor_to_first_lap)
 
-    scheduled: list[ScheduledExplanation] = []
-    if narration_model is not None and explanation_store is not None:
-        scheduled = precompute_session_explanations(
-            source,
-            session_key,
-            narration_model,
-            explanation_store,
-            radio_index=radio_index,
+        # Explanations arrive one of two ways. `explanation_schedule` is the
+        # NON-BLOCKING form the WebSocket uses: someone else is computing the
+        # batch on another thread and this loop simply picks it up whenever it
+        # lands (see `f1_api.why.ExplanationSchedule` for why — it used to run
+        # inline here and cost ~2 minutes of dead air before the first
+        # envelope). Passing a model+store with no schedule keeps the original
+        # inline behaviour, which is what the unit tests exercise.
+        scheduled: list[ScheduledExplanation] = []
+        if (
+            explanation_schedule is None
+            and narration_model is not None
+            and explanation_store is not None
+        ):
+            scheduled = precompute_session_explanations(
+                source,
+                session_key,
+                narration_model,
+                explanation_store,
+                radio_index=radio_index,
+                max_explanations=max_explanations,
+            )
+        expl_index = 0
+
+        timeline: Iterator[DomainEvent | PositionFrame] = heapq.merge(
+            events, frames, key=lambda item: item.ts_utc
         )
-    expl_index = 0
+        for item in timeline:
+            if explanation_schedule is not None and not scheduled:
+                # `None` while the batch is still being built; a list (possibly
+                # empty) once it is. Anomalies whose moment already passed then
+                # flush on this same iteration — late is always safe, early
+                # never happens.
+                landed = explanation_schedule.items()
+                if landed:
+                    scheduled = landed
 
-    for event in events:
-        event_pacing = _event_pacing_ts(event)
-        expl_index, early = _flush_explanations_upto(
-            scheduled,
-            upto=event_pacing,
-            index=expl_index,
-            session_key=session_key,
-            pacing_anchor_ts=pacing_anchor_ts,
-            start_wall=start_wall,
-            start_wall_utc=start_wall_utc,
-            speed=speed,
-            delay=delay,
-            clock=clock,
-            sleep=sleep,
-        )
-        yield from early
+            if isinstance(item, PositionFrame):
+                if (item.ts_utc - pacing_anchor_ts).total_seconds() < -POSITION_STALE_AFTER_S:
+                    continue
+                expl_index, early = _flush_explanations_upto(
+                    scheduled,
+                    upto=item.ts_utc,
+                    index=expl_index,
+                    session_key=session_key,
+                    pacing_anchor_ts=pacing_anchor_ts,
+                    start_wall=start_wall,
+                    start_wall_utc=start_wall_utc,
+                    speed=speed,
+                    delay=delay,
+                    clock=clock,
+                    sleep=sleep,
+                )
+                yield from early
+                live_ts = _emit_paced(
+                    pacing_ts=item.ts_utc,
+                    pacing_anchor_ts=pacing_anchor_ts,
+                    start_wall=start_wall,
+                    start_wall_utc=start_wall_utc,
+                    speed=speed,
+                    delay=delay,
+                    clock=clock,
+                    sleep=sleep,
+                )
+                yield car_positions_envelope(live_ts, item)
+                yield from snapshots.ready()
+                continue
 
-        live_ts = _emit_paced(
-            pacing_ts=event_pacing,
-            pacing_anchor_ts=pacing_anchor_ts,
-            start_wall=start_wall,
-            start_wall_utc=start_wall_utc,
-            speed=speed,
-            delay=delay,
-            clock=clock,
-            sleep=sleep,
-        )
-        yield envelope_for_event(event, radio_store=radio_store, override_ts=live_ts)
+            event = item
+            event_pacing = _event_pacing_ts(event)
+            expl_index, early = _flush_explanations_upto(
+                scheduled,
+                upto=event_pacing,
+                index=expl_index,
+                session_key=session_key,
+                pacing_anchor_ts=pacing_anchor_ts,
+                start_wall=start_wall,
+                start_wall_utc=start_wall_utc,
+                speed=speed,
+                delay=delay,
+                clock=clock,
+                sleep=sleep,
+            )
+            yield from early
 
-        report = feed.feed(event)
-        if report is not None and report.crossovers:
-            yield kernel_snapshot_envelope(live_ts, report)
+            live_ts = _emit_paced(
+                pacing_ts=event_pacing,
+                pacing_anchor_ts=pacing_anchor_ts,
+                start_wall=start_wall,
+                start_wall_utc=start_wall_utc,
+                speed=speed,
+                delay=delay,
+                clock=clock,
+                sleep=sleep,
+            )
+            yield envelope_for_event(event, radio_store=radio_store, override_ts=live_ts)
+            snapshots.submit(event, live_ts)
+            yield from snapshots.ready()
 
-    # Explanations whose anomaly_time sits after the last streamed event
-    # (or between the last event and "end of session") still have to land.
-    remaining = scheduled[expl_index:]
-    if remaining:
-        last_pacing = max(item.anomaly.anomaly_time for item in remaining)
-        _, late = _flush_explanations_upto(
-            scheduled,
-            upto=last_pacing,
-            index=expl_index,
-            session_key=session_key,
-            pacing_anchor_ts=pacing_anchor_ts,
-            start_wall=start_wall,
-            start_wall_utc=start_wall_utc,
-            speed=speed,
-            delay=delay,
-            clock=clock,
-            sleep=sleep,
-        )
-        yield from late
+        yield from snapshots.finish()
+
+        # A batch that landed only after the final event still has to be
+        # emitted — otherwise a fast replay (speed=0, or a short session)
+        # would finish before the worker thread ever handed anything over.
+        if explanation_schedule is not None and not scheduled:
+            landed = explanation_schedule.items()
+            if landed:
+                scheduled = landed
+
+        # Explanations whose anomaly_time sits after the last streamed event
+        # (or between the last event and "end of session") still have to land.
+        remaining = scheduled[expl_index:]
+        if remaining:
+            last_pacing = max(item.anomaly.anomaly_time for item in remaining)
+            _, late = _flush_explanations_upto(
+                scheduled,
+                upto=last_pacing,
+                index=expl_index,
+                session_key=session_key,
+                pacing_anchor_ts=pacing_anchor_ts,
+                start_wall=start_wall,
+                start_wall_utc=start_wall_utc,
+                speed=speed,
+                delay=delay,
+                clock=clock,
+                sleep=sleep,
+            )
+            yield from late
+    finally:
+        # A viewer who leaves closes this generator mid-race; the
+        # worker must not outlive it.
+        snapshots.close()
 
 
 __all__ = [
+    "CAR_POSITIONS_KIND",
     "DEFAULT_STREAM_KINDS",
     "EXPLANATION_KIND",
     "KERNEL_SNAPSHOT_KIND",
+    "POSITION_STALE_AFTER_S",
     "RADIO_CLIP_KIND",
     "LapSnapshotFeed",
+    "car_positions_envelope",
     "domain_event_envelope",
     "envelope_for_event",
     "explanation_envelope",
     "kernel_snapshot_envelope",
+    "live_position_frames",
     "radio_clip_envelope",
     "replay_envelopes",
+    "source_position_track",
 ]

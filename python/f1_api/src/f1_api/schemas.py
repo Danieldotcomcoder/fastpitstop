@@ -69,8 +69,16 @@ class SessionSummaryOut(BaseModel):
     has_radio: bool = False
     has_telemetry: bool = False
     live_recorded: bool = False
-    """True when this entry is backed by a live/store ingest (car positions
-    may exist). Historical backfill never carries `car_position`."""
+    """True when this entry is backed by a live/store ingest. Measured car
+    positions are NOT implied either way: the live feed withholds them, and
+    they reach a replay from the `car_positions` table (backfilled, or
+    imported from F1's archive after a live session)."""
+    live: bool = False
+    """True only while this session is actually RUNNING.
+
+    Distinct from `provenance`/`live_recorded`, which stay true forever once
+    a session has been ingested. A client deciding whether to open a
+    `mode=live` stream must read this one."""
 
 
 class ClassificationEntryOut(BaseModel):
@@ -81,6 +89,9 @@ class ClassificationEntryOut(BaseModel):
     so historical and live sessions answer this the same way."""
 
     driver: str
+    full_name: str | None = None
+    code: str | None = None
+    team: str | None = None
     position: int | None
     last_lap_s: float | None
     best_lap_s: float | None
@@ -117,6 +128,11 @@ class LapRowOut(BaseModel):
     lap_start_utc: datetime | None
     lap_end_utc: datetime | None
     lap_time_s: float | None
+    lap_time_fuel_corrected_s: float | None = None
+    """`lap_time_s` corrected to the kernel's reference fuel load
+    (`f1_kernel.fuel_correct`), over the whole race's distance: the same
+    units the degradation fits (and each kernel snapshot's stint fit) are
+    in, so a chart can draw points and fit on one axis."""
     sector1_s: float | None
     sector2_s: float | None
     sector3_s: float | None
@@ -346,6 +362,16 @@ class TrackOutlineOut(BaseModel):
     source_points: int
 
 
+class PitLaneOut(BaseModel):
+    """`f1_kernel.PitLane` — the pit lane as an open polyline from entry to
+    exit, derived from the reference race's real pit stops, in the same
+    units as the outline."""
+
+    points: list[tuple[float, float]]
+    length_m: float
+    source_stops: int
+
+
 class CircuitOut(BaseModel):
     """`GET /sessions/{key}/circuit` — `f1_kernel.Circuit`'s geometry, for
     the track map. `None` (not a 404) when the session's event does not
@@ -359,6 +385,11 @@ class CircuitOut(BaseModel):
     corners: list[CornerOut]
     drs_zones: list[DrsZoneOut]
     outline: TrackOutlineOut | None
+    pit_lane: PitLaneOut | None = None
+    geometry_from_session: bool = False
+    """True when `outline` and `pit_lane` were derived from this session's
+    own measured positions, because the circuit file's (from another
+    season's race) did not fit them."""
 
 
 class RadioSegmentOut(BaseModel):
@@ -468,6 +499,26 @@ class ExplanationOut(BaseModel):
     cited_evidence: list[CitedEvidenceOut]
 
 
+class StoryMomentOut(BaseModel):
+    """One entry of `GET /sessions/{key}/story` — an anomaly together with
+    its grounded explanation, resolved in the SAME pass.
+
+    Exists because the alternative the frontend used to do (list anomalies,
+    then one `GET /anomalies/{id}/explanation` per row) re-ran the whole
+    `analyze_session` + `detect_anomalies` chain once per request: seconds
+    of work per row, times a few hundred rows. Detection is a per-session
+    computation, so the story is served as a per-session read.
+
+    `explanation` is `None` only when narration for that moment could not
+    be produced at all; a moment with no clear cause still carries a real
+    `ExplanationOut` whose `text` is the canonical fallback and whose
+    `grounded` is False — the honest "we don't know" the UI renders
+    differently, never a missing row."""
+
+    anomaly: AnomalyOut
+    explanation: ExplanationOut | None
+
+
 class StreamEnvelope(BaseModel):
     """The WebSocket wire format for `/stream/{key}`. `event_time_utc` is
     never stripped (Phase 3's Delay Sync gates every value on it), `kind`
@@ -505,6 +556,7 @@ __all__ = [
     "ReadyOut",
     "SessionDetailOut",
     "SessionSummaryOut",
+    "StoryMomentOut",
     "StreamEnvelope",
     "TrackOutlineOut",
     "VersionOut",

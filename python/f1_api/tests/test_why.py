@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from api_fixture import HISTORICAL_ROOT, SESSION_KEY
@@ -25,12 +26,15 @@ from f1_api.why import (
     get_explanation_store,
     get_narration_model,
     parse_anomaly_id,
+    story_moments,
 )
 from f1_api.why_fixture import CitingNarrationModel
 from f1_domain import SessionKey, SessionType
 from f1_kernel import HistoricalSource
 from f1_why import (
     FALLBACK_TEXT,
+    Anomaly,
+    AnomalyKind,
     MemoryExplanationStore,
     MockNarrationModel,
     ModelNarration,
@@ -79,9 +83,9 @@ def test_session_anomalies_returns_ranked_salience_for_checked_in_session(
     response = _client(settings).get(f"/sessions/{SESSION_KEY}/anomalies")
 
     assert response.status_code == 200
-    body = response.json()
+    body: list[dict[str, Any]] = response.json()
     assert len(body) >= 1
-    assert body == sorted(body, key=lambda row: row["salience"], reverse=True)
+    assert body == sorted(body, key=lambda row: float(row["salience"]), reverse=True)
     for row in body:
         assert "anomaly_id" in row
         assert row["kind"]
@@ -316,18 +320,20 @@ def test_explanation_envelope_payload_is_lightweight(settings: Settings) -> None
         assert "event_time" not in item
 
 
-def test_low_evidence_explanation_uses_fallback_without_model_call(
+def test_an_uncited_model_answer_never_reaches_the_user(
     settings: Settings,
 ) -> None:
-    """Most fixture anomalies have no radio/race-control evidence —
-    `explain` must short-circuit to FALLBACK_TEXT with zero model calls."""
+    """Measured lap context now reaches the narrator, so the guarantee that
+    matters here is the one after it: a sentence citing nothing is thrown
+    away by the grounding validator and the user reads the canonical
+    fallback, never the model's words. (The no-evidence short-circuit, which
+    skips the model entirely, is pinned in f1_why's own tests.)"""
     model = MockNarrationModel(
         ModelNarration(text="should never appear", cited_evidence_ids=(), no_clear_cause=False)
     )
     store = MemoryExplanationStore()
     client = _client(settings, model=model, store=store)
     anomalies = client.get(f"/sessions/{SESSION_KEY}/anomalies").json()
-    # undercut_resolved anomalies are low_evidence in this fixture
     target = next(row for row in anomalies if row["kind"] == "undercut_resolved")
 
     response = client.get(f"/anomalies/{target['anomaly_id']}/explanation")
@@ -336,4 +342,71 @@ def test_low_evidence_explanation_uses_fallback_without_model_call(
     body = response.json()
     assert body["text"] == FALLBACK_TEXT
     assert body["grounded"] is False
-    assert model.calls == []
+    assert "should never appear" not in response.text
+    assert model.calls, "the lap context should have been put to the narrator"
+
+
+# -- story_moments ---------------------------------------------------------------
+
+
+def _moment(kind: AnomalyKind, salience: float, lap: int) -> Anomaly:
+    return Anomaly(
+        kind=kind,
+        lap_number=lap,
+        anomaly_time=datetime(2025, 6, 1, 13, 0, tzinfo=UTC) + timedelta(minutes=lap),
+        drivers=("1",),
+        magnitude=1.0,
+        salience=salience,
+        summary={},
+        reasons=(),
+    )
+
+
+def test_a_story_is_not_all_one_kind_of_moment() -> None:
+    """The 2025 Spanish GP regression: ten of twelve narrated moments were
+    undercut verdicts from the last four laps. Salience still orders the
+    story, but no kind may take more than a third of it."""
+    undercuts = [
+        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.99 - i / 100, 47 + i % 4) for i in range(10)
+    ]
+    others = [
+        _moment(AnomalyKind.PACE_LOSS, 0.5, 20),
+        _moment(AnomalyKind.PIT_ANOMALY, 0.4, 31),
+        _moment(AnomalyKind.POSITION_CHANGE, 0.3, 15),
+    ]
+    ranked = sorted(undercuts + others, key=lambda a: -a.salience)
+
+    story = story_moments(ranked, 12)
+
+    kinds = [a.kind for a in story]
+    assert kinds.count(AnomalyKind.UNDERCUT_RESOLVED) == 9, "4 by the cap, 5 back-filled"
+    assert {AnomalyKind.PACE_LOSS, AnomalyKind.PIT_ANOMALY, AnomalyKind.POSITION_CHANGE} <= set(
+        kinds
+    )
+    assert [a.salience for a in story] == sorted((a.salience for a in story), reverse=True)
+
+
+def test_the_cap_bites_before_back_filling() -> None:
+    """With a small story the variety actually shows: four places, a cap of
+    two, and the lower-salience kinds get in ahead of a third undercut."""
+    ranked = [
+        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.9, 50),
+        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.8, 49),
+        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.7, 48),
+        _moment(AnomalyKind.PACE_LOSS, 0.2, 20),
+        _moment(AnomalyKind.PIT_ANOMALY, 0.1, 31),
+    ]
+
+    story = story_moments(ranked, 4)
+
+    assert [a.kind for a in story] == [
+        AnomalyKind.UNDERCUT_RESOLVED,
+        AnomalyKind.UNDERCUT_RESOLVED,
+        AnomalyKind.PACE_LOSS,
+        AnomalyKind.PIT_ANOMALY,
+    ]
+
+
+def test_story_moments_with_no_limit_is_everything() -> None:
+    ranked = [_moment(AnomalyKind.PACE_LOSS, 0.5, 3)]
+    assert story_moments(ranked, None) == ranked

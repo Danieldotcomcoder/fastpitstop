@@ -6,9 +6,22 @@ import { buildDrawFrame } from './frame';
 import { colorForTeam } from './team-colors';
 import type { Point } from './types';
 
-function raceStateWith(driver: string, x: number, y: number, tsMs: number, team: string | null): RaceState {
+function raceStateWith(
+	driver: string,
+	x: number,
+	y: number,
+	tsMs: number,
+	team: string | null
+): RaceState {
 	const state = createRaceState();
-	state.cars.set(driver, { driver, code: 'HAM', team, compound: 'soft', current: { x, y, tsMs }, previous: null });
+	state.cars.set(driver, {
+		driver,
+		code: 'HAM',
+		team,
+		compound: 'soft',
+		current: { x, y, tsMs },
+		previous: null
+	});
 	return state;
 }
 
@@ -48,7 +61,14 @@ describe('buildDrawFrame', () => {
 
 	it('omits a driver with no known position yet', () => {
 		const state = createRaceState();
-		state.cars.set('1', { driver: '1', code: null, team: null, compound: null, current: null, previous: null });
+		state.cars.set('1', {
+			driver: '1',
+			code: null,
+			team: null,
+			compound: null,
+			current: null,
+			previous: null
+		});
 
 		const frame = buildDrawFrame(SQUARE, null, null, state, 1000);
 		expect(frame.cars).toEqual([]);

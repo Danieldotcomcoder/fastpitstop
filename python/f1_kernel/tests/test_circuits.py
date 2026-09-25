@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from f1_kernel import Circuit, circuit_for_event, list_circuits, load_circuit
+from f1_kernel import Circuit, circuit_for_event, circuit_for_session, list_circuits, load_circuit
 from f1_kernel.circuit import CIRCUITS_DIR
 
 
@@ -27,7 +27,16 @@ def test_every_shipped_circuit_is_valid(circuit_id: str) -> None:
     assert circuit.circuit_id == circuit_id
     assert circuit.lap_distance_m > 1000
     assert circuit.pit_loss_s > 0
-    assert circuit.event_names
+    # Findable somehow: by Grand Prix name, or by the feed's venue name
+    # alone (Madring, whose Grand Prix name belongs to Barcelona's history).
+    assert circuit.event_names or circuit.feed_circuit_names
+
+
+CORNERLESS = {"madring"}
+"""Venues shipped deliberately without corners: FastF1's circuit-info
+source had none for a brand-new venue, and corners are never guessed. Its
+map still works (outline and lap distance come from telemetry); braking
+analysis, which is keyed by corner, simply has nothing to report there."""
 
 
 @pytest.mark.parametrize("circuit_id", list_circuits())
@@ -35,6 +44,9 @@ def test_corner_distances_are_ordered_and_on_track(circuit_id: str) -> None:
     circuit = load_circuit(circuit_id)
 
     distances = [corner.distance_m for corner in circuit.corners]
+    if circuit_id in CORNERLESS:
+        assert distances == [], f"{circuit_id} gained corners; drop it from CORNERLESS"
+        return
     assert distances, f"{circuit_id} has no corners"
     assert distances == sorted(distances), f"{circuit_id} corners are out of order"
     assert max(distances) <= circuit.lap_distance_m
@@ -129,9 +141,10 @@ def test_lookup_by_event_name() -> None:
 
 
 def test_lookup_of_an_unshipped_circuit_returns_none() -> None:
-    """We ship six of twenty-four venues. An analytic must degrade to the
-    default pit loss, not crash."""
-    assert circuit_for_event("Belgian Grand Prix") is None
+    """Every current venue ships, but a race at one that does not (a new
+    venue before its first build) must degrade to the default pit loss and
+    no map, not crash."""
+    assert circuit_for_event("Portuguese Grand Prix") is None
     assert circuit_for_event(None) is None
     assert circuit_for_event("") is None
 
@@ -194,3 +207,73 @@ def test_circuit_files_live_in_the_package() -> None:
     assert CIRCUITS_DIR.is_dir()
     assert (CIRCUITS_DIR / "bahrain.json").is_file()
     assert CIRCUITS_DIR.parent.name == "f1_kernel"
+
+
+def test_every_venue_on_the_calendar_ships() -> None:
+    """The track map is drawn from these files, so a missing venue is a
+    race with no map. All 24 venues of the 2024 calendar ship."""
+    assert len([c for c in list_circuits() if c != "madring"]) == 24
+
+
+@pytest.mark.parametrize("circuit_id", list_circuits())
+def test_every_circuit_knows_its_feed_venue_name(circuit_id: str) -> None:
+    """How a live session finds its circuit: the feed sends the venue's
+    short name, never a circuit id."""
+    assert load_circuit(circuit_id).feed_circuit_names
+
+
+def test_no_two_circuits_answer_to_the_same_name() -> None:
+    """A shared name is a race drawn on the wrong track. The "Spanish Grand
+    Prix" moved from Barcelona to Madrid in 2026; only one file may claim
+    it, and the other is found by its feed venue name instead."""
+    seen_events: dict[str, str] = {}
+    seen_venues: dict[str, str] = {}
+    for circuit_id in list_circuits():
+        circuit = load_circuit(circuit_id)
+        for name in circuit.event_names:
+            key = name.strip().casefold()
+            assert key not in seen_events, f"{name!r}: {seen_events.get(key)} and {circuit_id}"
+            seen_events[key] = circuit_id
+        for name in circuit.feed_circuit_names:
+            key = name.strip().casefold()
+            assert key not in seen_venues, f"{name!r}: {seen_venues.get(key)} and {circuit_id}"
+            seen_venues[key] = circuit_id
+
+
+def test_the_feed_venue_wins_over_the_grand_prix_name() -> None:
+    """A live session names its venue; a Grand Prix name is only the
+    fallback, for historical sessions that carry nothing else."""
+    venue = circuit_for_session("Bahrain Grand Prix", "Monte Carlo")
+    assert venue is not None and venue.circuit_id == "monaco"
+
+
+def test_the_grand_prix_name_is_the_fallback() -> None:
+    by_name = circuit_for_session("Spanish Grand Prix", None)
+    assert by_name is not None and by_name.circuit_id == "barcelona"
+    unknown_venue = circuit_for_session("Spanish Grand Prix", "Somewhere New")
+    assert unknown_venue is not None and unknown_venue.circuit_id == "barcelona"
+    assert circuit_for_session(None, None) is None
+
+
+def test_a_live_session_finds_its_circuit_from_its_own_stream() -> None:
+    """The live path end to end at the kernel seam: no event name is passed
+    (the store never had one for a live session), yet the frames carry the
+    right circuit, found from the stream's own `SessionInfoUpdated`."""
+    from datetime import UTC, datetime
+
+    from f1_domain import SessionInfoUpdated, SessionKey, SessionType
+    from f1_kernel.frames import session_frames_from_events
+
+    key = SessionKey(year=2026, round=15, session_type=SessionType.RACE)
+    info = SessionInfoUpdated(
+        session_key=key,
+        ts_utc=datetime(2026, 9, 27, 11, 0, tzinfo=UTC),
+        source_seq=1,
+        meeting_name="Azerbaijan Grand Prix",
+        circuit_short_name="Baku",
+    )
+
+    frames = session_frames_from_events([info], key)
+
+    assert frames.circuit is not None and frames.circuit.circuit_id == "baku"
+    assert frames.event_name == "Azerbaijan Grand Prix"

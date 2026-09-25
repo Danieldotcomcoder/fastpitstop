@@ -152,6 +152,14 @@ Per CLAUDE.md it is calibrated where possible, never guessed:
   (it always writes that block) — `tools/calibrate_pit_loss.py --seasons
   2024 --write-circuits` must be re-run immediately after to restore the
   CALIBRATED values, the same two-step sequence used here.
+- **pit_lane** (added 2026-09-25) — an OPEN polyline from pit entry to pit
+  exit, the median path of the reference race's real pit stops
+  (`f1_kernel.track_outline.derive_pit_lane`; each car's swerve into its
+  own box averages out). `tools/build_pit_lanes.py` writes ONLY this key,
+  so unlike `build_circuits.py` it never touches a calibrated pit loss.
+  Without it the track map drew cars in the pits and their garages in
+  empty space beside the track (a fifth to two thirds of all position
+  samples in practice and qualifying).
 
 Six 2024 circuits ship. Anything else returns None from `circuit_for_event`
 and an analytic must fall back to `KernelParams.default_pit_loss_s` rather

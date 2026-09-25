@@ -66,9 +66,12 @@ class Pipeline:
         self._start = clock()
 
     def seed(self, subscribe_snapshot: JsonValue) -> None:
-        """Adopt a subscribe snapshot as the baseline (silent — no events).
-        Used at live connect/reconnect; replay carries the snapshot as a
-        `_meta.subscribe_snapshot` record instead, so `process` handles it."""
+        """Adopt a subscribe snapshot as the baseline. Writes nothing itself;
+        on the FIRST seed the state machine queues a one-off position + roster
+        baseline that the next `process` call emits (see
+        `SessionStateMachine.seed`). Used at live connect/reconnect; replay
+        carries the snapshot as a `_meta.subscribe_snapshot` record instead,
+        so `process` handles it — both routes reach the same `seed`."""
         self._machine.seed(subscribe_snapshot)
 
     def process(self, record: RawRecord) -> list[DomainEvent]:

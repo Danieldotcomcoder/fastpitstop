@@ -52,7 +52,11 @@ def main() -> int:
     remote_cmd = _remote_rollback_command(env["DEPLOY_PATH"])
     ssh_cmd = ["ssh", f"{env['DEPLOY_USER']}@{env['DEPLOY_HOST']}", "bash", "-s"]
     print(f"+ ssh {env['DEPLOY_USER']}@{env['DEPLOY_HOST']} <rollback script>")
-    subprocess.run(ssh_cmd, input=remote_cmd, text=True, check=True)
+    # Send BYTES, not text: subprocess's text mode rewrites newlines to
+    # os.linesep on write, so from Windows the remote bash receives CRLF
+    # and chokes on the trailing carriage return, reporting the option as
+    # "pipefail: invalid option name".
+    subprocess.run(ssh_cmd, input=remote_cmd.encode(), check=True)
     return 0
 
 

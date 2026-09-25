@@ -85,7 +85,38 @@ services:
     # f1_ingest.cli). One-shot jobs (backfill, radio fetch/transcribe/index,
     # an ad-hoc migration) run against the SAME image via, e.g.:
     #   docker compose run --rm worker f1-backfill --season 2025
-    command: ["f1-record"]
+    # --no-auth: FastF1 3.8 asks F1'"'"'s live-timing endpoint for an F1TV token
+    # by default (livetiming/client.py -> internals/f1auth.get_auth_token). In
+    # a container that prints a browser login URL and blocks forever on a
+    # prompt nobody can answer, so the recorder looks "Up" while doing
+    # nothing. Unauthenticated is also the posture CLAUDE.md describes (free,
+    # unofficial, no account). FastF1'"'"'s own caveat stands: without a token the
+    # feed "may only work for some sessions or may only return empty or
+    # partial data" -- so treat a thin recording as expected, not a bug.
+    # f1-pipeline live, not f1-record: the recorder only writes raw files to
+    # disk (Phase 0), so nothing reached Postgres and the dashboard had no
+    # live session to show. This records AND ingests, and reads which session
+    # it is from the feed rather than being pinned to one race.
+    # --batch-size 200: the sink flushes by COUNT only, so the 10k default
+    # would hold a live race's events in memory for minutes.
+    command: ["f1-pipeline", "--batch-size", "200", "live", "--no-auth"]
+    env_file: .env
+    environment:
+      F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}
+    volumes:
+      - pitwall-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The live feed withholds car positions from the unauthenticated worker
+  # above; F1 publishes them after each session. This imports them for
+  # every finished store session (f1_pipeline.archive), so a replay of a
+  # race we ingested live draws measured positions like any backfilled
+  # one. Idle between sessions: one small query every 10 minutes.
+  positions:
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
+    command: ["f1-pipeline", "archive-positions", "--watch", "600"]
     env_file: .env
     environment:
       F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}

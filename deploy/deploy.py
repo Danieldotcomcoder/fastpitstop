@@ -10,11 +10,20 @@ DEPLOY_PATH (the directory on the host containing compose.yml/.env — see
 DEPLOY.md's first-time setup). Fails loudly, before doing anything, if any
 are missing — a half-configured deploy is worse than a refused one.
 
-    uv run python deploy/deploy.py
+    uv run python deploy/deploy.py              # build here, push, roll
+    uv run python deploy/deploy.py --no-build   # roll an image CI already pushed
+
+`--no-build` is the CI-first path: GitHub Actions (.github/workflows/ci.yml)
+already builds and pushes both images on every push to main, so there is
+nothing left for this machine to do but point the VPS at that SHA. It never
+runs `docker build`, which matters when the local machine is the slow part.
+The SHA it rolls is this checkout's HEAD, so the checkout must actually be
+the commit CI built -- push first, let CI finish, then run it.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
@@ -97,19 +106,35 @@ def _remote_deploy_command(deploy_path: str, sha: str) -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--no-build",
+        action="store_true",
+        help="skip the local build+push; roll HEAD's SHA, which CI must already have pushed",
+    )
+    args = parser.parse_args()
+
     load_dotenv(REPO_ROOT / ".env")
     env = _require_env()
     sha = _git_sha()
     build_time = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    print(f"deploying {sha} (built {build_time})")
-    _build_and_push(env["GHCR_NAMESPACE"], "pitwall-api", "python/Dockerfile", sha, build_time)
-    _build_and_push(env["GHCR_NAMESPACE"], "pitwall-web", "apps/web/Dockerfile", sha, build_time)
+    if args.no_build:
+        print(f"rolling {sha} (no local build — expecting CI's image in GHCR)")
+    else:
+        print(f"deploying {sha} (built {build_time})")
+        namespace = env["GHCR_NAMESPACE"]
+        _build_and_push(namespace, "pitwall-api", "python/Dockerfile", sha, build_time)
+        _build_and_push(namespace, "pitwall-web", "apps/web/Dockerfile", sha, build_time)
 
     remote_cmd = _remote_deploy_command(env["DEPLOY_PATH"], sha)
     ssh_cmd = ["ssh", f"{env['DEPLOY_USER']}@{env['DEPLOY_HOST']}", "bash", "-s"]
     print(f"+ ssh {env['DEPLOY_USER']}@{env['DEPLOY_HOST']} <deploy script>")
-    subprocess.run(ssh_cmd, input=remote_cmd, text=True, check=True)
+    # Send BYTES, not text: subprocess's text mode rewrites newlines to
+    # os.linesep on write, so from Windows the remote bash receives CRLF
+    # and chokes on the trailing carriage return, reporting the option as
+    # "pipefail: invalid option name".
+    subprocess.run(ssh_cmd, input=remote_cmd.encode(), check=True)
 
     print(f"deploy complete: {sha}")
     return 0

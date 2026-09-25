@@ -11,7 +11,10 @@ The moat is: (a) a deterministic replay harness so we can develop against ~80
 past races on any weekday instead of only during the ~24 live sessions per year,
 and (b) an analytics kernel unit-tested against those replays.
 
-## Phase map (build strictly in order; don't pull work forward)
+## Phase map (built strictly in order; don't pull work forward)
+Phases 0-5 are DONE and Phase 6 is deliberately not started. Work now is
+DEPTH inside a finished phase (calibration, UI, live wiring), not a new
+phase — so "don't pull work forward" still applies to Phase 6.
 - Phase 0 (DONE): Replay harness. Record the live feed to disk, replay it at
   arbitrary speed, and acquire historical data. Produces NOTHING a user sees.
   Exit criteria + runbook: docs/PHASE0.md. `just verify-phase0` guards the
@@ -24,7 +27,7 @@ and (b) an analytics kernel unit-tested against those replays.
   braking-point drift. Pure functions, no UI, backtested against replays.
   Exit criteria + runbook: docs/PHASE2.md. `just verify-phase2` guards the
   release gate in CI.
-- Phase 3 (CURRENT): Frontend. SvelteKit + Canvas, mobile-first. Killer feature = Delay Sync
+- Phase 3 (DONE): Frontend. SvelteKit + Canvas, mobile-first. Killer feature = Delay Sync
   (hold data back to match the user's delayed TV broadcast so we never spoil).
 - Phase 4: Team radio corpus. Transcribe driver-pit audio (faster-whisper),
   index it, make it searchable. A genuinely new dataset.
@@ -88,8 +91,10 @@ Phase 1 packages (under python/, in dependency order):
 - f1_parse.state_machine (1.3): layer two — SessionStateMachine consumes the
   record stream via decode, folds deltas into SessionState, and emits
   DomainEvents on genuine transitions only. Idempotent per record and per
-  value (the feed re-sends constantly); seeding from subscribe snapshots —
-  initial connect and mid-session reconnects alike — is silent. Backtested
+  value (the feed re-sends constantly); seeding from subscribe snapshots adopts them as the
+  baseline; the FIRST seed also publishes the running order and roster once
+  (on the next real record, keeping replay deterministic), while mid-session
+  reconnect re-seeds stay silent. Backtested
   against a synthetic full-race recording driven through the real f1_replay
   path with exact ground truth (f1_parse/tests/race_sim.py); when the first
   real recording lands, add a sibling suite pinned to that race's results.
@@ -283,7 +288,7 @@ Testing discipline for Phase 2 (three layers, all of them required):
   about specific 2024 races, skipped when the backfill is absent.
 
 
-## Phase 3 status: CURRENT
+## Phase 3 status: DONE
 
 Phases 0-2 complete: recording/replay, normalized store, calibrated analytics kernel
 (undercut predictor cleared its milestone). Phase 3 is the FRONTEND — the first thing a
@@ -439,9 +444,14 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   outline and every car marker. `tools/build_circuits.py` gained the
   calling half, deriving it from the same FastF1 reference lap already
   sampled for corners/DRS zones; `Circuit.outline` caches the result,
-  `None` until that tool next runs against a populated FastF1 cache (no
-  shipped circuit has one yet — PROVISIONAL by omission, the same honesty
-  as every other not-yet-calibrated field in this package). `f1_api` gained
+  `None` until that tool next runs against a populated FastF1 cache. As of
+  2026-09-23 every venue on the calendar ships one (24 from 2024 reference
+  races, Madring from the 2026 race itself, which FastF1 has no corner list
+  for yet, so it ships without corners rather than guessed ones). Each file
+  also records `feed_circuit_names` (the feed's `Meeting.Circuit.ShortName`),
+  and `circuit_for_session` prefers it over the Grand Prix name, which is
+  not an identity: the "Spanish Grand Prix" moved from Barcelona to Madrid
+  in 2026. Live sessions carry it via the `SessionInfoUpdated` event. `f1_api` gained
   `GET /sessions/{key}/circuit` (`CircuitOut`, mirroring corners/DRS
   zones/outline field-for-field) — the one new backend seam this prompt
   needed, since the frontend cannot import the kernel directly. On the
@@ -555,6 +565,47 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   screenshots — keeping the real dashboard honest (a real session never
   shows fabricated movement) rather than adding a second synthetic-data
   path to it. `just verify-phase3` is wired into `just check`.
+- Race desk (2026-09-23): `RaceWorkspace` (the one component `/live` and
+  `/sessions/[year]/[round]` both render) is the supplied design
+  (pitwall-race-dashboard.html) on real data. `$lib/desk/` holds its pure
+  helpers (focus pair, pit-board view model over the kernel crossover,
+  snapshot history for the sparkline, lap records, race feed; unit-tested)
+  and its panels; `$lib/styles/desk.css` is the design's stylesheet scoped
+  under `.desk-page`. Every panel reads Delay Sync's released state; whole-
+  session REST reads stay behind the reveal tracker, so braking drift shows
+  the latest COMPLETED stint, not the design's "current stint". The map
+  places cars from lap timing when the feed has no measured positions,
+  scaled by replay speed, and says which it is doing.
+- Measured positions (2026-09-24): replays now draw F1's own car positions
+  (the static archive's `Position.z`, ~4 Hz per car) instead of estimating.
+  `f1_backfill` keeps them as `car_positions` (retrofit: `f1-backfill
+  --positions-only`); `f1_kernel.positions` serves them as a columnar
+  POSITION TRACK (a race is ~640k samples, never one event each); the WS
+  sends one `car_positions` frame per feed instant, paced through Delay
+  Sync like everything else; Delay Sync keeps released frames in a bounded
+  `positionFrames` window (not the event log); `MeasuredPositions` draws a
+  moment behind the clock and interpolates between real samples. The live
+  feed withholds positions from our unauthenticated client, so live
+  sessions stay estimated; the `positions` service (`f1-pipeline
+  archive-positions --watch`) imports them from F1's archive after each
+  session, and the replay shifts them onto the session's own clock
+  (`session_clock_offset`: 2.4 s on the 2026 Spanish GP, whose timing was
+  stamped on receipt). 2026-09-25, measured rather than eyeballed: each
+  circuit file carries a `pit_lane` (median of real stops,
+  `tools/build_pit_lanes.py`), drawn under the racing line; the stream
+  drops samples ~150 m from both lines (`near_lines`: a placeholder every
+  car reported 1.5 km away in 2025 Jeddah FP1); `MeasuredPositions`
+  smooths each car's samples in time (F1 stamps them loosely, which made
+  cars surge and stall), draws a FIXED distance behind the clock for the
+  speed, and never glides across a gap; `DeskMap` draws on the animation
+  frame's own timestamp. Geometry is checked per session
+  (`f1_api.geometry.session_positions`, shared by the stream and
+  `/circuit`): when the circuit file's lines miss the session's own
+  positions by more than 8 m at the 90th percentile, both lines are derived from the
+  session itself (fastest clean laps, its own stops) — 2025 Suzuka's frame
+  differs from 2024's by 13-30 m, beyond any rigid fit.
+  `deploy/check_outline_fit.py` measures dots against the drawn lines per
+  session.
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.
@@ -562,7 +613,7 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   order." Phase 4 (team radio corpus) is next.
 
 
-  ## Phase 4 status: CURRENT
+  ## Phase 4 status: DONE
 
 Phases 0-3 complete: replay harness, normalized store, calibrated kernel, spoiler-safe
 frontend. Phase 4 builds the TEAM RADIO CORPUS — transcribe driver-pit audio, index it,
@@ -888,11 +939,16 @@ Phase 5 packages (under python/f1_why, in dependency order):
   every source builder already respected its own window — the same
   "don't trust upstream, enforce at the boundary" discipline
   `TimelineBuffer.release` uses for Delay Sync. `EvidenceBundle.low_evidence`
-  is true unless a genuinely EXPLANATORY item (`RADIO_CLIP`/`RACE_CONTROL`)
-  survived — kernel-state context alone is background, not a cause, a
-  deliberately uniform (even for `DEG_CLIFF`/`PIT_ANOMALY`, whose own
-  numbers already read like a cause) and conservative reading favouring
-  under- over over-claiming. Tested against the SAME checked-in fixture
+  is true when nothing beyond the anomaly's own fact survived; anything
+  measured (lap context, a degradation fit, relevant race control, radio)
+  goes to the narrator, which must cite what it uses and may decline.
+  (Originally only radio/race control counted, with kernel context treated
+  as background; revised 2026-09-23 because with the radio corpus empty the
+  only thing clearing that bar was unrelated blue flags, while the tyre-age
+  facts that actually explain a pass were excluded — see evidence.py's
+  module docstring.) Race control is kept only when it names one of the
+  anomaly's drivers or names nobody, and the bundle carries a driver roster
+  (`roster`, identity not evidence) so a sentence names people. Tested against the SAME checked-in fixture
   5.1 uses (via a shared `anomalies` fixture now hoisted into
   `conftest.py`): a property test that no item in any of the fixture's six
   anomalies' bundles is ever timestamped after that anomaly's own
@@ -1006,9 +1062,18 @@ Phase 5 packages (under python/f1_why, in dependency order):
   fallback, plus the story view and a 390px mobile check. Wired into
   `just check`. Runbook + grounding guarantee + cost notes + exit
   criteria: docs/PHASE5.md.
+- Narration hardening (2026-09-23): the OpenRouter chain runs with
+  reasoning OFF (`REASONING_OFF`) — every free model is a reasoning model
+  and spent its whole token budget thinking, and a truncated or JSON-less
+  reply is now a provider failure, never a "no clear cause" verdict about
+  the race. A process-wide `RequestBudget` keeps the key under the free
+  tier's 20 requests/minute; `PostgresExplanationStore` (migration 005,
+  keyed by `NARRATION_VERSION`) persists explanations so each moment is
+  paid for once ever (the free tier also caps at 50 requests/day), and
+  outages are never cached. `f1_api.why.story_moments` caps any one
+  anomaly kind at a third of a narrated story.
 - (next) Phase 5's own exit criteria are now all met. Remaining gaps are
-  depth, not product surface: persistent `ExplanationStore`, telemetry-
-  derived evidence kinds, and `AnomalyParams`/`EvidenceParams`/
+  depth, not product surface: telemetry-derived evidence kinds, and `AnomalyParams`/`EvidenceParams`/
   `NarrationParams` calibration against a measured corpus. Phase 6
   (vision, wet-track state only, client-side) is next, not pulled
   forward by this prompt, per CLAUDE.md's own "build strictly in order."

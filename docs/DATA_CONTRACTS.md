@@ -127,6 +127,7 @@ data/historical/
 └── season=<YYYY>/round=<NN>/session=<slug>/
     ├── laps.parquet
     ├── car_telemetry.parquet
+    ├── car_positions.parquet
     ├── weather.parquet
     ├── results.parquet
     ├── stints.parquet
@@ -147,12 +148,22 @@ couldn't match the session (see below).
 | ---------------- | ------- | ----------------------------- | ------------------------------------------------------------------- |
 | `laps`            | FastF1  | one row per driver per lap     | includes `Stint`/`Compound`/`TyreLife` per FastF1's own `Laps` frame. |
 | `car_telemetry`   | FastF1  | one row per telemetry sample   | all drivers concatenated, with a `DriverNumber` column added.        |
+| `car_positions`   | FastF1 (F1 static archive `Position.z`) | one row per car per position sample (~4 Hz) | `DriverNumber`, `Date` (tz-naive UTC, the feed's own timestamp), `X`/`Y`/`Z` (int32, the feed's ~1/10 m track-local units, the same units every circuit outline uses), `Status`. NOT resampled. `(0, 0, 0)` garage placeholders dropped. See below. |
 | `weather`         | FastF1  | one row per weather sample     | as FastF1's `weather_data`.                                          |
 | `results`         | FastF1  | one row per driver             | session classification/results.                                      |
 | `stints`          | FastF1 (derived) | one row per driver per stint | rolled up from `laps`: `Compound`, `LapStart`, `LapEnd`, `LapCount`.   |
 | `intervals`       | OpenF1  | one row per interval update    | gap to leader / car ahead. `/v1/intervals`.                          |
 | `race_control`    | OpenF1  | one row per race control event | flags, safety car, session status. `/v1/race_control`.               |
 | `team_radio`      | OpenF1  | one row per radio clip         | `recording_url` only — audio itself is Phase 4's job. `/v1/team_radio`. |
+
+`car_positions` is the one table that also exists for sessions the catalog
+does NOT list. Since 2025 the live feed only sends `Position.z` to an
+F1TV-authenticated client, so a live-ingested session (served from the
+store) has no positions; F1 publishes them in its static archive after the
+session. `f1-backfill --season Y --round R --session Race --positions-only
+--uncatalogued` files that table at the same partition path, where
+`HistoricalSource.position_track` finds it by session key alone. Plain
+`--positions-only` retrofits every catalogued session from FastF1's cache.
 
 OpenF1 tables require mapping a FastF1 `(season, location, session name)`
 onto OpenF1's own `session_key` (`OpenF1Client.find_session_key`, an exact
@@ -246,10 +257,13 @@ What historical **cannot** provide (the kernel must not assume it):
   session-relative `Time`, so absolute UTC is rebuilt from a derived session
   start (`LapStartDate - LapStartTime`). Cross-channel sub-second alignment
   is therefore approximate.
-- No `CarPosition` (f1_backfill exports no position table) and no
-  track/session-status delta stream. `CarTelemetry` exists but is FastF1's
-  resampled/gap-filled telemetry, not the feed's raw delta channel — hence
-  off by default.
+- No track/session-status delta stream. `CarTelemetry` exists but is
+  FastF1's resampled/gap-filled telemetry, not the feed's raw delta
+  channel — hence off by default. `CarPosition` exists (from
+  `car_positions`) and IS the feed's own channel, also off by default
+  because of its size (~640k per race); a consumer that only draws
+  positions reads the columnar POSITION TRACK instead
+  (`f1_kernel.positions`, `HistoricalSource.position_track`).
 - Delta-level granularity is lost: history is per-lap/per-event facts, not
   the constant partial-update stream the live state machine folds.
 

@@ -29,7 +29,7 @@
 		background: var(--surface-raised);
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-md);
-		padding: var(--space-5);
+		padding: clamp(1rem, 2vw, 1.5rem);
 	}
 
 	.panel-header {

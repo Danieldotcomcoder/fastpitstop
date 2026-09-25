@@ -19,16 +19,25 @@ idempotent via `ON CONFLICT DO NOTHING`) is the real one; `NullSink` and
 
 from f1_store.config import DEFAULT_LOCAL_DSN, DSN_ENV_VAR, connect, dsn_from_env
 from f1_store.migrations import apply_migrations, load_migrations, split_statements
-from f1_store.postgres import PostgresSink, replay_events
+from f1_store.postgres import (
+    DEFAULT_LIVE_WINDOW,
+    TERMINAL_SESSION_STATUSES,
+    PostgresSink,
+    live_session_keys,
+    replay_events,
+    replay_events_with_cursor,
+)
 from f1_store.rows import TableRow, derive_rows
 from f1_store.schema import IDENTITY_KEYS, TABLE_COLUMNS
 from f1_store.sink import EventSink, MemorySink, NullSink, assign_event_indices
 
 __all__ = [
+    "DEFAULT_LIVE_WINDOW",
     "DEFAULT_LOCAL_DSN",
     "DSN_ENV_VAR",
     "IDENTITY_KEYS",
     "TABLE_COLUMNS",
+    "TERMINAL_SESSION_STATUSES",
     "EventSink",
     "MemorySink",
     "NullSink",
@@ -39,8 +48,10 @@ __all__ = [
     "connect",
     "derive_rows",
     "dsn_from_env",
+    "live_session_keys",
     "load_migrations",
     "replay_events",
+    "replay_events_with_cursor",
     "split_statements",
 ]
 

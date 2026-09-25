@@ -11,6 +11,7 @@ normalizes/casts them into its own typed shapes
 that module's docstring.
 """
 
+from contextlib import AbstractContextManager
 from typing import Any, Literal
 
 __version__: str
@@ -23,6 +24,8 @@ class Cache:
         force_renew: bool = ...,
         use_requests_cache: bool = ...,
     ) -> None: ...
+    @classmethod
+    def disabled(cls) -> AbstractContextManager[None]: ...
 
 def get_session(
     year: int,

@@ -1,6 +1,20 @@
 # Dev overlay: `docker compose -f compose.yml -f compose.dev.yml up -d --build`
 # (or `just up`). Source bind-mounted for hot reload on both api and web; db
 # port published so you can attach a client (psql, a GUI) from the host.
+#
+# Two things this overlay must undo from the shared compose.yml, because
+# both are correct for a deployment and wrong for a laptop:
+#
+# - `data/` is bind-mounted from the repo, not the `pitwall-data` named
+#   volume. In production the volume is the point (a live recording must
+#   survive the container). In dev, the backfill you already ran with
+#   `uv run f1-backfill` lives in ./data on the host — without this bind the
+#   containerised API serves an EMPTY session list and the whole stack looks
+#   broken for a reason that has nothing to do with the code.
+# - `PUBLIC_F1_API_BASE_URL` is forced to the local api. `.env` holds the
+#   deployed value (it is the same file compose reads in production), so a
+#   dev `web` container would otherwise point a local frontend at the live
+#   site.
 
 services:
   db:
@@ -12,7 +26,7 @@ services:
       target: runtime
     command: ["f1-api", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
-      - pitwall-data:/app/data
+      - ./data:/app/data
       - ./python:/app/python
     ports:
       - "8000:8000"
@@ -22,6 +36,11 @@ services:
       target: build
     command: ["pnpm", "--filter", "@pitwall/web", "dev", "--host", "0.0.0.0", "--port", "5173"]
     working_dir: /repo
+    environment:
+      # The browser resolves this, not the container, so it must be a URL
+      # the HOST can reach — `http://api:8000` would only work inside the
+      # compose network.
+      PUBLIC_F1_API_BASE_URL: http://localhost:8000
     volumes:
       - .:/repo
       # Anonymous volumes: keep the image's own (Linux-built) node_modules
@@ -37,7 +56,12 @@ services:
 
   worker:
     volumes:
-      - pitwall-data:/app/data
+      - ./data:/app/data
+      - ./python:/app/python
+
+  positions:
+    volumes:
+      - ./data:/app/data
       - ./python:/app/python
 
   # No proxy in dev — talk to api (8000) and web (5173) directly.

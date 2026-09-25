@@ -227,8 +227,10 @@ def test_real_pit_loss_ranks_spa_below_bahrain(params: KernelParams) -> None:
     result = calibrate_pit_loss(source, [BAHRAIN_2024, SPA_2024], params)
 
     by_key = {estimate.circuit_key: estimate for estimate in result.circuits}
-    assert {"bahrain", "belgian_grand_prix"} <= set(by_key)
-    spa, bahrain = by_key["belgian_grand_prix"], by_key["bahrain"]
+    # Keyed by circuit id now that Spa ships a circuit file (it was keyed by
+    # its Grand Prix name, "belgian_grand_prix", while it had none).
+    assert {"bahrain", "spa"} <= set(by_key)
+    spa, bahrain = by_key["spa"], by_key["bahrain"]
     assert spa.n_stops >= 10 and bahrain.n_stops >= 10
     assert spa.pit_loss_s < bahrain.pit_loss_s
     for estimate in (spa, bahrain):

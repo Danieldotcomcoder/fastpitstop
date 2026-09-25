@@ -30,18 +30,23 @@ paraphrase."""
 
 
 class CitingNarrationModel:
-    """Cites every evidence id mentioned in the prompt (preferring
-    explanatory kinds) so a clear-cause bundle yields a grounded
-    explanation with real citations — never touches a network."""
+    """A strict scripted narrator: explains a moment by citing up to two of
+    its race-control or radio items, and declines when it has neither.
+
+    Declining on lap context alone is a choice a real model is free to make
+    (the evidence rule sends it the lap context and lets it decide), and it
+    keeps the checked-in fixture producing BOTH shapes `just verify-phase5`
+    asserts in the browser: a grounded explanation and an honest fallback.
+    Never touches a network."""
 
     def __init__(self) -> None:
         self.calls: list[str] = []
 
     def complete(self, prompt: str) -> ModelNarration:
         self.calls.append(prompt)
-        ids = re.findall(r"\[([^\]]+)\]", prompt)
-        preferred = [eid for eid in ids if eid.startswith(("race_control:", "radio_clip:"))]
-        cited = tuple(preferred[:2] if preferred else ids[:1])
+        # Each evidence line is `- id=<id> | ...` (see `f1_why.build_prompt`).
+        ids = re.findall(r"^- id=(\S+) \|", prompt, flags=re.MULTILINE)
+        cited = tuple(eid for eid in ids if eid.startswith(("race_control:", "radio_clip:")))[:2]
         if not cited:
             return ModelNarration(text="", cited_evidence_ids=(), no_clear_cause=True)
         return ModelNarration(

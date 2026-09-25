@@ -32,9 +32,7 @@
 		}
 	}
 
-	let years = $derived(
-		[...new Set(sessions.map((s) => s.session_key.year))].sort((a, b) => b - a)
-	);
+	let years = $derived([...new Set(sessions.map((s) => s.session_key.year))].sort((a, b) => b - a));
 
 	$effect(() => {
 		if (selectedYear === null && years.length > 0) {
@@ -70,12 +68,14 @@
 </svelte:head>
 
 <h1>Sessions</h1>
-<p>Completed races, newest first. Open one for the full story and analytics.</p>
+<p>
+	Completed races, newest first. Open a race to explore the result, tyre performance and strategy.
+</p>
 
 <div class="toolbar">
 	{#if years.length > 0}
 		<div class="year-tabs" role="tablist" aria-label="Season">
-			{#each years as year}
+			{#each years as year (year)}
 				<button
 					type="button"
 					role="tab"
@@ -116,6 +116,8 @@
 	<ul class="session-list">
 		{#each filtered as session (session.key)}
 			<li>
+				<!-- sessionHref() calls resolve() itself (see above). -->
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a class="session-card" href={sessionHref(session)}>
 					<span class="round tabular">R{session.session_key.round}</span>
 					<span class="body">

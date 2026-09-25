@@ -13,6 +13,12 @@ dependencies = [
     "pydantic>=2.7",
     "faster-whisper>=1.0",
     "sentence-transformers>=3.0",
+    # Declared explicitly ONLY so the CPU-index pin below binds to it:
+    # uv applies [tool.uv.sources] to a package's own declared
+    # dependencies, not to transitive ones, and torch would otherwise
+    # arrive via sentence-transformers with the whole CUDA stack attached.
+    # No version floor -- sentence-transformers still owns that constraint.
+    "torch",
 ]
 
 [project.scripts]
@@ -24,6 +30,11 @@ f1-backfill = { workspace = true }
 f1-historical-adapter = { workspace = true }
 f1-store = { workspace = true }
 f1-kernel = { workspace = true }
+# CPU-only torch. Nothing here runs on a GPU (embeddings are CPU, and
+# faster-whisper uses ctranslate2, not torch), and the deployed container
+# has no CUDA runtime -- see the pytorch-cpu index note in the root
+# pyproject for what this saves.
+torch = { index = "pytorch-cpu" }
 
 [build-system]
 requires = ["hatchling"]

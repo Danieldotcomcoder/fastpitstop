@@ -1,16 +1,23 @@
 [project]
 name = "f1-why"
 version = "0.0.1"
-description = "Phase 5: the why-engine. 5.1 detects anomalies (pure Python over kernel + state frames); 5.2 assembles a spoiler-safe, token-budgeted evidence bundle per anomaly (kernel state, radio, race control); 5.3 narrates one grounded, cited sentence over that bundle via a swappable model interface (real Claude Haiku backend + a deterministic mock) behind a grounding validator, cached per anomaly."
+description = "Phase 5: the why-engine. 5.1 detects anomalies (pure Python over kernel + state frames); 5.2 assembles a spoiler-safe, token-budgeted evidence bundle per anomaly (kernel state, radio, race control); 5.3 narrates one grounded, cited sentence over that bundle via a swappable model interface (real Claude Haiku and OpenRouter backends + a deterministic mock) behind a grounding validator, cached per anomaly."
 requires-python = ">=3.12"
 dependencies = [
     "f1-domain",
     "f1-kernel",
     "f1-radio",
-    "polars>=1.20",
+    # [rtcompat]: the default polars wheel is compiled for x86-64-v3 (AVX2,
+    # FMA, BMI1/2, LZCNT...) and dies with SIGILL on a CPU without them --
+    # which is exactly what a QEMU-generic vCPU exposes, as the deploy VM
+    # does. rtcompat dispatches at runtime instead, so one lockfile serves
+    # both a modern laptop and an emulated-CPU host. Marginally slower where
+    # AVX2 exists; a crash-free API everywhere is worth more than that.
+    "polars[rtcompat]>=1.20",
     "numpy>=1.26",
     "pydantic>=2.7",
     "anthropic>=0.69",
+    "httpx>=0.27",
 ]
 
 [tool.uv.sources]

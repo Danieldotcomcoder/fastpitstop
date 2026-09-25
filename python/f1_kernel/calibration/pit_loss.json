@@ -18,22 +18,6 @@
   },
   "circuits": [
     {
-      "circuit_key": "abu_dhabi_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Abu Dhabi Grand Prix"
-      ],
-      "pit_loss_s": 22.87428448275864,
-      "mad_s": 1.18817241379314,
-      "uncertainty_s": 0.5519484386126031,
-      "n_stops": 16,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
       "circuit_key": "albert_park",
       "circuit_id": "albert_park",
       "event_names": [
@@ -43,38 +27,6 @@
       "mad_s": 0.8147586206896449,
       "uncertainty_s": 0.3473211251591318,
       "n_stops": 19,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
-      "circuit_key": "austrian_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Austrian Grand Prix"
-      ],
-      "pit_loss_s": 21.003943661971817,
-      "mad_s": 0.9027394366196972,
-      "uncertainty_s": 0.3012732717330122,
-      "n_stops": 31,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
-      "circuit_key": "azerbaijan_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Azerbaijan Grand Prix"
-      ],
-      "pit_loss_s": 22.28623529411766,
-      "mad_s": 1.4244705882352946,
-      "uncertainty_s": 0.7980611679845815,
-      "n_stops": 11,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -98,15 +50,15 @@
       "thin": false
     },
     {
-      "circuit_key": "belgian_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "baku",
+      "circuit_id": "baku",
       "event_names": [
-        "Belgian Grand Prix"
+        "Azerbaijan Grand Prix"
       ],
-      "pit_loss_s": 18.778500000000008,
-      "mad_s": 0.28974999999999795,
-      "uncertainty_s": 0.12690134570895345,
-      "n_stops": 18,
+      "pit_loss_s": 22.28623529411766,
+      "mad_s": 1.4244705882352946,
+      "uncertainty_s": 0.7980611679845815,
+      "n_stops": 11,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -114,15 +66,15 @@
       "thin": false
     },
     {
-      "circuit_key": "british_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "barcelona",
+      "circuit_id": "barcelona",
       "event_names": [
-        "British Grand Prix"
+        "Spanish Grand Prix"
       ],
-      "pit_loss_s": 26.41900000000001,
-      "mad_s": 5.42069230769232,
-      "uncertainty_s": 1.7533831223986605,
-      "n_stops": 33,
+      "pit_loss_s": 23.033000000000015,
+      "mad_s": 0.9760000000000559,
+      "uncertainty_s": 0.3065454193604419,
+      "n_stops": 35,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -130,15 +82,15 @@
       "thin": false
     },
     {
-      "circuit_key": "canadian_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "cota",
+      "circuit_id": "cota",
       "event_names": [
-        "Canadian Grand Prix"
+        "United States Grand Prix"
       ],
-      "pit_loss_s": 26.27982857142858,
-      "mad_s": 1.7425785714285382,
-      "uncertainty_s": 1.1447915395230477,
-      "n_stops": 8,
+      "pit_loss_s": 21.70003571428572,
+      "mad_s": 1.1582857142857108,
+      "uncertainty_s": 0.4812599677596778,
+      "n_stops": 20,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -146,56 +98,8 @@
       "thin": false
     },
     {
-      "circuit_key": "chinese_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Chinese Grand Prix"
-      ],
-      "pit_loss_s": 23.32514285714285,
-      "mad_s": 0.4331428571428546,
-      "uncertainty_s": 0.2682803953599984,
-      "n_stops": 9,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
-      "circuit_key": "dutch_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Dutch Grand Prix"
-      ],
-      "pit_loss_s": 23.541666666666657,
-      "mad_s": 0.793166666666707,
-      "uncertainty_s": 0.3216131831695313,
-      "n_stops": 21,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
-      "circuit_key": "emilia_romagna_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Emilia Romagna Grand Prix"
-      ],
-      "pit_loss_s": 28.5023095238095,
-      "mad_s": 0.72536904761904,
-      "uncertainty_s": 0.31768872572382667,
-      "n_stops": 18,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": false
-    },
-    {
-      "circuit_key": "hungarian_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "hungaroring",
+      "circuit_id": "hungaroring",
       "event_names": [
         "Hungarian Grand Prix"
       ],
@@ -203,6 +107,22 @@
       "mad_s": 0.7034857142857618,
       "uncertainty_s": 0.2515662847809978,
       "n_stops": 27,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
+      "circuit_key": "imola",
+      "circuit_id": "imola",
+      "event_names": [
+        "Emilia Romagna Grand Prix"
+      ],
+      "pit_loss_s": 28.5023095238095,
+      "mad_s": 0.72536904761904,
+      "uncertainty_s": 0.31768872572382667,
+      "n_stops": 18,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -226,8 +146,8 @@
       "thin": true
     },
     {
-      "circuit_key": "las_vegas_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "las_vegas",
+      "circuit_id": "las_vegas",
       "event_names": [
         "Las Vegas Grand Prix"
       ],
@@ -242,8 +162,40 @@
       "thin": false
     },
     {
-      "circuit_key": "mexico_city_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "lusail",
+      "circuit_id": "lusail",
+      "event_names": [
+        "Qatar Grand Prix"
+      ],
+      "pit_loss_s": 27.688000000000002,
+      "mad_s": 0.7420000000000044,
+      "uncertainty_s": 0.9749176722972701,
+      "n_stops": 2,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": true
+    },
+    {
+      "circuit_key": "marina_bay",
+      "circuit_id": "marina_bay",
+      "event_names": [
+        "Singapore Grand Prix"
+      ],
+      "pit_loss_s": 30.132951612903213,
+      "mad_s": 1.1814516129032455,
+      "uncertainty_s": 0.5174384799566402,
+      "n_stops": 18,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
+      "circuit_key": "mexico_city",
+      "circuit_id": "mexico_city",
       "event_names": [
         "Mexico City Grand Prix"
       ],
@@ -258,8 +210,8 @@
       "thin": false
     },
     {
-      "circuit_key": "miami_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "miami",
+      "circuit_id": "miami",
       "event_names": [
         "Miami Grand Prix"
       ],
@@ -290,6 +242,22 @@
       "thin": true
     },
     {
+      "circuit_key": "montreal",
+      "circuit_id": "montreal",
+      "event_names": [
+        "Canadian Grand Prix"
+      ],
+      "pit_loss_s": 26.27982857142858,
+      "mad_s": 1.7425785714285382,
+      "uncertainty_s": 1.1447915395230477,
+      "n_stops": 8,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
       "circuit_key": "monza",
       "circuit_id": "monza",
       "event_names": [
@@ -306,31 +274,15 @@
       "thin": false
     },
     {
-      "circuit_key": "qatar_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "red_bull_ring",
+      "circuit_id": "red_bull_ring",
       "event_names": [
-        "Qatar Grand Prix"
+        "Austrian Grand Prix"
       ],
-      "pit_loss_s": 27.688000000000002,
-      "mad_s": 0.7420000000000044,
-      "uncertainty_s": 0.9749176722972701,
-      "n_stops": 2,
-      "n_sessions": 1,
-      "seasons": [
-        2024
-      ],
-      "thin": true
-    },
-    {
-      "circuit_key": "singapore_grand_prix",
-      "circuit_id": null,
-      "event_names": [
-        "Singapore Grand Prix"
-      ],
-      "pit_loss_s": 30.132951612903213,
-      "mad_s": 1.1814516129032455,
-      "uncertainty_s": 0.5174384799566402,
-      "n_stops": 18,
+      "pit_loss_s": 21.003943661971817,
+      "mad_s": 0.9027394366196972,
+      "uncertainty_s": 0.3012732717330122,
+      "n_stops": 31,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -338,15 +290,47 @@
       "thin": false
     },
     {
-      "circuit_key": "spanish_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "shanghai",
+      "circuit_id": "shanghai",
       "event_names": [
-        "Spanish Grand Prix"
+        "Chinese Grand Prix"
       ],
-      "pit_loss_s": 23.033000000000015,
-      "mad_s": 0.9760000000000559,
-      "uncertainty_s": 0.3065454193604419,
-      "n_stops": 35,
+      "pit_loss_s": 23.32514285714285,
+      "mad_s": 0.4331428571428546,
+      "uncertainty_s": 0.2682803953599984,
+      "n_stops": 9,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
+      "circuit_key": "silverstone",
+      "circuit_id": "silverstone",
+      "event_names": [
+        "British Grand Prix"
+      ],
+      "pit_loss_s": 26.41900000000001,
+      "mad_s": 5.42069230769232,
+      "uncertainty_s": 1.7533831223986605,
+      "n_stops": 33,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
+      "circuit_key": "spa",
+      "circuit_id": "spa",
+      "event_names": [
+        "Belgian Grand Prix"
+      ],
+      "pit_loss_s": 18.778500000000008,
+      "mad_s": 0.28974999999999795,
+      "uncertainty_s": 0.12690134570895345,
+      "n_stops": 18,
       "n_sessions": 1,
       "seasons": [
         2024
@@ -370,15 +354,31 @@
       "thin": false
     },
     {
-      "circuit_key": "united_states_grand_prix",
-      "circuit_id": null,
+      "circuit_key": "yas_marina",
+      "circuit_id": "yas_marina",
       "event_names": [
-        "United States Grand Prix"
+        "Abu Dhabi Grand Prix"
       ],
-      "pit_loss_s": 21.70003571428572,
-      "mad_s": 1.1582857142857108,
-      "uncertainty_s": 0.4812599677596778,
-      "n_stops": 20,
+      "pit_loss_s": 22.87428448275864,
+      "mad_s": 1.18817241379314,
+      "uncertainty_s": 0.5519484386126031,
+      "n_stops": 16,
+      "n_sessions": 1,
+      "seasons": [
+        2024
+      ],
+      "thin": false
+    },
+    {
+      "circuit_key": "zandvoort",
+      "circuit_id": "zandvoort",
+      "event_names": [
+        "Dutch Grand Prix"
+      ],
+      "pit_loss_s": 23.541666666666657,
+      "mad_s": 0.793166666666707,
+      "uncertainty_s": 0.3216131831695313,
+      "n_stops": 21,
       "n_sessions": 1,
       "seasons": [
         2024

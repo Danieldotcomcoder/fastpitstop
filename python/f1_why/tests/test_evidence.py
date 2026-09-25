@@ -12,7 +12,7 @@ from datetime import timedelta
 import pytest
 from race_fixture import HERO, SESSION_KEY
 
-from f1_domain import DomainEvent, RaceControlMessage
+from f1_domain import DomainEvent, DriverListUpdated, DriverRef, RaceControlMessage
 from f1_kernel import KernelReport, SessionFrames
 from f1_radio.search import MemorySearchIndex
 from f1_radio.store import TranscriptRecord
@@ -157,7 +157,6 @@ def test_radio_clip_outside_the_lookback_window_is_not_retrieved(
     bundle = assemble_evidence(pace_loss, sources, params)
 
     assert not any(item.kind is EvidenceKind.RADIO_CLIP for item in bundle.items)
-    assert bundle.low_evidence
 
 
 def test_radio_clip_with_no_transcript_yet_is_skipped(
@@ -242,22 +241,41 @@ def test_trimming_respects_token_budget_and_keeps_highest_salience_items(
 # ---------------------------------------------------------------------------
 
 
-def test_low_evidence_when_only_kernel_context_survives(
+def test_measured_kernel_context_is_enough_to_ask_the_narrator(
     race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
 ) -> None:
-    """No radio corpus, no race-control messages: whatever kernel-state
-    context (lap/tyre/degradation) survives is background, not a cause."""
+    """No radio corpus and no race control: the measured lap context still
+    goes to the narrator, which decides whether it explains the moment.
+
+    This bundle used to be `low_evidence` and was never shown to a model,
+    which is why a pass on tyres eight laps fresher could never be
+    explained by the tyre age that caused it."""
     pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
     sources = EvidenceSources(session_frames=race_frames, kernel_report=race_report)
 
     bundle = assemble_evidence(pace_loss, sources, EvidenceParams())
 
-    assert bundle.low_evidence
+    assert not bundle.low_evidence
     assert any("radio corpus" in note for note in bundle.notes)
     assert any(item.kind is EvidenceKind.LAP_CONTEXT for item in bundle.items)
 
 
-def test_low_evidence_is_false_once_a_race_control_message_is_present(
+def test_low_evidence_when_nothing_beyond_the_anomaly_fact_survives(
+    race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
+) -> None:
+    """The line that still holds: with nothing but the anomaly's own
+    numbers, the narrator is never asked. A one-token budget leaves exactly
+    the anomaly fact, which trimming never drops."""
+    pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
+    sources = EvidenceSources(session_frames=race_frames, kernel_report=race_report)
+
+    bundle = assemble_evidence(pace_loss, sources, EvidenceParams(token_budget=1))
+
+    assert [item.kind for item in bundle.items] == [EvidenceKind.ANOMALY_FACT]
+    assert bundle.low_evidence
+
+
+def test_a_track_wide_race_control_message_is_evidence(
     race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
 ) -> None:
     pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
@@ -278,6 +296,93 @@ def test_low_evidence_is_false_once_a_race_control_message_is_present(
 
     assert not bundle.low_evidence
     assert any(item.kind is EvidenceKind.RACE_CONTROL for item in bundle.items)
+
+
+def _message(anomaly: Anomaly, seq: int, driver: str | None, text: str) -> RaceControlMessage:
+    return RaceControlMessage(
+        session_key=SESSION_KEY,
+        ts_utc=anomaly.anomaly_time - timedelta(seconds=seq),
+        source_seq=seq,
+        category="Flag",
+        flag="BLUE" if driver else "YELLOW",
+        scope="Driver" if driver else "Sector",
+        driver=driver,
+        message=text,
+    )
+
+
+def test_race_control_about_an_uninvolved_driver_is_not_evidence(
+    race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
+) -> None:
+    """The 2025 Spanish GP regression: blue flags for three backmarkers were
+    the whole race-control contribution to a Russell/Antonelli undercut
+    verdict. A message is evidence about THIS moment only if it names one of
+    its drivers or names nobody."""
+    pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
+    bystander = next(d for d in ("87", "30", "14") if d not in pace_loss.drivers)
+    sources = EvidenceSources(
+        session_frames=race_frames,
+        kernel_report=race_report,
+        events=(
+            _message(pace_loss, 1, bystander, "WAVED BLUE FLAG FOR A BACKMARKER"),
+            _message(pace_loss, 2, HERO, "CAR UNDER INVESTIGATION"),
+            _message(pace_loss, 3, None, "YELLOW IN SECTOR 2"),
+        ),
+    )
+
+    bundle = assemble_evidence(pace_loss, sources, EvidenceParams())
+
+    kept = {item.summary for item in bundle.items if item.kind is EvidenceKind.RACE_CONTROL}
+    assert not any("BACKMARKER" in summary for summary in kept)
+    assert any("INVESTIGATION" in summary for summary in kept)
+    assert any("SECTOR 2" in summary for summary in kept)
+
+
+def _roster_event(anomaly: Anomaly, offset_s: float, *refs: DriverRef) -> DriverListUpdated:
+    return DriverListUpdated(
+        session_key=SESSION_KEY,
+        ts_utc=anomaly.anomaly_time + timedelta(seconds=offset_s),
+        source_seq=0,
+        drivers=list(refs),
+    )
+
+
+def test_the_roster_names_only_the_drivers_the_bundle_mentions(
+    race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
+) -> None:
+    """A narrator told who "44" is writes a name instead of a number; it is
+    not told about anyone the bundle does not mention."""
+    pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
+    hero = DriverRef(number=HERO, code="HRO", full_name="Hero DRIVER", team="Team A")
+    other = DriverRef(number="999", code="OTH", full_name="Other Person", team="Team B")
+    sources = EvidenceSources(
+        session_frames=race_frames,
+        kernel_report=race_report,
+        events=(_roster_event(pace_loss, -60, hero, other),),
+    )
+
+    bundle = assemble_evidence(pace_loss, sources, EvidenceParams())
+
+    assert bundle.roster == (hero,)
+
+
+def test_the_roster_is_held_to_the_anomaly_boundary(
+    race_frames: SessionFrames, race_report: KernelReport, anomalies: list[Anomaly]
+) -> None:
+    """Identity rather than race data, but "nothing after the anomaly" holds
+    without exceptions: a driver list published later is not used."""
+    pace_loss = _one(anomalies, AnomalyKind.PACE_LOSS)
+    early = DriverRef(number=HERO, code="OLD")
+    late = DriverRef(number=HERO, code="NEW")
+    sources = EvidenceSources(
+        session_frames=race_frames,
+        kernel_report=race_report,
+        events=(_roster_event(pace_loss, -60, early), _roster_event(pace_loss, 60, late)),
+    )
+
+    bundle = assemble_evidence(pace_loss, sources, EvidenceParams())
+
+    assert [ref.code for ref in bundle.roster] == ["OLD"]
 
 
 # ---------------------------------------------------------------------------

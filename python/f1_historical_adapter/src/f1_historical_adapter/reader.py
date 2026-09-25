@@ -10,6 +10,7 @@ see `session_start_utc`.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,7 +44,12 @@ _TABLES = (
     "team_radio",
     "intervals",
     "car_telemetry",
+    "car_positions",
 )
+
+# What `_session_start` reads to place the session on an absolute clock:
+# always loaded, whatever else a caller asked for.
+_CLOCK_TABLES = ("laps", "race_control", "team_radio", "intervals")
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,15 +80,26 @@ def session_directory(historical_root: Path, key: SessionKey) -> Path:
     return base / f"session={primary}"
 
 
-def load_session_tables(historical_root: Path, key: SessionKey) -> SessionTables:
-    """Load every present parquet table for `key` and reconstruct the
-    session start. Raises `FileNotFoundError` if the session dir is absent."""
+def load_session_tables(
+    historical_root: Path, key: SessionKey, *, only: Collection[str] | None = None
+) -> SessionTables:
+    """Load the present parquet tables for `key` and reconstruct the
+    session start. Raises `FileNotFoundError` if the session dir is absent.
+
+    `only` restricts which tables are read; the ones the session clock is
+    reconstructed from are read regardless, and `tables` then holds just
+    the requested ones. The two big channels (telemetry, positions) are
+    each several times every other table combined, so a caller that wants
+    laps should not pay to read them."""
     directory = session_directory(historical_root, key)
     if not directory.is_dir():
         raise FileNotFoundError(f"no historical session at {directory}")
 
+    wanted = frozenset(_TABLES if only is None else only)
     tables: dict[str, pd.DataFrame] = {}
     for name in _TABLES:
+        if name not in wanted and name not in _CLOCK_TABLES:
+            continue
         path = directory / f"{name}.parquet"
         if path.is_file():
             tables[name] = pd.read_parquet(path)
@@ -90,7 +107,7 @@ def load_session_tables(historical_root: Path, key: SessionKey) -> SessionTables
     return SessionTables(
         session_key=key,
         directory=directory,
-        tables=tables,
+        tables={name: frame for name, frame in tables.items() if name in wanted},
         session_start_utc=_session_start(tables),
     )
 

@@ -20,7 +20,9 @@ export class RaceStateReducer {
 	 * then simply skipped, the "degrade gracefully on sparse/missing
 	 * position data" case the outline itself can't do anything about. */
 	setOutline(outline: TrackOutline | null): void {
-		this.dominanceTracker = outline ? new DominanceTracker(buildArcLengthTable(outline.points)) : null;
+		this.dominanceTracker = outline
+			? new DominanceTracker(buildArcLengthTable(outline.points))
+			: null;
 	}
 
 	get dominance(): DominanceTracker | null {

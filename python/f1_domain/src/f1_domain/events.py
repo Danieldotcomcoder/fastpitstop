@@ -201,10 +201,42 @@ class TeamRadioClip(EventBase):
     captured_at: datetime | None = None
 
 
+class LapCounterUpdated(EventBase):
+    """The race's own lap counter moved (the feed's `LapCount` topic).
+
+    Distinct from `LapCompleted`, which is one DRIVER finishing one lap.
+    This is the number on the timing screen: the lap the race is ON. A
+    consumer that derives "current lap" from `max(LapCompleted.lap_number)`
+    is always at least one lap stale, and stale by more whenever ingest is
+    behind -- which is why this exists.
+    """
+
+    kind: Literal["lap_counter_updated"] = "lap_counter_updated"
+    current_lap: int | None = None
+    total_laps: int | None = None
+
+
 class SessionStatusChanged(EventBase):
     kind: Literal["session_status_changed"] = "session_status_changed"
     status: str | None = None
     """e.g. "Inactive", "Started", "Aborted", "Finished", "Finalised", "Ends" - verbatim."""
+
+
+class SessionInfoUpdated(EventBase):
+    """The feed named the meeting and its venue.
+
+    In the log so a live session can be named, and matched to its circuit,
+    from the store alone. Before this, a live session reached the API with
+    no name at all, so it could never find a circuit and the track map was
+    blank for exactly the races watched live. The venue's short name rides
+    along because a Grand Prix name is not an identity: the "Spanish Grand
+    Prix" ran at Barcelona through 2025 and at Madrid from 2026."""
+
+    kind: Literal["session_info_updated"] = "session_info_updated"
+    meeting_name: str | None = None
+    """e.g. "Azerbaijan Grand Prix", verbatim."""
+    circuit_short_name: str | None = None
+    """`Meeting.Circuit.ShortName`: "Baku", "Madring", verbatim."""
 
 
 class DriverListUpdated(EventBase):
@@ -242,6 +274,8 @@ DomainEvent = Annotated[
     | TeamRadioClip
     | SessionStatusChanged
     | DriverListUpdated
+    | SessionInfoUpdated
+    | LapCounterUpdated
     | UnknownEvent,
     Field(discriminator="kind"),
 ]

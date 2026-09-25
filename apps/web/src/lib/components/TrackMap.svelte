@@ -13,7 +13,9 @@
 	import {
 		buildArcLengthTable,
 		buildDrawFrame,
+		LapProgressTracker,
 		RaceStateReducer,
+		syntheticPositions,
 		TrackMapRenderer,
 		type ArcLengthTable,
 		type TrackOutline
@@ -31,6 +33,11 @@
 	let reducedMotion = $state(false);
 
 	const reducer = new RaceStateReducer();
+	const lapProgress = new LapProgressTracker();
+	/** True while the dots are derived from lap timing rather than measured
+	 * `car_position` samples. Surfaced to the viewer — an estimated map that
+	 * looks identical to a measured one would be the dishonest option. */
+	let positionsEstimated = $state(false);
 	let renderer: TrackMapRenderer | null = null;
 	let arcTable: ArcLengthTable | null = null;
 	let resizeObserver: ResizeObserver | null = null;
@@ -45,8 +52,24 @@
 		if (!renderer) return;
 		const { events } = controller.visibleState.get();
 		reducer.update(events);
+		lapProgress.update(events);
 		const delaySeconds = controller.delayState.get().delaySeconds;
 		const renderTsMs = playbackClockMs(Date.now(), delaySeconds);
+		// Measured positions always win. Only when the feed gave us none —
+		// every unauthenticated live session, and every historical replay —
+		// do we fall back to positions derived from lap timing.
+		const measured = [...reducer.raceState.cars.values()].some((car) => car.current !== null);
+		positionsEstimated = !measured && arcTable !== null;
+		if (positionsEstimated && arcTable) {
+			const derived = syntheticPositions(lapProgress, arcTable, renderTsMs);
+			for (const [driver, sample] of derived) {
+				const car = reducer.raceState.cars.get(driver);
+				if (car) {
+					car.previous = car.current;
+					car.current = sample;
+				}
+			}
+		}
 		const frame = buildDrawFrame(
 			outline?.points ?? null,
 			arcTable,
@@ -71,6 +94,7 @@
 		// reads the resulting draw positions, never the table itself.
 		arcTable = outline ? buildArcLengthTable(outline.points) : null;
 		reducer.setOutline(outline);
+		lapProgress.reset();
 	});
 
 	$effect(() => {
@@ -134,6 +158,11 @@
 {#if outline}
 	<div class="track-map" bind:this={container} role="img" aria-label="Live track map">
 		<canvas bind:this={canvas}></canvas>
+		{#if positionsEstimated}
+			<p class="estimated">
+				Positions estimated from lap timing — the feed sent no car coordinates
+			</p>
+		{/if}
 	</div>
 {:else}
 	<Panel title="Track map">
@@ -142,6 +171,21 @@
 {/if}
 
 <style>
+	.estimated {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		margin: 0;
+		padding: 0.35rem 0.6rem;
+		font-size: 0.72rem;
+		line-height: 1.3;
+		color: var(--color-text-muted);
+		background: color-mix(in srgb, var(--color-bg-elevated) 86%, transparent);
+		border-top: 1px solid var(--color-border);
+		text-align: center;
+	}
+
 	.track-map {
 		position: relative;
 		width: 100%;

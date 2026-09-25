@@ -10,10 +10,16 @@
 export interface DriverRow {
 	driver: string;
 	code: string | null;
+	name: string | null;
 	team: string | null;
 	/** Classification position from `position_changed`. `null` until the feed
 	 * has placed this driver at least once. */
 	position: number | null;
+	/** The FIRST position this driver was ever seen in — the grid slot, as
+	 * far as the released event log can know. `null` until they are placed
+	 * once. Never revised afterwards, which is the point: it is the baseline
+	 * `positionsGained` is measured from. */
+	startPosition: number | null;
 	/** Seconds behind the leader, or `null` when unknown OR when lapped (see
 	 * `lapsDown`) — mutually exclusive, mirroring `f1_domain.GapUpdated`. */
 	gapToLeaderS: number | null;
@@ -33,8 +39,10 @@ export function createDriverRow(driver: string): DriverRow {
 	return {
 		driver,
 		code: null,
+		name: null,
 		team: null,
 		position: null,
+		startPosition: null,
 		gapToLeaderS: null,
 		lapsDown: null,
 		intervalToAheadS: null,
@@ -46,4 +54,12 @@ export function createDriverRow(driver: string): DriverRow {
 		stintNumber: null,
 		inPit: false
 	};
+}
+
+/** Places gained (positive) or lost (negative) since this driver's first
+ * seen position, or `null` when either end is unknown. Zero is a real
+ * answer — "held station" — and stays distinguishable from unknown. */
+export function positionsGained(row: DriverRow): number | null {
+	if (row.position === null || row.startPosition === null) return null;
+	return row.startPosition - row.position;
 }

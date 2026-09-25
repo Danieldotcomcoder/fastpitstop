@@ -22,6 +22,9 @@ CORS_ORIGINS_ENV_VAR = "F1_API_CORS_ORIGINS"
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ("*",)
 RADIO_FIXTURE_ENV_VAR = "F1_API_RADIO_FIXTURE"
 WHY_FIXTURE_ENV_VAR = "F1_API_WHY_FIXTURE"
+MAX_EXPLANATIONS_ENV_VAR = "F1_WHY_MAX_EXPLANATIONS"
+DEFAULT_MAX_EXPLANATIONS = 12
+FEEDBACK_ENABLED_ENV_VAR = "F1_FEEDBACK_ENABLED"
 DEFAULT_LOCAL_FEEDBACK_SALT = "dev-feedback-salt"
 """Never valid in production — `f1_api.env_check.RequiredProdEnv` rejects a
 deployment that still has this value for `F1_FEEDBACK_IP_SALT`."""
@@ -48,6 +51,20 @@ class Settings:
     `get_narration_model` resolves to a citing mock so E2E can assert a
     grounded explanation without a live API key. Unset (the default) keeps
     the normal Claude-or-declining-mock resolution."""
+    max_explanations: int = DEFAULT_MAX_EXPLANATIONS
+    """How many of a session's anomalies actually get narrated (the most
+    salient ones). A real race detects a few hundred anomalies; explaining
+    every one costs one model call each and, before this cap existed,
+    stalled `/stream/{key}` for ~2 minutes before its first envelope. The
+    cap is what makes the why-engine both affordable (CLAUDE.md's Phase 5
+    budget invariant) and a readable STORY rather than an exhaustive log.
+    Detection itself is uncapped — `GET /sessions/{key}/anomalies` still
+    sees everything."""
+    feedback_enabled: bool = True
+    """Whether the beta feedback form is served at all. False drops the
+    router entirely (so `POST /feedback` 404s) and relaxes production's
+    `F1_TURNSTILE_SECRET` requirement, since there is nothing left to
+    protect. On by default: switching it off is a deployment's choice."""
     feedback_to: str | None = None
     """Server-only destination for feedback notifications. Never expose to
     the frontend bundle."""
@@ -81,6 +98,14 @@ def get_settings() -> Settings:
     )
     radio_fixture_raw = os.environ.get(RADIO_FIXTURE_ENV_VAR)
     why_fixture_raw = os.environ.get(WHY_FIXTURE_ENV_VAR)
+    max_explanations_raw = os.environ.get(MAX_EXPLANATIONS_ENV_VAR)
+    try:
+        max_explanations = (
+            int(max_explanations_raw) if max_explanations_raw else DEFAULT_MAX_EXPLANATIONS
+        )
+    except ValueError:
+        max_explanations = DEFAULT_MAX_EXPLANATIONS
+    max_explanations = max(0, max_explanations)
     smtp_port_raw = os.environ.get("F1_SMTP_PORT", "587")
     try:
         smtp_port = int(smtp_port_raw)
@@ -92,6 +117,9 @@ def get_settings() -> Settings:
         cors_origins=origins,
         radio_fixture_path=Path(radio_fixture_raw) if radio_fixture_raw else None,
         why_fixture=bool(why_fixture_raw and why_fixture_raw.strip()),
+        max_explanations=max_explanations,
+        feedback_enabled=os.environ.get(FEEDBACK_ENABLED_ENV_VAR, "1").strip()
+        not in {"0", "false", "False"},
         feedback_to=os.environ.get("F1_FEEDBACK_TO") or "danielshdeed1995.ds@gmail.com",
         feedback_ip_salt=os.environ.get("F1_FEEDBACK_IP_SALT") or DEFAULT_LOCAL_FEEDBACK_SALT,
         turnstile_secret=os.environ.get("F1_TURNSTILE_SECRET") or None,
@@ -111,7 +139,10 @@ __all__ = [
     "DEFAULT_CORS_ORIGINS",
     "DEFAULT_HISTORICAL_ROOT",
     "DEFAULT_LOCAL_FEEDBACK_SALT",
+    "DEFAULT_MAX_EXPLANATIONS",
+    "FEEDBACK_ENABLED_ENV_VAR",
     "HISTORICAL_ROOT_ENV_VAR",
+    "MAX_EXPLANATIONS_ENV_VAR",
     "RADIO_FIXTURE_ENV_VAR",
     "WHY_FIXTURE_ENV_VAR",
     "Settings",

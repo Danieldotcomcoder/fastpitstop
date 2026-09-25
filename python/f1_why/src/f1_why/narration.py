@@ -66,11 +66,18 @@ DEFAULT_MODEL = "claude-haiku-4-5"
 """CLAUDE.md's own Phase 5 budget invariant names Haiku explicitly — this
 is not a default chosen by this module, it is the project's own decision."""
 
-DEFAULT_MAX_TOKENS = 300
-"""One or two sentences, generously bounded — this is a narration call, not
-an essay."""
+DEFAULT_MAX_TOKENS = 600
+"""One or two sentences plus a JSON envelope is ~120 tokens. The rest is
+headroom for a model that thinks before it answers despite being asked not
+to (`f1_why.openrouter.REASONING_OFF`): at 300, a reasoning model spent the
+whole budget deliberating and was cut off before writing any JSON."""
 
 FALLBACK_TEXT = "No clear cause found in the available evidence."
+PROVIDER_UNAVAILABLE_TEXT = "Explanation unavailable — the narration service did not respond."
+"""Shown INSTEAD of `FALLBACK_TEXT` when the model was never reached. The
+distinction is the whole honesty contract: `FALLBACK_TEXT` asserts something
+about the race ("we looked, the evidence does not support a cause"), and it
+must never be used to paper over an outage."""
 """The one, canonical "we don't know" sentence — every path that declines
 to explain (a weak bundle, the model's own admission, a failed grounding
 check) normalizes to this SAME string, so a caller/UI can rely on exact
@@ -84,9 +91,11 @@ SYSTEM_PROMPT = (
     "written, and never use outside knowledge of real F1 drivers, teams or "
     "races. Write ONE sentence (two only if genuinely needed) giving the "
     "most plausible cause of the anomaly, grounded entirely in the cited "
-    "evidence. List the id of every evidence item your sentence actually "
-    "relies on in cited_evidence_ids — never cite an item you did not use, "
-    "and never leave cited_evidence_ids empty if you wrote an explanation. "
+    "evidence. Refer to drivers by surname, using the Drivers list when one "
+    "is given. List the id of every evidence item your sentence actually "
+    "relies on in cited_evidence_ids, copied exactly from its id= field — "
+    "never cite an item you did not use, and never leave cited_evidence_ids "
+    "empty if you wrote an explanation. "
     "If the evidence does not support any real explanation, set "
     "no_clear_cause to true and leave text and cited_evidence_ids empty — "
     "never invent a plausible-sounding cause to fill the gap."
@@ -118,6 +127,12 @@ class ModelNarration:
     """The model's OWN claim that the bundle does not support an
     explanation — distinct from the grounding validator discovering the
     same thing after the fact when the model tried to explain anyway."""
+    provider_failed: bool = False
+    """The backend never got an answer at all (transport error, upstream
+    outage, unparseable response). Kept strictly apart from
+    `no_clear_cause`: "we could not ask" and "there is nothing to say" are
+    different facts, and only the second one is a statement about the race.
+    Defaults False so every existing backend and fake is unaffected."""
 
 
 class NarrationModel(Protocol):
@@ -182,23 +197,47 @@ class NarrationParams(BaseModel):
         return NarrationParams.model_validate({**self.model_dump(), **overrides})
 
 
+def _display_name(full_name: str) -> str:
+    """ "Lando NORRIS" (the live feed's form) as "Lando Norris"; an already
+    mixed-case name passes through unchanged."""
+    return " ".join(
+        word.capitalize() if word.isupper() and len(word) > 1 else word
+        for word in full_name.split()
+    )
+
+
 def build_prompt(bundle: EvidenceBundle) -> str:
     """Pure: renders `bundle` into the exact text sent to the model — no
-    model call, no randomness, independently reviewable/testable."""
+    model call, no randomness, independently reviewable/testable.
+
+    Each item's id is labelled `id=` and repeated in a closing list of valid
+    ids. It used to sit in brackets beside the item's kind, and models read
+    the kind as the id: every Ling answer cited `anomaly_fact` for the item
+    whose id is `anomaly`, so the grounding validator correctly threw the
+    whole explanation away. The driver roster turns racing numbers into
+    people, so a sentence reads "Russell", not "driver 63"."""
     anomaly = bundle.anomaly
-    drivers = ", ".join(anomaly.drivers) if anomaly.drivers else "no driver named"
+    drivers = ", ".join(f"#{d}" for d in anomaly.drivers) if anomaly.drivers else "none named"
     lines = [
-        f"Anomaly: {anomaly.kind.value}, driver(s) {drivers}, lap "
-        f"{anomaly.lap_number}, at {anomaly.anomaly_time.isoformat()}.",
-        "",
-        "Evidence (cite by id; state nothing that is not listed here):",
+        f"Anomaly: {anomaly.kind.value.replace('_', ' ')}, lap {anomaly.lap_number}, "
+        f"driver(s) {drivers}, at {anomaly.anomaly_time.isoformat()}.",
     ]
+    if bundle.roster:
+        lines.extend(["", "Drivers (refer to them by surname):"])
+        for ref in bundle.roster:
+            who = ref.code or f"#{ref.number}"
+            name = f", {_display_name(ref.full_name)}" if ref.full_name else ""
+            team = f" ({ref.team})" if ref.team else ""
+            lines.append(f"- #{ref.number} = {who}{name}{team}")
+    lines.extend(["", "Evidence (state nothing that is not listed here):"])
     for item in bundle.items:
-        driver_part = f" driver(s) {', '.join(item.drivers)}," if item.drivers else ""
+        who = ", ".join(f"#{d}" for d in item.drivers) if item.drivers else "track-wide"
         lines.append(
-            f"- [{item.evidence_id}] ({item.kind.value},{driver_part} "
-            f"confidence={item.confidence_label}, {item.event_time.isoformat()}): {item.summary}"
+            f"- id={item.evidence_id} | {item.kind.value.replace('_', ' ')} | {who} | "
+            f"confidence {item.confidence_label} | {item.event_time.isoformat()} | "
+            f"{item.summary}"
         )
+    lines.extend(["", "Valid ids to cite: " + ", ".join(item.evidence_id for item in bundle.items)])
     if bundle.low_evidence:
         lines.extend(
             [
@@ -253,7 +292,7 @@ def _derive_confidence(
 def _fallback_explanation(anomaly_id: str, reason: str) -> Explanation:
     return Explanation(
         anomaly_id=anomaly_id,
-        text=FALLBACK_TEXT,
+        text=PROVIDER_UNAVAILABLE_TEXT if reason == "provider_unavailable" else FALLBACK_TEXT,
         cited_evidence_ids=(),
         confidence=ExplanationConfidence.LOW,
         grounded=False,
@@ -272,6 +311,12 @@ def explain(bundle: EvidenceBundle, model: NarrationModel, params: NarrationPara
         return _fallback_explanation(bundle.anomaly_id, "low_evidence")
 
     narration = model.complete(build_prompt(bundle))
+
+    if narration.provider_failed:
+        # Checked BEFORE no_clear_cause: a failed backend sets both (it has
+        # nothing to say because it was never answered), and reporting that
+        # as a decline is what made an outage look like a finding.
+        return _fallback_explanation(bundle.anomaly_id, "provider_unavailable")
 
     if narration.no_clear_cause:
         return _fallback_explanation(bundle.anomaly_id, "model_declined")
@@ -325,12 +370,18 @@ def explain_cached(
 ) -> Explanation:
     """`explain`, but never twice for the same anomaly — CLAUDE.md's own
     "cache explanations by anomaly id; never regenerate". A cache hit calls
-    neither the model nor `explain` at all."""
+    neither the model nor `explain` at all.
+
+    Except an outage. "The narration service did not respond" is a fact
+    about one request, not about the anomaly, and caching it froze every
+    affected moment of a race at that text until the process restarted —
+    the explanation it should have had was never asked for again."""
     cached = store.get(bundle.anomaly_id)
     if cached is not None:
         return cached
     explanation = explain(bundle, model, params)
-    store.set(bundle.anomaly_id, explanation)
+    if explanation.fallback_reason != "provider_unavailable":
+        store.set(bundle.anomaly_id, explanation)
     return explanation
 
 
@@ -410,6 +461,7 @@ __all__ = [
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_MODEL",
     "FALLBACK_TEXT",
+    "PROVIDER_UNAVAILABLE_TEXT",
     "SYSTEM_PROMPT",
     "ClaudeHaikuModel",
     "Explanation",

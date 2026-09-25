@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SHOW_RACE_STORY, SHOW_RADIO } from '$lib/features';
 	/** The race dashboard (Phase 3.6) — composes every Phase 3 race view onto
 	 * one screen: the timing tower (`$lib/timing-tower`, new here), the
 	 * undercut/overcut countdown (3.5), the track map (3.4), and a switchable
@@ -94,7 +95,10 @@
 	});
 
 	let controller = $state(new DelaySyncController({ initialDelaySeconds: DEFAULT_DELAY_SECONDS }));
-	let visible = $state<VisibleSessionState>(EMPTY_VISIBLE_STATE);
+	// Raw, not deep: the released state is replaced, never mutated, and a
+	// deep proxy made every reducer's read of every event a proxy trap
+	// (16% of CPU at 16x on the live-recorded 2026 race, frames dropped).
+	let visible = $state.raw<VisibleSessionState>(EMPTY_VISIBLE_STATE);
 	// A placeholder only — reading `controller.delayState.get()` here would just
 	// capture today's controller once and go stale the moment `connect()`
 	// swaps in a new one (Svelte's own `state_referenced_locally` warning).
@@ -217,7 +221,8 @@
 		const params = new URLSearchParams(window.location.search);
 		const initialKey = params.get('key');
 		const speedParam = Number(params.get('speed'));
-		const initialSpeed = Number.isFinite(speedParam) && params.has('speed') ? speedParam : DEFAULT_SPEED;
+		const initialSpeed =
+			Number.isFinite(speedParam) && params.has('speed') ? speedParam : DEFAULT_SPEED;
 		const delayParam = Number(params.get('delay'));
 		const initialDelay =
 			Number.isFinite(delayParam) && params.has('delay') ? delayParam : DEFAULT_DELAY_SECONDS;
@@ -233,8 +238,8 @@
 <h1>Race dashboard</h1>
 <p>
 	Track map, timing tower, undercut countdown and kernel analytics — one screen, all of it gated
-	behind your playback clock. Pick any historical session below and replay it at a chosen speed;
-	no live race required.
+	behind your playback clock. Pick any historical session below and replay it at a chosen speed; no
+	live race required.
 </p>
 
 {#if sessionsStatus === 'loading'}
@@ -304,8 +309,11 @@
 	<div class="wide-dashboard">
 		<div class="grid">
 			<div class="cell cell-tower" data-testid="tower-panel">
-				<TimingTower {controller} />
-				<ExplanationLane {controller} />
+				<TimingTower
+					{controller}
+					year={selectedKey ? Number(selectedKey.split('-')[0]) : undefined}
+				/>
+				{#if SHOW_RACE_STORY}<ExplanationLane {controller} />{/if}
 			</div>
 			<div class="cell cell-undercut" data-testid="undercut-panel">
 				<UndercutCountdown {controller} />
@@ -330,7 +338,7 @@
 				</div>
 				{#if activeTab === 'gap'}
 					<GapStreamGraph {controller} />
-					<RadioLane {controller} />
+					{#if SHOW_RADIO}<RadioLane {controller} />{/if}
 				{:else if activeTab === 'degradation'}
 					<DegradationCurves apiKey={selectedKey} {controller} />
 				{:else if activeTab === 'braking'}
@@ -340,7 +348,10 @@
 		</div>
 	</div>
 
-	<Panel title="Sync diagnostics" subtitle="The proof: nothing releases ahead of your delayed clock">
+	<Panel
+		title="Sync diagnostics"
+		subtitle="The proof: nothing releases ahead of your delayed clock"
+	>
 		<div class="stats-row">
 			<span data-testid="sync-visible-events" class="visually-hidden">{visible.events.length}</span>
 			<Stat label="Visible events" value={visible.events.length} />

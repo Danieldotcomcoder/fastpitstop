@@ -13,7 +13,8 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS build
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PROJECT_ENVIRONMENT=/app/.venv
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_HTTP_TIMEOUT=300
 
 WORKDIR /app
 
@@ -25,7 +26,14 @@ COPY python/ ./python/
 # --no-dev: ruff/pyright/pytest/hypothesis/playwright etc. have no business
 # in a runtime image. --frozen: the lockfile is the contract, never re-resolve
 # in CI/prod.
-RUN uv sync --frozen --no-dev
+#
+# --mount=type=cache: a FAILED `RUN` layer is discarded whole by BuildKit, so
+# without this every retry re-downloads every wheel from scratch. The cache
+# mount lives outside the layer and survives failures, so a retry resumes
+# where it left off. UV_LINK_MODE=copy (above) is what makes it safe to pull
+# out of a mount that won't exist at runtime.
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev
 
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm AS runtime
@@ -45,7 +53,12 @@ ARG BUILD_TIME=unknown
 ENV GIT_SHA=${GIT_SHA} \
     BUILD_TIME=${BUILD_TIME}
 
-RUN mkdir -p /data && chown pitwall:pitwall /data
+# /app/data, NOT /data: compose mounts the pitwall-data volume at /app/data
+# (matching WORKDIR, since every package resolves data/... relative to its
+# CWD). Docker seeds a fresh named volume from the image path it covers,
+# ownership included -- so chowning the wrong path left the volume
+# root-owned and every write from the pitwall user failed with EACCES.
+RUN mkdir -p /app/data && chown pitwall:pitwall /app/data
 USER pitwall
 
 # No CMD/ENTRYPOINT — compose.yml sets `command:` per service (api: uvicorn

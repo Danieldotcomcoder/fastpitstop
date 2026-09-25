@@ -31,7 +31,18 @@ services:
     environment:
       F1_ENV: production
     deploy:
-      resources: *resources-small
+      resources:
+        # NOT *resources-small (512M). The REST reads fit in 512M easily, but
+        # `/stream/{key}` drives a LiveKernelSession that recomputes the whole
+        # kernel over an accumulating event stream -- measured climbing past
+        # 428M on one 2025 race replay before the cgroup OOM killer took the
+        # process out mid-stream. The kill leaves no shutdown logs and Docker
+        # reports OOMKilled=false (the kernel picks a child, not the container
+        # init), so it presents as an unexplained restart loop: the browser
+        # sees "Stream ended · 0 drivers" and the race view renders empty.
+        limits:
+          cpus: "2.0"
+          memory: 2G
 
   web:
     restart: unless-stopped
@@ -47,6 +58,17 @@ services:
         limits:
           cpus: "2.0"
           memory: 1G
+
+  # Reading one session's archive loads FastF1's car telemetry alongside the
+  # positions (it aligns their clocks together): about a gigabyte at peak.
+  positions:
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   proxy:
     restart: unless-stopped

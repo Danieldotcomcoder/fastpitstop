@@ -31,7 +31,8 @@ class RequiredProdEnv(BaseSettings):
 
     f1_store_dsn: str = Field(..., alias="F1_STORE_DSN")
     f1_feedback_ip_salt: str = Field(..., alias="F1_FEEDBACK_IP_SALT")
-    f1_turnstile_secret: str = Field(..., alias="F1_TURNSTILE_SECRET")
+    f1_turnstile_secret: str | None = Field(None, alias="F1_TURNSTILE_SECRET")
+    f1_feedback_enabled: str = Field("1", alias="F1_FEEDBACK_ENABLED")
     f1_smtp_host: str | None = Field(None, alias="F1_SMTP_HOST")
     f1_smtp_username: str | None = Field(None, alias="F1_SMTP_USERNAME")
     f1_smtp_password: str | None = Field(None, alias="F1_SMTP_PASSWORD")
@@ -46,6 +47,21 @@ class RequiredProdEnv(BaseSettings):
                 "— set a real secret for production"
             )
         return value
+
+    @model_validator(mode="after")
+    def _turnstile_required_when_feedback_on(self) -> RequiredProdEnv:
+        """The captcha secret is only meaningful while the feedback form is
+        served. With F1_FEEDBACK_ENABLED=0 the router is never mounted, so
+        demanding a secret would block a deploy over an endpoint that does
+        not exist."""
+        if self.f1_feedback_enabled.strip() in {"0", "false", "False"}:
+            return self
+        if not self.f1_turnstile_secret:
+            raise ValueError(
+                "F1_TURNSTILE_SECRET is required when the feedback form is enabled "
+                "— set it, or set F1_FEEDBACK_ENABLED=0 to stop serving the form"
+            )
+        return self
 
     @model_validator(mode="after")
     def _smtp_all_or_nothing(self) -> RequiredProdEnv:

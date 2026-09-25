@@ -33,7 +33,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from f1_kernel.track_outline import TrackOutline
+from f1_kernel.track_outline import PitLane, TrackOutline
 
 CIRCUITS_DIR = Path(__file__).parent / "circuits"
 
@@ -100,7 +100,14 @@ class Circuit(BaseModel):
     country: str
     event_names: list[str] = Field(default_factory=list[str])
     """Grand Prix names that run here, as FastF1/the feed spell them — the
-    lookup key from a session to its circuit."""
+    lookup key from a historical session to its circuit."""
+    feed_circuit_names: list[str] = Field(default_factory=list[str])
+    """The feed's own name for the venue (`SessionInfo.Meeting.Circuit.
+    ShortName`: "Catalunya", "Madring", "Baku"), recorded from FastF1 by
+    `tools/build_circuits.py`. Preferred over `event_names` wherever a
+    session carries it, because a Grand Prix name is not an identity: the
+    "Spanish Grand Prix" ran at Barcelona through 2025 and at Madrid from
+    2026, and a lookup by name alone would draw the wrong circuit."""
     lap_distance_m: float = Field(gt=0)
     """Lap distance from telemetry: the median over the same sampled racing
     laps the DRS zones were derived from, so both are on one scale.
@@ -133,6 +140,10 @@ class Circuit(BaseModel):
     None for a circuit that step has not yet been run against — Phase 3
     must render gracefully without one, the same "unknown is not excluded"
     discipline the rest of this package follows."""
+    pit_lane: PitLane | None = None
+    """The pit lane, derived from the reference race's real pit stops by
+    `tools/build_pit_lanes.py` (`f1_kernel.track_outline.derive_pit_lane`).
+    None until that tool has run for the circuit."""
 
     def corner_at(self, distance_m: float) -> Corner | None:
         """The next corner at or after `distance_m`, or None past the last
@@ -167,6 +178,21 @@ def load_circuit(circuit_id: str) -> Circuit:
             f"no circuit metadata for {circuit_id!r}; shipped circuits: {list_circuits()}"
         )
     return Circuit.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def circuit_for_session(
+    event_name: str | None, feed_circuit_name: str | None = None
+) -> Circuit | None:
+    """The circuit a session ran at: by the feed's own circuit name when the
+    session carries one (unambiguous across seasons), else by Grand Prix
+    name. None when neither matches a shipped circuit."""
+    if feed_circuit_name:
+        wanted = feed_circuit_name.strip().casefold()
+        for circuit_id in list_circuits():
+            circuit = load_circuit(circuit_id)
+            if any(name.strip().casefold() == wanted for name in circuit.feed_circuit_names):
+                return circuit
+    return circuit_for_event(event_name)
 
 
 def circuit_for_event(event_name: str | None) -> Circuit | None:

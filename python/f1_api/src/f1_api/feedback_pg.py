@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
 
-from f1_api.feedback import FeedbackRecord, FeedbackStore
+from f1_api.feedback import FeedbackRecord
 from f1_store import connect
 
 
@@ -71,7 +70,8 @@ class PostgresFeedbackStore:
                 )
             else:
                 cur.execute(
-                    "SELECT COUNT(*) FROM feedback_submissions WHERE created_at >= %s AND ip_hash = %s",
+                    "SELECT COUNT(*) FROM feedback_submissions "
+                    "WHERE created_at >= %s AND ip_hash = %s",
                     (since, ip_hash),
                 )
             row = cur.fetchone()

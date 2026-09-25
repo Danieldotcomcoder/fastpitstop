@@ -9,7 +9,7 @@ so a regression names the exact rule that broke.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from pydantic import JsonValue
 
@@ -19,11 +19,13 @@ from f1_domain import (
     DriverListUpdated,
     GapUpdated,
     LapCompleted,
+    LapCounterUpdated,
     PitEntry,
     PitExit,
     PositionChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionInfoUpdated,
     SessionKey,
     SessionStatusChanged,
     SessionType,
@@ -405,10 +407,58 @@ class TestSessionLevelTopics:
         )
         assert sm.state.status == "Started"
 
-    def test_lap_count_updates_state_silently(self):
+    def test_lap_count_emits_the_race_lap_and_only_on_change(self):
+        """The number on the timing screen. Deriving it from
+        `max(LapCompleted)` instead leaves a viewer at least a lap stale —
+        several laps, when ingest is behind, as at the 2026 Spanish GP."""
         sm, feed = machine(), Feed()
-        assert sm.apply(feed.record("LapCount", {"CurrentLap": 12, "TotalLaps": 57})) == []
+        counters = only(
+            sm.apply(feed.record("LapCount", {"CurrentLap": 12, "TotalLaps": 57})),
+            LapCounterUpdated,
+        )
+        assert len(counters) == 1
+        assert (counters[0].current_lap, counters[0].total_laps) == (12, 57)
         assert sm.state.current_lap == 12
+        # The feed re-sends constantly; an unchanged counter says nothing new.
+        assert sm.apply(feed.record("LapCount", {"CurrentLap": 12, "TotalLaps": 57})) == []
+        moved = only(
+            sm.apply(feed.record("LapCount", {"CurrentLap": 13, "TotalLaps": 57})),
+            LapCounterUpdated,
+        )
+        assert [c.current_lap for c in moved] == [13]
+
+    def test_session_info_names_the_race_and_its_venue_only_on_change(self):
+        """A live session's only route to a name and a circuit file. Before
+        this was an event, a live race reached the API nameless and its
+        track map was always blank."""
+        sm, feed = machine(), Feed()
+        info: JsonValue = {
+            "Meeting": {"Name": "Azerbaijan Grand Prix", "Circuit": {"ShortName": "Baku"}},
+            "Path": "2026/Baku/Race/",
+        }
+        named = only(sm.apply(feed.record("SessionInfo", info)), SessionInfoUpdated)
+        assert [(e.meeting_name, e.circuit_short_name) for e in named] == [
+            ("Azerbaijan Grand Prix", "Baku")
+        ]
+        # Re-sent unchanged: nothing new to say.
+        assert only(sm.apply(feed.record("SessionInfo", info)), SessionInfoUpdated) == []
+
+    def test_first_seed_publishes_the_venue_with_the_baseline(self):
+        """Joining mid-race, the store still learns which race this is, on
+        the next real record like the rest of the baseline."""
+        sm, feed = machine(), Feed()
+        snapshot = _snapshot()
+        assert isinstance(snapshot, dict)
+        snapshot["SessionInfo"] = {
+            "Meeting": {"Name": "Spanish Grand Prix", "Circuit": {"ShortName": "Madring"}},
+            "Path": "2026/Madrid/Race/",
+        }
+        assert sm.apply(feed.record("_meta.subscribe_snapshot", snapshot)) == []
+        real = feed.record("Heartbeat", {})
+        named = only(sm.apply(real), SessionInfoUpdated)
+        assert [(e.meeting_name, e.circuit_short_name, e.source_seq) for e in named] == [
+            ("Spanish Grand Prix", "Madring", real.seq)
+        ]
 
     def test_weather_emits_only_on_change(self):
         sm, feed = machine(), Feed()
@@ -477,6 +527,26 @@ class TestSessionLevelTopics:
 
 
 class TestDriverList:
+    def test_full_name_survives_sparse_identity_updates(self):
+        sm, feed = machine(), Feed()
+        events = sm.apply(
+            feed.record(
+                "DriverList",
+                {"1": {"Tla": "NOR", "FullName": "Lando Norris", "TeamName": "McLaren"}},
+            )
+        )
+        roster = only(events, DriverListUpdated)[0]
+        # `DriverListUpdated.drivers` is optional on the event; a roster
+        # event that carries none would make the assertions below vacuous,
+        # so state the assumption rather than indexing through it.
+        assert roster.drivers is not None
+        assert roster.drivers[0].full_name == "Lando Norris"
+        events = sm.apply(feed.record("DriverList", {"1": {"TeamName": "McLaren Racing"}}))
+        merged = only(events, DriverListUpdated)[0]
+        assert merged.drivers is not None
+        assert merged.drivers[0].full_name == "Lando Norris"
+        assert sm.apply(feed.record("DriverList", {"1": {"FullName": "Lando Norris"}})) == []
+
     def test_identity_change_emits_sorted_roster(self):
         sm, feed = machine(), Feed()
         events = sm.apply(
@@ -583,6 +653,15 @@ class TestSeeding:
     def test_deltas_restating_snapshot_values_emit_nothing(self):
         sm, feed = machine(), Feed()
         sm.apply(feed.record("_meta.subscribe_snapshot", _snapshot()))
+        # Drain the first seed's one-off baseline so what follows isolates
+        # the restated deltas (the baseline has its own tests below).
+        drained = sm.apply(feed.record("Heartbeat", {}))
+        assert {type(event) for event in drained} == {
+            PositionChanged,
+            DriverListUpdated,
+            LapCounterUpdated,
+            UnknownEvent,
+        }
         assert (
             sm.apply(
                 timing(
@@ -712,3 +791,48 @@ class TestSeeding:
             payload={"Lines": {"1": {"NumberOfLaps": 31, "LastLapTime": {"Value": "1:34.5"}}}},
         )
         assert len(only(sm.apply(first_real), LapCompleted)) == 1
+
+    def test_first_seed_publishes_positions_and_roster_on_next_real_record(self):
+        """Joining mid-session must still learn the running order: the first
+        seed's baseline rides on the next real record, stamped with THAT
+        record's seq and time rather than the snapshot's."""
+        sm, feed = machine(), Feed()
+        assert sm.apply(feed.record("_meta.subscribe_snapshot", _snapshot())) == []
+        real = feed.record("Heartbeat", {})
+        events = sm.apply(real)
+        positions = {e.driver: e.position for e in only(events, PositionChanged)}
+        assert positions == {"1": 1, "16": 2}
+        rosters = only(events, DriverListUpdated)
+        assert len(rosters) == 1
+        assert [(d.number, d.code, d.team) for d in rosters[0].drivers or []] == [
+            ("1", "VER", "Red Bull Racing"),
+            ("16", "LEC", "Ferrari"),
+        ]
+        assert {e.source_seq for e in events} == {real.seq}
+        assert {e.ts_utc for e in events} == {datetime.fromtimestamp(real.ts_wall, tz=UTC)}
+        # Stints stay out of the baseline: a snapshot cannot say which lap an
+        # earlier stint began, and a guessed start lap would reach the kernel.
+        assert only(events, StintStarted) == []
+
+    def test_reseed_does_not_publish_a_second_baseline(self):
+        sm, feed = machine(), Feed()
+        sm.apply(feed.record("_meta.subscribe_snapshot", _snapshot()))
+        assert only(sm.apply(feed.record("Heartbeat", {})), PositionChanged)  # the baseline
+        swapped = _snapshot()
+        assert isinstance(swapped, dict)
+        swapped["DriverList"] = {
+            "1": {"Tla": "VER", "TeamName": "Red Bull Racing", "Line": 2},
+            "16": {"Tla": "LEC", "TeamName": "Ferrari", "Line": 1},
+        }
+        swapped["TimingData"] = {
+            "Lines": {
+                "1": {"NumberOfLaps": 30, "Position": "2"},
+                "16": {"NumberOfLaps": 29, "Position": "1"},
+            }
+        }
+        assert sm.apply(feed.record("_meta.reconnect", {"attempt": 1})) == []
+        assert sm.apply(feed.record("_meta.subscribe_snapshot", swapped)) == []
+        # No second baseline, even though the order changed during the gap...
+        assert [type(e) for e in sm.apply(feed.record("Heartbeat", {}))] == [UnknownEvent]
+        # ...while the gap-era swap is still reflected in state.
+        assert sm.state.drivers["16"].position == 1

@@ -11,6 +11,7 @@ dependencies = [
     "f1-replay",
     "f1-historical-adapter",
     "f1-ingest",
+    "f1-backfill",
 ]
 
 [project.scripts]
@@ -24,6 +25,7 @@ f1-store = { workspace = true }
 f1-replay = { workspace = true }
 f1-historical-adapter = { workspace = true }
 f1-ingest = { workspace = true }
+f1-backfill = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

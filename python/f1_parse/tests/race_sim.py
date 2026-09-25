@@ -106,7 +106,7 @@ class RaceTruth:
     team_radio_count: int
     unknown_topic_count: int
     reconnect_sentinel_seqs: set[int]
-    """Seqs of the two mid-stream `_meta.*` records (seeding must be silent)."""
+    """Seqs of the two mid-stream `_meta.*` records (re-seeding must be silent)."""
 
 
 @dataclass

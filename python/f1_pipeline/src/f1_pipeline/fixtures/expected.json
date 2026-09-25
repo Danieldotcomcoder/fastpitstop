@@ -1,12 +1,15 @@
 {
   "events_by_kind": {
+    "driver_list_updated": 1,
     "gap_updated": 1061,
     "lap_completed": 1117,
+    "lap_counter_updated": 57,
     "pit_entry": 30,
     "pit_exit": 30,
-    "position_changed": 406,
+    "position_changed": 426,
     "race_control_message": 4,
     "sector_completed": 3351,
+    "session_info_updated": 1,
     "session_status_changed": 3,
     "stint_started": 50,
     "team_radio_clip": 3,
@@ -131,7 +134,7 @@
     ]
   },
   "row_counts": {
-    "events": 6168,
+    "events": 6247,
     "laps": 1117,
     "pit_stops": 60,
     "race_control": 4,

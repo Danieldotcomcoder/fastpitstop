@@ -61,13 +61,63 @@ DomainEvent stream ─► kernel frames + KernelReport ─► detect_anomalies �
 - Confidence is the WORST cited item's trust signal; the UI shows it and
   lets the user expand the real cited sources.
 
+## Model backends
+
+`NarrationModel` has three real implementations plus the mocks.
+`f1_api.why.get_narration_model` resolves them in this order:
+
+| condition | backend |
+| --- | --- |
+| `F1_API_WHY_FIXTURE` set | `CitingNarrationModel` (E2E, no key) |
+| `OPENROUTER_API_KEY` set | `f1_why.OpenRouterModel` |
+| `ANTHROPIC_API_KEY` set | `ClaudeHaikuModel` |
+| neither | a declining `MockNarrationModel` |
+
+A backend that cannot be constructed (missing optional dependency, bad
+key) logs and falls through to the declining mock rather than 500-ing
+every why-engine route — the engine is an enrichment, never the reason
+the rest of the API stops working.
+
+### `f1_why.openrouter.OpenRouterModel`
+
+OpenRouter is OpenAI-compatible, and this project runs it on
+`minimax/minimax-m3:free` (`DEFAULT_OPENROUTER_MODEL`; override with
+`OPENROUTER_MODEL`, or point `OPENROUTER_BASE_URL` at a compatible proxy).
+Two guarantees differ from the Anthropic backend, both because a free-tier
+chat model gives weaker promises than a structured-output API:
+
+- **No structured-output requirement.** JSON is requested twice over — the
+  `response_format` hint AND an explicit instruction appended to the system
+  prompt — and a 4xx retries ONCE without `response_format`, since some
+  free models reject the field outright. The reply is read by
+  `parse_narration_json`, a pure function that handles a markdown fence,
+  conversational text wrapped around the JSON, braces inside strings, and
+  missing fields. Anything it cannot read becomes `no_clear_cause=True`,
+  which `explain` normalizes to `FALLBACK_TEXT` — so a malformed answer
+  degrades to "no clear cause found", never to an ungrounded claim.
+- **It never raises into the caller.** A transport error, a rate limit, or
+  an unavailable model returns a decline (recorded on `last_error`), so one
+  failed call degrades a single anomaly instead of taking down the race
+  stream it runs inside.
+
+Tested in `python/f1_why/tests/test_openrouter.py` against a scripted
+stand-in client — no network, no key: every parse deviation above, the
+`response_format` retry, and each failure mode degrading rather than
+raising.
+
 ## Cost notes
 
-- Model: Claude Haiku (`claude-haiku-4-5`) over a token-budgeted bundle.
-- Calls: few per race weekend; skipped for low-evidence; cached per
-  anomaly (`explain_cached` / `MemoryExplanationStore`).
+- Model: a small, cheap one — OpenRouter's free tier by default, or Claude
+  Haiku (`claude-haiku-4-5`) — over a token-budgeted bundle.
+- Calls: **bounded per session** by `Settings.max_explanations`
+  (`F1_WHY_MAX_EXPLANATIONS`, default 12). A real 2024 race detects ~302
+  anomalies; narrating all of them would be one call each. Detection stays
+  uncapped, narration does not — `f1_api.why.most_salient` trims to the
+  moments that actually mattered.
+- Also skipped entirely for a low-evidence bundle, and cached per anomaly
+  (`explain_cached` / `MemoryExplanationStore`).
 - CI / `just verify-phase5`: `F1_API_WHY_FIXTURE=1` resolves
-  `CitingNarrationModel` (no Anthropic key, no network).
+  `CitingNarrationModel` (no key, no network).
 
 ## Exit criteria
 
@@ -635,7 +685,7 @@ Anthropic key. Low-evidence anomalies still short-circuit inside
   A future prompt that wants telemetry-derived evidence needs a new input
   on `EvidenceSources`, not a change to what's already there.
 - No persistent `ExplanationStore` — `MemoryExplanationStore` is the
-  process-level cache today; a Postgres-backed store (mirroring
+  process-level cache today, so a restart re-narrates the capped set; a Postgres-backed store (mirroring
   `f1_radio.store`'s own split) is a later prompt. Radio-index wiring
   through `f1_api.radio` is live for evidence assembly when a corpus is
   configured.

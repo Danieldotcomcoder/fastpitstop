@@ -103,4 +103,31 @@ class DriverRef(BaseModel):
 
     number: str
     code: str | None = None
+    full_name: str | None = None
     team: str | None = None
+
+
+_SESSION_TYPE_ALIASES: dict[str, SessionType] = {
+    "practice1": SessionType.PRACTICE_1,
+    "practice2": SessionType.PRACTICE_2,
+    "practice3": SessionType.PRACTICE_3,
+    "qualifying": SessionType.QUALIFYING,
+    "sprint": SessionType.SPRINT,
+    "sprintqualifying": SessionType.SPRINT_QUALIFYING,
+    "sprintshootout": SessionType.SPRINT_QUALIFYING,
+    "race": SessionType.RACE,
+}
+
+
+def session_type_from_label(raw: str) -> SessionType:
+    """Map a session-type string onto the enum, whatever spelled it.
+
+    Three vocabularies converge here and must never drift apart: FastF1's
+    catalog ("Practice 1", "Sprint Shootout"), the database (the enum's own
+    value), and the live feed's `SessionInfo.Name` ("Sprint Qualifying").
+    Normalizing away case, spaces, underscores and hyphens covers all three.
+    Lives in `f1_domain` because it is vocabulary, and because `f1_kernel`
+    and `f1_parse` both need it without depending on each other.
+    """
+    normalized = raw.strip().casefold().replace(" ", "").replace("_", "").replace("-", "")
+    return _SESSION_TYPE_ALIASES.get(normalized, SessionType.UNKNOWN)

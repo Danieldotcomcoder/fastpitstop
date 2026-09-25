@@ -42,6 +42,27 @@ f1-why = { workspace = true }
 [tool.uv.workspace]
 members = ["python/*"]
 
+# ---------------------------------------------------------------------------
+# torch: CPU-only builds, always.
+#
+# f1-radio -> sentence-transformers -> torch. On Linux the PyPI torch wheel
+# declares cuda-toolkit[cublas,cudart,cufft,...] + nvidia-cudnn-cu13 +
+# nvidia-nccl + triton, which is ~2.5GB of NVIDIA wheels on top of a 500MB
+# torch. Nothing in this project runs on a GPU -- embeddings (f1_radio) and
+# faster-whisper (ctranslate2, not torch) are both CPU workloads on the
+# ~$40/mo budget box, and the api/worker container has no CUDA runtime at
+# all. Sourcing torch from PyTorch's own cpu index gets the SAME 2.13.0,
+# minus every nvidia-* dependency: the docker build goes from ~3GB of
+# downloads to ~200MB.
+#
+# `explicit = true` means ONLY packages that name this index below come from
+# it -- everything else still resolves against PyPI as normal.
+# ---------------------------------------------------------------------------
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [dependency-groups]
 dev = [
     "ruff>=0.6.9",

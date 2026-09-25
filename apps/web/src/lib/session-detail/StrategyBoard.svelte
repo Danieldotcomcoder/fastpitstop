@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { driverName, type DriverNames } from '$lib/drivers';
 	/** Stint bars + pit-stop markers per selected driver — derived from the
 	 * same `/laps` fetch `RaceShapeChart` uses, one row per driver, one
 	 * segment per stint coloured by compound (tyre colour IS the data here,
@@ -10,11 +11,12 @@
 	type LapRow = components['schemas']['LapRowOut'];
 
 	interface Props {
+		names?: DriverNames;
 		laps: LapRow[];
 		drivers: string[];
 	}
 
-	let { laps, drivers }: Props = $props();
+	let { laps, drivers, names = {} }: Props = $props();
 
 	let stints = $derived(buildStints(laps, drivers));
 	let pitStops = $derived(buildPitStops(laps, drivers));
@@ -49,7 +51,7 @@
 			<div class="board" style:min-width="32rem">
 				{#each driversWithStints as driver (driver)}
 					<div class="row">
-						<span class="code font-mono">{driver}</span>
+						<span class="code font-mono">{names[driver] ?? driverName(driver)}</span>
 						<div class="track">
 							{#each stintsFor(driver) as stint (stint.stintNumber)}
 								<div
@@ -57,7 +59,9 @@
 									style:left="{pct(stint.startLap)}%"
 									style:width="{widthPct(stint.startLap, stint.endLap)}%"
 									style:background="var({tyreColorVar(stint.compound)})"
-									title="{tyreLabel(stint.compound)} · laps {stint.startLap}-{stint.endLap} ({stint.lapCount} laps)"
+									title="{tyreLabel(
+										stint.compound
+									)} · laps {stint.startLap}-{stint.endLap} ({stint.lapCount} laps)"
 								></div>
 							{/each}
 							{#each pitStopsFor(driver) as stop (stop.lapNumber)}
@@ -106,7 +110,7 @@
 
 	.row {
 		display: grid;
-		grid-template-columns: 3rem 1fr;
+		grid-template-columns: 11rem 1fr;
 		align-items: center;
 		gap: var(--space-3);
 	}

@@ -2,11 +2,15 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { brand } from '$lib/brand';
+	import { feedbackEnabled } from '$lib/feedback-enabled';
 
 	const LEGAL =
 		'This website is unofficial and is not associated in any way with the Formula 1 companies. F1, FORMULA ONE, FORMULA 1, FIA FORMULA ONE WORLD CHAMPIONSHIP, GRAND PRIX and related marks are trade marks of Formula One Licensing B.V.';
 
 	const feedbackHref = $derived.by(() => {
+		// A plain local URLSearchParams used once to build a string — not
+		// reactive state, so SvelteURLSearchParams would buy nothing.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const params = new URLSearchParams();
 		params.set('route', page.url.pathname + page.url.search);
 		return `${resolve('/feedback')}?${params.toString()}`;
@@ -17,8 +21,13 @@
 	<p class="legal">{LEGAL}</p>
 	<p class="meta">
 		<span class="version tabular">{brand.name} {brand.version}</span>
-		<span class="sep" aria-hidden="true">·</span>
-		<a class="feedback-link" href={feedbackHref}>Send feedback</a>
+		{#if feedbackEnabled()}
+			<span class="sep" aria-hidden="true">·</span>
+			<!-- feedbackHref is resolve('/feedback') plus a query string; the rule
+			     cannot see through the concatenation. -->
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+			<a class="feedback-link" href={feedbackHref}>Send feedback</a>
+		{/if}
 	</p>
 </footer>
 

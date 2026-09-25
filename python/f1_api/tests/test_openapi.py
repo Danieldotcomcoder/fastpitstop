@@ -29,6 +29,7 @@ EXPECTED_PATHS = {
     "/sessions/{key}/telemetry/{driver}",
     "/sessions/{key}/radio",
     "/sessions/{key}/anomalies",
+    "/sessions/{key}/story",
     "/anomalies/{anomaly_id}/explanation",
     "/radio/search",
     "/radio/{clip_id}",

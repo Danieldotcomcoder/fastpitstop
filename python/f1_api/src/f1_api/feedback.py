@@ -49,9 +49,13 @@ class FeedbackOut(BaseModel):
     message: str = "Thanks — we got it."
 
 
-class FeedbackRejected(Exception):
+class FeedbackRejected(Exception):  # noqa: N818 — see below
     """Friendly validation / rate-limit failure — routes map to HTTP 200/400
-    with a plain message rather than a 429 blob."""
+    with a plain message rather than a 429 blob.
+
+    Deliberately not `...Error`-suffixed (ruff's N818): this is a normal,
+    expected outcome of a public form submission, not a program error, and
+    the name is already part of this module's public surface."""
 
     def __init__(self, message: str, *, status_code: int = 400) -> None:
         super().__init__(message)
@@ -123,9 +127,15 @@ class FeedbackStore(Protocol):
 class MemoryFeedbackStore:
     """In-memory sink for tests — same shape as the Postgres store."""
 
-    _rows: list[FeedbackRecord] = field(default_factory=list)
+    _rows: list[FeedbackRecord] = field(default_factory=list[FeedbackRecord])
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _next_id: int = 1
+
+    def records(self) -> list[FeedbackRecord]:
+        """A snapshot of everything stored — the read a test needs, so it
+        never has to reach into `_rows`."""
+        with self._lock:
+            return list(self._rows)
 
     def insert(self, record: FeedbackRecord) -> FeedbackRecord:
         with self._lock:
@@ -182,7 +192,7 @@ def build_turnstile_verifier(secret: str | None) -> TurnstileVerifier:
     if not secret:
         # Dev / CI: accept any token (including empty) so the form works
         # without Cloudflare keys. Production must set the secret.
-        return lambda token, remote_ip=None: True  # noqa: ARG005
+        return lambda token, remote_ip=None: True
 
     def verify(token: str, remote_ip: str | None = None) -> bool:
         if not token.strip():
@@ -203,7 +213,7 @@ def build_turnstile_verifier(secret: str | None) -> TurnstileVerifier:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 import json
 
                 body = json.loads(resp.read().decode())
@@ -321,26 +331,26 @@ def submit_feedback(
         try:
             send_mail(record)
             store.mark_email(record.id, sent=True, error=None)
-        except Exception as exc:  # noqa: BLE001 — notification failure must not lose the row
+        except Exception as exc:
             store.mark_email(record.id, sent=False, error=str(exc)[:500])
 
     return FeedbackOut()
 
 
 __all__ = [
+    "HONEYPOT_FIELD",
+    "MAX_BODY_CHARS",
+    "MAX_EMAIL_CHARS",
+    "MIN_SUBMIT_SECONDS",
+    "RATE_LIMIT_GLOBAL_DAY",
+    "RATE_LIMIT_PER_IP_HOUR",
     "FeedbackIn",
     "FeedbackOut",
     "FeedbackRecord",
     "FeedbackRejected",
     "FeedbackStore",
-    "HONEYPOT_FIELD",
-    "MAX_BODY_CHARS",
-    "MAX_EMAIL_CHARS",
-    "MIN_SUBMIT_SECONDS",
-    "MemoryFeedbackStore",
     "MailSender",
-    "RATE_LIMIT_GLOBAL_DAY",
-    "RATE_LIMIT_PER_IP_HOUR",
+    "MemoryFeedbackStore",
     "TurnstileVerifier",
     "build_smtp_sender",
     "build_turnstile_verifier",

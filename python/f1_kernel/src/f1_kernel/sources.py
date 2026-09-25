@@ -34,9 +34,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import pandas as pd
+import polars as pl
 from pydantic import BaseModel, ConfigDict, Field
 
 from f1_domain import DomainEvent, SessionKey, SessionType
+from f1_domain import session_type_from_label as session_type_from_label
+from f1_kernel.positions import normalize_track, track_from_events
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, keeps psycopg optional
     import psycopg
@@ -60,6 +63,7 @@ _KIND_TABLES: dict[str, tuple[str, ...]] = {
     "race_control_message": ("race_control",),
     "team_radio_clip": ("team_radio",),
     "car_telemetry": ("car_telemetry",),
+    "car_position": ("car_positions",),
 }
 
 # Column holding the driver number in each parquet table, for driver pushdown.
@@ -67,6 +71,7 @@ _DRIVER_COLUMNS: dict[str, str] = {
     "laps": "DriverNumber",
     "results": "DriverNumber",
     "car_telemetry": "DriverNumber",
+    "car_positions": "DriverNumber",
     "intervals": "driver_number",
     "team_radio": "driver_number",
 }
@@ -82,6 +87,8 @@ LAP_FRAME_KINDS: frozenset[str] = frozenset(
         "gap_updated",
         "track_status_changed",
         "race_control_message",
+        # Which venue: a live session's only route to its circuit file.
+        "session_info_updated",
     }
 )
 
@@ -116,6 +123,9 @@ class SessionRef:
     event_name: str | None = None
     directory: Path | None = None
     tables: tuple[str, ...] = ()
+    circuit_name: str | None = None
+    """The feed's venue short name ("Madring"), when the source knows it:
+    the unambiguous way to a circuit file (see `circuit_for_session`)."""
 
     @property
     def label(self) -> str:
@@ -176,6 +186,9 @@ class MemorySource:
                 continue
             yield event
 
+    def position_track(self, session_key: SessionKey) -> pl.DataFrame | None:
+        return track_from_events(self.events(session_key, kinds=["car_position"]))
+
     def sessions(self) -> list[SessionRef]:
         keys = {event.session_key for event in self._events}
         return sorted(
@@ -208,16 +221,17 @@ class HistoricalSource:
         from f1_historical_adapter.reader import SessionTables, load_session_tables
 
         wanted_kinds = frozenset(kinds) if kinds is not None else None
-        loaded = load_session_tables(self.root, session_key)
+        needed = (
+            None
+            if wanted_kinds is None
+            else {table for kind in wanted_kinds for table in _KIND_TABLES.get(kind, ())}
+        )
+        loaded = load_session_tables(self.root, session_key, only=needed)
 
         tables = dict(loaded.tables)
-        if wanted_kinds is not None:
-            needed = {table for kind in wanted_kinds for table in _KIND_TABLES.get(kind, ())}
-            tables = {name: frame for name, frame in tables.items() if name in needed}
         if drivers is not None:
             tables = _filter_tables_by_driver(tables, frozenset(drivers))
 
-        include_telemetry = wanted_kinds is None or "car_telemetry" in wanted_kinds
         stream = build_events(
             SessionTables(
                 session_key=loaded.session_key,
@@ -225,12 +239,30 @@ class HistoricalSource:
                 tables=tables,
                 session_start_utc=loaded.session_start_utc,
             ),
-            include_telemetry=include_telemetry,
+            include_telemetry=wanted_kinds is None or "car_telemetry" in wanted_kinds,
+            include_positions=wanted_kinds is None or "car_position" in wanted_kinds,
         )
         for event in stream:
             if wanted_kinds is not None and event.kind not in wanted_kinds:
                 continue
             yield event
+
+    def position_track(self, session_key: SessionKey) -> pl.DataFrame | None:
+        """The session's `car_positions` table, read columnar.
+
+        Looked up by key alone, whether or not the catalog lists the
+        session: the same directory is where a live-ingested session's
+        positions land once they are imported from F1's post-session
+        archive (`f1-backfill --positions-only --uncatalogued`)."""
+        from f1_historical_adapter.reader import session_directory
+
+        path = session_directory(self.root, session_key) / "car_positions.parquet"
+        if not path.is_file():
+            return None
+        table = pl.read_parquet(path, columns=["Date", "DriverNumber", "X", "Y"])
+        return normalize_track(
+            table.rename({"Date": "ts_utc", "DriverNumber": "driver", "X": "x", "Y": "y"})
+        )
 
     def sessions(self) -> list[SessionRef]:
         return list_historical_sessions(self.root)
@@ -269,14 +301,88 @@ class StoreSource:
                 continue
             yield event
 
+    def events_after(
+        self,
+        session_key: SessionKey,
+        after: tuple[int, int] | None,
+        *,
+        kinds: Collection[str] | None = None,
+    ) -> Iterator[tuple[DomainEvent, tuple[int, int]]]:
+        """Events strictly after `after`, each paired with its own cursor.
+
+        The incremental twin of `events`, for a follower that polls the same
+        growing session over and over (`f1_api`'s live WebSocket). Not part
+        of the `EventSource` protocol: a parquet or in-memory source has no
+        equivalent cursor, and every analytic still uses `events`.
+        """
+        from f1_store import replay_events_with_cursor
+
+        yield from replay_events_with_cursor(self._conn, session_key, kinds=kinds, after=after)
+
+    def position_track(self, session_key: SessionKey) -> pl.DataFrame | None:
+        """The `car_positions` hypertable for one session, bulk-read.
+
+        COPY as CSV rather than row by row: a race is ~640k rows, and
+        fetching them as Python tuples costs several times the memory of
+        the frame they end up in. `None` when the session has none (every
+        live session, while the feed withholds positions)."""
+        sql = (
+            "COPY (SELECT (extract(epoch FROM ts_utc) * 1000000)::bigint, driver, x, y "
+            "FROM car_positions WHERE session_year = {year} AND session_round = {round} "
+            "AND session_type = {type} AND x IS NOT NULL AND y IS NOT NULL "
+            "ORDER BY ts_utc, driver) TO STDOUT (FORMAT csv)"
+        )
+        from psycopg import sql as psql
+
+        query = psql.SQL(sql).format(
+            year=psql.Literal(session_key.year),
+            round=psql.Literal(session_key.round),
+            type=psql.Literal(session_key.session_type.value),
+        )
+        buffer = bytearray()
+        with self._conn.cursor() as cur, cur.copy(query) as copy:
+            for chunk in copy:
+                buffer += chunk
+        if not buffer:
+            return None
+        frame = pl.read_csv(
+            bytes(buffer),
+            has_header=False,
+            new_columns=["ts_us", "driver", "x", "y"],
+            schema_overrides={"ts_us": pl.Int64, "driver": pl.String},
+        )
+        return normalize_track(
+            frame.select(
+                pl.from_epoch("ts_us", time_unit="us").alias("ts_utc"),
+                "driver",
+                "x",
+                "y",
+            )
+        )
+
     def sessions(self) -> list[SessionRef]:
-        """Sessions present in the event log, newest championship round last."""
+        """Sessions present in the event log, newest championship round last.
+
+        Named from the log's own `session_info_updated` events when no name
+        was supplied: a live session has no catalog entry, and before this
+        it reached the API nameless and so could never find its circuit."""
         with self._conn.cursor() as cur:
             cur.execute(
                 "SELECT DISTINCT session_year, session_round, session_type FROM events "
                 "ORDER BY session_year, session_round, session_type"
             )
             rows = cur.fetchall()
+            cur.execute(
+                "SELECT DISTINCT ON (session_year, session_round, session_type) "
+                "session_year, session_round, session_type, "
+                "payload->>'meeting_name', payload->>'circuit_short_name' "
+                "FROM events WHERE kind = 'session_info_updated' "
+                "ORDER BY session_year, session_round, session_type, ts_utc DESC"
+            )
+            info_rows = cur.fetchall()
+        info: dict[tuple[int, int, str], tuple[str | None, str | None]] = {
+            (int(y), int(r), str(t)): (meeting, venue) for y, r, t, meeting, venue in info_rows
+        }
         refs: list[SessionRef] = []
         for year, round_no, session_type in rows:
             key = SessionKey(
@@ -284,7 +390,14 @@ class StoreSource:
                 round=int(round_no),
                 session_type=session_type_from_label(str(session_type)),
             )
-            refs.append(SessionRef(session_key=key, event_name=self._event_names.get(key)))
+            meeting, venue = info.get((int(year), int(round_no), str(session_type)), (None, None))
+            refs.append(
+                SessionRef(
+                    session_key=key,
+                    event_name=self._event_names.get(key) or meeting,
+                    circuit_name=venue,
+                )
+            )
         return sorted(refs, key=_sort_key)
 
 
@@ -331,27 +444,9 @@ def list_historical_sessions(
     return sorted(refs, key=_sort_key)
 
 
-_SESSION_TYPE_ALIASES: dict[str, SessionType] = {
-    "practice1": SessionType.PRACTICE_1,
-    "practice2": SessionType.PRACTICE_2,
-    "practice3": SessionType.PRACTICE_3,
-    "qualifying": SessionType.QUALIFYING,
-    "sprint": SessionType.SPRINT,
-    "sprintqualifying": SessionType.SPRINT_QUALIFYING,
-    "sprintshootout": SessionType.SPRINT_QUALIFYING,
-    "race": SessionType.RACE,
-}
-
-
-def session_type_from_label(raw: str) -> SessionType:
-    """Map a catalog/DB session-type string onto the domain enum.
-
-    The catalog carries FastF1's spelling ("Practice 1", "Sprint Shootout")
-    and the DB carries the enum's own value, so normalize both by stripping
-    everything that varies between them.
-    """
-    normalized = raw.strip().casefold().replace(" ", "").replace("_", "").replace("-", "")
-    return _SESSION_TYPE_ALIASES.get(normalized, SessionType.UNKNOWN)
+# `session_type_from_label` lives in f1_domain (the vocabulary both this
+# package and f1_parse need); re-exported here so every existing caller and
+# import site keeps working.
 
 
 def _sort_key(ref: SessionRef) -> tuple[int, int, str]:

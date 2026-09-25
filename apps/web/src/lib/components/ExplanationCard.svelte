@@ -140,6 +140,9 @@
 							<span class="chip">{item.confidenceLabel}</span>
 						{/if}
 						{#if evidenceHref(item)}
+							<!-- Points at f1_api (an absolute URL on another origin), not at a
+							     SvelteKit route, so resolve() does not apply. -->
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 							<a class="evidence-link" href={evidenceHref(item)} data-testid="evidence-href"
 								>Open source</a
 							>

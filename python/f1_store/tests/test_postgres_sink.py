@@ -132,3 +132,23 @@ def test_write_state_upserts_sessions_and_drivers(
             )
             row = cur.fetchone()
             assert row == (1, "HAM")
+
+
+def test_positions_read_back_as_a_compact_track(
+    fresh_db: str, sample_events: list[DomainEvent]
+) -> None:
+    """`StoreSource.position_track` bulk-reads `car_positions` with COPY
+    rather than building an event per sample; it must return exactly the
+    samples the sink wrote."""
+    from f1_kernel import StoreSource
+
+    with psycopg.connect(fresh_db) as conn:
+        with PostgresSink(conn) as sink:
+            sink.write_events(sample_events)
+        track = StoreSource(conn).position_track(KEY)
+        other = StoreSource(conn).position_track(KEY.model_copy(update={"round": KEY.round + 1}))
+
+    assert track is not None
+    assert track.select("driver", "x", "y").rows() == [("1", 4.0, 5.0), ("44", 1.0, 2.0)]
+    assert str(track["ts_utc"].dtype) == "Datetime(time_unit='us', time_zone='UTC')"
+    assert other is None

@@ -10,7 +10,7 @@
 <svelte:head>
 	<title>{brand.name}</title>
 	<meta name="description" content="{brand.name} — {brand.tagline}. Unofficial fan project." />
-	<meta name="theme-color" content="#0F1216" />
+	<meta name="theme-color" content="#EEEFEA" />
 </svelte:head>
 
 <div class="app-shell">
@@ -41,5 +41,12 @@
 	/* Product dashboards opt in with `.wide-dashboard` on the page root. */
 	main:has(> :global(.wide-dashboard)) {
 		max-width: var(--content-max);
+	}
+
+	/* The race desk owns its own width and gutters (the design's `.app`),
+	   so its sync strip can run edge to edge. */
+	main:has(> :global(.desk-page)) {
+		max-width: none;
+		padding: 0;
 	}
 </style>
