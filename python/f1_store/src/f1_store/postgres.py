@@ -293,13 +293,20 @@ few extra minutes after the flag (it is still finalising), whereas erring
 short would blank the dashboard mid-race.
 """
 
-TERMINAL_SESSION_STATUSES = ("Ends", "Finished", "Finalised")
+TERMINAL_SESSION_STATUSES = ("Ends", "Finalised")
 """Feed statuses that mean the session is definitively over.
 
 Deliberately NOT a full denylist of the feed's vocabulary: "Inactive"
 precedes a session, and "Aborted" is a red flag the session can resume from.
-Matching only the three unambiguous values keeps an unrecognised status
-falling through to the freshness test rather than being guessed at.
+Matching only the unambiguous values keeps an unrecognised status falling
+through to the freshness test rather than being guessed at.
+
+"Finished" is not one of them. It ends every qualifying segment (2026
+Azerbaijan qualifying: Started, Finished, Inactive, Started, Finished, ...),
+so treating it as terminal would drop the dashboard at the end of Q1. At the
+chequered flag it would also retire the race while a viewer on a broadcast
+delay is still watching the last laps. "Finalised" follows once the results
+are confirmed, about ten minutes later.
 """
 
 

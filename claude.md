@@ -110,7 +110,12 @@ Phase 1 packages (under python/, in dependency order):
   historical comparison harness. One kernel code path over live + history.
 - f1_pipeline (1.6): the wiring + verification. `run(records, sink,
   session_key)` is the one path both live and replay feed; `run_events` is
-  the historical front; `Pipeline` is the push form for the live socket. The
+  the historical front; `Pipeline` is the push form for the live socket;
+  `SessionRouter`/`run_routed` give each session its own `Pipeline` when one
+  stream spans several (the live worker runs all weekend on one connection,
+  and F1 announces each new session over it with a `SessionInfo` keyframe;
+  keying off the first snapshot filed the 2026 Azerbaijan race under
+  "practice_2", so it never went live — see docs/PHASE1.md). The
   `f1-pipeline` CLI (replay / ingest-historical / live) wires each source to
   Postgres and logs per-run metrics (records in, events by kind, unknown-topic
   count = feed-drift early warning, rows written, wall time). `just

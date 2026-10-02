@@ -132,6 +132,10 @@ def _store_source(settings: Settings) -> Generator[_Store | None, None, None]:
             # narrating a finished one.
             _log.warning("could not determine live sessions", exc_info=True)
             live_keys = frozenset()
+            # The failed query aborted the transaction; without this every
+            # later read on the connection fails too, and `/sessions` (the
+            # `/live` page's poll) answered 500 instead of degrading.
+            conn.rollback()
         yield _Store(source=StoreSource(conn), live_keys=live_keys)
     finally:
         conn.close()

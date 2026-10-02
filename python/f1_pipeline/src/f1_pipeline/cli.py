@@ -18,15 +18,18 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from f1_domain import SessionType
+import psycopg
+
+from f1_domain import SessionKey, SessionType
 from f1_pipeline import __version__
-from f1_pipeline.pipeline import Pipeline, run, run_events
+from f1_pipeline.metrics import RunMetrics
+from f1_pipeline.pipeline import SessionRouter, run, run_events, run_routed
 from f1_pipeline.replay_source import replay_records
 from f1_pipeline.session import discover_historical_sessions, session_key, session_type_from_name
-from f1_pipeline.session_identity import session_key_from_snapshot
 from f1_recording import RecordingReader
 from f1_store import PostgresSink, apply_migrations
 from f1_store.config import connect
@@ -56,7 +59,19 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     replay = sub.add_parser("replay", help="replay a recording into Postgres")
     replay.add_argument("recording", type=Path)
     replay.add_argument(
-        "--round", type=int, required=True, help="championship round (not in the recording)"
+        "--round",
+        type=int,
+        default=None,
+        help="championship round (not in the manifest; required unless --split-sessions)",
+    )
+    replay.add_argument(
+        "--split-sessions",
+        action="store_true",
+        help=(
+            "file each record under the session the stream's own SessionInfo names, "
+            "exactly as the live ingest does -- for a recording that ran across "
+            "several sessions of a weekend"
+        ),
     )
     replay.add_argument("--year", type=int, default=None, help="override the recording's year")
     replay.add_argument(
@@ -103,7 +118,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     live.add_argument("--session-name", default=None)
     live.add_argument("--no-auth", action="store_true")
     live.add_argument("--idle-timeout", type=float, default=60.0)
-    live.add_argument("--max-backoff", type=float, default=60.0)
+    # 15s, not 60s: F1's negotiate endpoint intermittently omits the load
+    # balancer cookie FastF1 reads (KeyError 'AWSALBCORS'), and a run of
+    # those at a session start doubled the wait to a minute of lost timing.
+    live.add_argument("--max-backoff", type=float, default=15.0)
     live.set_defaults(func=_cmd_live)
 
     archive = sub.add_parser(
@@ -130,10 +148,30 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     archive.set_defaults(func=_cmd_archive_positions)
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.command == "replay" and args.round is None and not args.split_sessions:
+        replay.error("--round is required (the manifest does not carry it) unless --split-sessions")
+    return args
 
 
 def _cmd_replay(args: argparse.Namespace) -> int:
+    if args.split_sessions:
+        logger.info("Replaying %s, one session per SessionInfo", args.recording)
+        with connect(args.dsn) as conn:
+            apply_migrations(conn)
+            with PostgresSink(conn, batch_size=args.batch_size) as sink:
+                by_session = run_routed(
+                    replay_records(args.recording, speed=args.speed, delay=args.delay),
+                    sink,
+                    year=args.year,
+                    round_number=args.round,
+                    session_type=args.session_type,
+                )
+        for key, metrics in by_session.items():
+            print(f"{key.year} round {key.round} {key.session_type.value}:")
+            print(metrics.render())
+        return 0
+
     reader = RecordingReader(args.recording)
     manifest = reader.manifest
     year = args.year if args.year is not None else manifest.year
@@ -209,42 +247,46 @@ def _cmd_live(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    store_failure: list[BaseException] = []
+
     with connect(args.dsn) as conn:
         apply_migrations(conn)
         sink = PostgresSink(conn, batch_size=args.batch_size)
         session = RecordingSession(
             args.out, topics=topics, recorder_version=__version__, session_name=args.session_name
         )
-        # The pipeline cannot exist until we know WHICH session this is, and
-        # only the feed knows that. Built on the first subscribe snapshot and
-        # reused across reconnects, so a dropped connection never re-keys a
+        # Which session each record belongs to is the FEED's call, made
+        # again every time it announces one: the process runs all weekend
+        # on one connection and F1 switches sessions over it without a
+        # reconnect (see `SessionRouter`). A reconnect into the same
+        # session re-seeds it, so a dropped connection never re-keys a
         # session mid-race.
-        state: dict[str, Pipeline] = {}
+        router = SessionRouter(
+            sink, year=args.year, round_number=args.round, session_type=args.session_type
+        )
+
+        def guarded(action: Callable[[], object]) -> None:
+            # The raw record is already on disk when this runs. A parse
+            # problem costs one record's events; a store failure (Postgres
+            # restarted, or the transaction is poisoned) would silently cost
+            # every record after it, so it ends the process instead and the
+            # container restarts onto a fresh connection and snapshot.
+            try:
+                action()
+            except psycopg.Error as exc:
+                logger.exception("Store write failed; stopping so the ingest restarts cleanly")
+                store_failure.append(exc)
+                stop_event.set()
+            except Exception:
+                logger.exception("Could not process a feed message; the raw record is kept")
 
         def on_subscribe(snapshot: dict[str, Any]) -> None:
             session.on_subscribe_result(snapshot)  # persist raw (+ reconnect markers)
-            pipeline = state.get("pipeline")
-            if pipeline is None:
-                key = session_key_from_snapshot(
-                    snapshot,
-                    year=args.year,
-                    round_number=args.round,
-                    session_type=args.session_type,
-                )
-                logger.info("Ingesting %s", key)
-                pipeline = Pipeline(key, sink)
-                state["pipeline"] = pipeline
-            pipeline.seed(snapshot)
+            guarded(lambda: router.seed(snapshot))
 
         def on_feed(topic: str, payload: Any) -> None:
             record = session.on_feed_message(topic, payload)
-            pipeline = state.get("pipeline")
-            if pipeline is None:
-                # A feed message before any snapshot: the recorder itself
-                # refuses this, so it should be unreachable. Drop the event
-                # rather than guess a session key for it.
-                return
-            pipeline.process(record)
+            guarded(lambda: router.process(record))
 
         backoff = 1.0
         try:
@@ -267,17 +309,24 @@ def _cmd_live(args: argparse.Namespace) -> int:
                 stop_event.wait(timeout=backoff)
                 backoff = min(backoff * 2, args.max_backoff)
         finally:
-            pipeline = state.get("pipeline")
-            metrics = pipeline.finalize() if pipeline is not None else None
+            metrics: dict[SessionKey, RunMetrics] = {}
+            try:
+                metrics = router.finalize()
+                sink.close()
+            except psycopg.Error:
+                logger.exception("Could not write the final session state")
             session.close()
-            sink.close()
 
     if session.directory is not None:
         logger.info("Raw recording saved to %s", session.directory)
-    if metrics is None:
+    if store_failure:
+        return 1
+    if not metrics:
         logger.warning("No session was ever identified — nothing ingested")
         return 1
-    print(metrics.render())
+    for key, run_metrics in metrics.items():
+        print(f"{key.year} round {key.round} {key.session_type.value}:")
+        print(run_metrics.render())
     return 0
 
 

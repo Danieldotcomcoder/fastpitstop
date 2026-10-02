@@ -95,6 +95,11 @@ uv run f1-pipeline replay data/recordings/2024_bahrain_race --round 1 --speed 0
   and session type but not the championship round, and the `SessionKey` (which
   keys every row) needs it. `--year`/`--session-type` override the manifest if
   needed.
+- `--split-sessions` instead files every record under the session the
+  stream's own `SessionInfo` names, exactly as the live ingest does
+  (`SessionRouter`, below). Use it for a recording the live worker made: one
+  process runs all weekend, so its recording usually spans several sessions.
+  `--round` is then optional (the feed's `Meeting.Number` is the round).
 - `--speed` scales inter-message gaps (`0` = as fast as possible, the default
   for ingest; `1` = real time). `--delay` adds a constant offset. Both go
   through the same `f1_replay` timing model as `f1-replay`.
@@ -121,7 +126,7 @@ no live state projection); the event log and typed tables are.
 ## Recording + ingesting live (`f1-pipeline live`)
 
 ```sh
-uv run f1-pipeline live --year 2024 --round 1 --session-type race
+uv run f1-pipeline live --no-auth
 ```
 
 Connects to the live SignalR feed, records it raw to disk (Phase 0 durability,
@@ -130,11 +135,28 @@ store — one producer, raw to disk and normalized to the DB from a single
 object. Like `f1-record`, it reconnects with backoff and shuts down cleanly on
 SIGINT/SIGTERM, writing the materialized state and final metrics on exit.
 
+**One process, a whole weekend.** Production runs this as a long-lived
+service, and F1 does not reconnect it between sessions: it announces each
+new session over the open socket with a complete `SessionInfo` keyframe
+(new `Key`, `Name`, `Path`), then streams keyframes for every other topic
+within ~10 seconds. `SessionRouter` re-derives the session from every
+`SessionInfo` it sees (snapshot or feed message) and starts a fresh state
+machine per session; a reconnect into the same session re-seeds silently.
+Before this, the key was fixed at the first snapshot, and the 2026
+Azerbaijan FP3, qualifying and race were all filed under "practice_2" (the
+race never read as live). The session's `sessions.status` row is rewritten
+on every status change, since that row decides liveness
+(`f1_store.live_session_keys`). A store failure ends the process (exit 1)
+so the container restarts onto a fresh connection instead of silently
+dropping the rest of a race. `--year`/`--round`/`--session-type` override
+what the feed says; passing all three pins the key and turns routing off.
+
 **Reality check** (same as `f1-record`, see `docs/PHASE0.md`): the live feed
 only exists during a real session (~24 weekends/year) and the socket layer is
 not unit tested. Day-to-day development runs off `replay` and
-`ingest-historical`, not `live`. `--year`/`--round`/`--session-type` are
-required because the round is not derivable from the feed alone.
+`ingest-historical`, not `live`. The routing itself is unit tested against
+payloads cut from the real 2026 Azerbaijan recording
+(`tests/test_session_router.py`).
 
 ## Run metrics
 

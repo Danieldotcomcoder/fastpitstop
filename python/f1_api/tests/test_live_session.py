@@ -161,3 +161,47 @@ def test_live_defaults_to_false() -> None:
     matters: every construction site that forgets it should fail closed, the
     direction that costs a page rather than a bill."""
     assert SessionEntry(session_key=FINISHED, event_name=None, provenance="live").live is False
+
+
+def test_a_failed_liveness_query_leaves_the_connection_usable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "Nothing is live" is the documented fallback when the liveness query
+    fails, but the failure also aborted the transaction: every later read on
+    that connection failed too, so `/sessions` (the `/live` page's own poll)
+    answered 500 and the page said the API was unreachable."""
+    import f1_kernel
+    import f1_store
+
+    class FakeConnection:
+        def __init__(self) -> None:
+            self.rolled_back = False
+            self.closed = False
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+        def close(self) -> None:
+            self.closed = True
+
+    conn = FakeConnection()
+
+    def failing_query(_: object) -> set[SessionKey]:
+        raise RuntimeError('relation "events" does not exist')
+
+    def fake_connect(_dsn: object) -> FakeConnection:
+        return conn
+
+    def fake_source(_conn: object) -> MemorySource:
+        return MemorySource([])
+
+    monkeypatch.setattr(f1_store, "connect", fake_connect)
+    monkeypatch.setattr(f1_store, "live_session_keys", failing_query)
+    monkeypatch.setattr(f1_kernel, "StoreSource", fake_source)
+
+    settings = Settings(store_dsn="postgresql://unused")
+    with sessions_module._store_source(settings) as store:  # pyright: ignore[reportPrivateUsage]
+        assert store is not None
+        assert store.live_keys == frozenset()
+        assert conn.rolled_back, "the aborted transaction must be cleared before reuse"
+    assert conn.closed

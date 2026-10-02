@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import queue
 import threading
+from collections import deque
 from collections.abc import Collection, Iterator
 from typing import Annotated, Literal, Protocol, runtime_checkable
 
@@ -48,7 +50,7 @@ from f1_api.why import (
     why_stream_deps_cm,
 )
 from f1_domain import DomainEvent, SessionKey
-from f1_kernel import EventSource, PositionFrame
+from f1_kernel import EventSource, KernelReport, PositionFrame
 from f1_kernel.circuit import circuit_for_session
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptStore
@@ -397,21 +399,31 @@ async def _stream_live(
     cost budget and the poll interval. Once the budget is spent this keeps
     streaming timing and snapshots — the race stays watchable, it just
     stops narrating."""
-    feed = LapSnapshotFeed(session_key, event_name=event_name)
+    analysis = _LiveAnalysis(
+        settings,
+        session_key,
+        event_name=event_name,
+        narration_model=narration_model,
+        explanation_store=explanation_store,
+        radio_index=radio_index,
+    )
     sent = 0
     cursor: tuple[int, int] | None = None
-    emitted_anomaly_ids: set[str] = set()
     incremental = source if isinstance(source, _CursorSource) else None
     gone = asyncio.ensure_future(_client_gone(websocket))
     try:
         while not gone.done():
+            # The read is a blocking database call: on the event loop it
+            # stalled every other request and socket for its duration.
             if incremental is not None:
-                batch = list(incremental.events_after(session_key, cursor, kinds=kinds))
+                batch = await asyncio.to_thread(
+                    _events_after, incremental, session_key, cursor, kinds
+                )
                 if batch:
                     cursor = batch[-1][1]
                 events = sorted((event for event, _ in batch), key=lambda event: event.ts_utc)
             else:
-                seen = sorted(source.events(session_key, kinds=kinds), key=lambda e: e.ts_utc)
+                seen = await asyncio.to_thread(_all_events, source, session_key, kinds)
                 events = seen[sent:]
                 sent = len(seen)
             for item in live_position_frames(events):
@@ -420,53 +432,145 @@ async def _stream_live(
                         car_positions_envelope(item.ts_utc, item).model_dump(mode="json")
                     )
                     continue
-                event = item
-                envelope = envelope_for_event(event, radio_store=radio_store)
+                envelope = envelope_for_event(item, radio_store=radio_store)
                 await websocket.send_json(envelope.model_dump(mode="json"))
-                report = feed.feed(event)
-                if report is not None:
-                    if report.crossovers:
-                        await websocket.send_json(
-                            kernel_snapshot_envelope(event.ts_utc, report).model_dump(mode="json")
-                        )
-                    budget = settings.max_explanations - len(emitted_anomaly_ids)
-                    for anomaly in most_salient(
-                        detect_anomalies(report.frames, report, AnomalyParams()), budget
-                    ):
-                        why_id = why_anomaly_id(anomaly)
-                        if why_id in emitted_anomaly_ids:
-                            continue
-                        if len(emitted_anomaly_ids) >= settings.max_explanations:
-                            break
-                        explanation, bundle = explain_session_anomaly(
-                            source,
-                            session_key,
-                            anomaly,
-                            narration_model,
-                            explanation_store,
-                            report=report,
-                            radio_index=radio_index,
-                            event_name=event_name,
-                        )
-                        cited = cited_evidence_refs(session_key, bundle, explanation)
-                        await websocket.send_json(
-                            explanation_envelope(
-                                anomaly.anomaly_time,
-                                session_key,
-                                anomaly,
-                                explanation,
-                                cited,
-                            ).model_dump(mode="json")
-                        )
-                        emitted_anomaly_ids.add(why_id)
+                analysis.submit(item)
+            for envelope in analysis.ready():
+                await websocket.send_json(envelope.model_dump(mode="json"))
             # Wakes early when the client disconnects, so a closed tab stops
             # costing a poll within milliseconds rather than forever.
             await asyncio.wait({gone}, timeout=LIVE_POLL_INTERVAL_S)
     except WebSocketDisconnect:
         pass
     finally:
+        analysis.close()
         gone.cancel()
         await _safe_close(websocket)
+
+
+def _events_after(
+    source: _CursorSource,
+    session_key: SessionKey,
+    cursor: tuple[int, int] | None,
+    kinds: Collection[str] | None,
+) -> list[tuple[DomainEvent, tuple[int, int]]]:
+    return list(source.events_after(session_key, cursor, kinds=kinds))
+
+
+def _all_events(
+    source: EventSource, session_key: SessionKey, kinds: Collection[str] | None
+) -> list[DomainEvent]:
+    return sorted(source.events(session_key, kinds=kinds), key=lambda e: e.ts_utc)
+
+
+class _LiveAnalysis:
+    """Kernel snapshots and explanations for one live stream, on its own
+    thread.
+
+    Each completed lap recomputes the whole kernel (up to a second on a real
+    race), then runs anomaly detection and may call the narration model over
+    the network. Inline in the polling coroutine, all of that ran on the
+    API's event loop: while it ran, no other viewer's socket was served and
+    no REST request was answered, and joining mid-race queued one recompute
+    per lap already run. Here the loop only hands events over and picks up
+    finished envelopes. They carry their lap's or anomaly's own instant and
+    may go out after it, which is spoiler-safe: Delay Sync releases a late
+    envelope on arrival, and nothing here can make one early.
+
+    Explanations read evidence through their own session source, never the
+    poll's: a store source wraps one database connection, and the poll uses
+    that from another thread."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        session_key: SessionKey,
+        *,
+        event_name: str | None,
+        narration_model: NarrationModel,
+        explanation_store: ExplanationStore,
+        radio_index: SearchIndex | None,
+    ) -> None:
+        self._settings = settings
+        self._session_key = session_key
+        self._event_name = event_name
+        self._model = narration_model
+        self._store = explanation_store
+        self._radio_index = radio_index
+        self._feed = LapSnapshotFeed(session_key, event_name=event_name)
+        self._emitted: set[str] = set()
+        self._closed = threading.Event()
+        self._inbox: queue.SimpleQueue[DomainEvent | None] = queue.SimpleQueue()
+        self._ready: deque[StreamEnvelope] = deque()
+        self._thread = threading.Thread(target=self._run, name="f1-api-live-analysis", daemon=True)
+        self._thread.start()
+
+    def submit(self, event: DomainEvent) -> None:
+        if event.kind != POSITION_KIND:
+            self._inbox.put(event)
+
+    def ready(self) -> Iterator[StreamEnvelope]:
+        """Envelopes finished since the last call, oldest first."""
+        while self._ready:
+            yield self._ready.popleft()
+
+    def close(self) -> None:
+        self._closed.set()
+        self._inbox.put(None)
+
+    def _run(self) -> None:
+        while (event := self._inbox.get()) is not None and not self._closed.is_set():
+            try:
+                report = self._feed.feed(event)
+                if report is None:
+                    continue
+                if report.crossovers:
+                    self._ready.append(kernel_snapshot_envelope(event.ts_utc, report))
+                self._explain(report)
+            except Exception:
+                _log.warning(
+                    "live analysis failed for one lap; the stream continues", exc_info=True
+                )
+
+    def _explain(self, report: KernelReport) -> None:
+        # Budgeted exactly like the replay path (`Settings.max_explanations`):
+        # a live race detects anomalies at the same rate a replayed one does.
+        # Once it is spent, timing and snapshots keep streaming.
+        budget = self._settings.max_explanations - len(self._emitted)
+        if budget <= 0:
+            return
+        fresh = [
+            anomaly
+            for anomaly in most_salient(
+                detect_anomalies(report.frames, report, AnomalyParams()), budget
+            )
+            if why_anomaly_id(anomaly) not in self._emitted
+        ]
+        if not fresh:
+            return
+        with resolve_session(self._settings, self._session_key) as resolved:
+            if resolved is None:
+                return
+            for anomaly in fresh:
+                if self._closed.is_set() or len(self._emitted) >= self._settings.max_explanations:
+                    return
+                explanation, bundle = explain_session_anomaly(
+                    resolved.source,
+                    self._session_key,
+                    anomaly,
+                    self._model,
+                    self._store,
+                    report=report,
+                    radio_index=self._radio_index,
+                    event_name=self._event_name,
+                )
+                cited = cited_evidence_refs(self._session_key, bundle, explanation)
+                self._ready.append(
+                    explanation_envelope(
+                        anomaly.anomaly_time, self._session_key, anomaly, explanation, cited
+                    )
+                )
+                self._emitted.add(why_anomaly_id(anomaly))
 
 
 async def _safe_close(websocket: WebSocket) -> None:

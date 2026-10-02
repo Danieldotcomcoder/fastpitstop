@@ -127,13 +127,18 @@ def test_a_terminal_status_retires_a_session_immediately(fresh_db: str) -> None:
     _set_status(fresh_db, FINISHED, "Ends")
     with psycopg.connect(fresh_db) as conn:
         assert live_session_keys(conn) == set()
+    _set_status(fresh_db, FINISHED, "Finalised")
+    with psycopg.connect(fresh_db) as conn:
+        assert live_session_keys(conn) == set()
 
 
-@pytest.mark.parametrize("status", ["Started", "Inactive", "Aborted", "Something New"])
+@pytest.mark.parametrize("status", ["Started", "Inactive", "Aborted", "Finished", "Something New"])
 def test_a_non_terminal_status_leaves_a_fresh_session_live(fresh_db: str, status: str) -> None:
     """ "Aborted" is a red flag the session resumes from, "Inactive" precedes
-    one, and an unrecognised value must fall through to the freshness test
-    rather than be guessed at — the feed's status vocabulary is open."""
+    one, "Finished" ends each qualifying segment (and the race is still being
+    watched on a delay after it), and an unrecognised value must fall through
+    to the freshness test rather than be guessed at — the feed's status
+    vocabulary is open."""
     _write(fresh_db, _laps(RUNNING, datetime.now(UTC) - timedelta(minutes=1)))
     _set_status(fresh_db, RUNNING, status)
     with psycopg.connect(fresh_db) as conn:

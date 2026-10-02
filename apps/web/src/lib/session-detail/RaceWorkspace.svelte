@@ -167,11 +167,22 @@
 	}
 
 	// --- the stream ----------------------------------------------------------
+	/** Close codes the API uses to refuse a stream outright: a malformed key,
+	 * or (for `mode=live`) a session that is no longer running. Reconnecting
+	 * after either would only be refused again. */
+	const REFUSED = new Set([4400, 4404]);
+	const RECONNECT_MIN_MS = 1_000;
+	const RECONNECT_MAX_MS = 15_000;
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	let reconnectDelayMs = RECONNECT_MIN_MS;
+
 	function disconnect() {
 		socket?.close();
 		socket = null;
 		if (timer !== null) clearInterval(timer);
 		timer = null;
+		if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+		reconnectTimer = null;
 	}
 
 	function connect(delay = controller.delayState.get().delaySeconds) {
@@ -199,11 +210,30 @@
 				lightsOutUtc = e.event_time_utc;
 			}
 			connection = 'Receiving';
+			reconnectDelayMs = RECONNECT_MIN_MS;
 			c.ingest(e);
 		});
 		stream.onError(() => (connection = 'Connection interrupted'));
-		stream.onClose(() => {
-			if (socket === stream) connection = 'Stream ended';
+		stream.onClose((event) => {
+			if (socket !== stream) return;
+			// A live race has to survive a dropped connection: a phone
+			// switching networks, or the API restarting mid-session. Before
+			// this, one blip left the dashboard frozen on "Stream ended" for
+			// the rest of the race. The live stream resends the session from
+			// its start, so reconnecting resyncs everything (connect() resets
+			// the reducers) and Delay Sync keeps the viewer's own delay. A
+			// replay's stream ends by design, and a refusal is final.
+			if (isLive && !REFUSED.has(event.code)) {
+				connection = 'Reconnecting';
+				const wait = reconnectDelayMs;
+				reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_MAX_MS);
+				reconnectTimer = setTimeout(() => {
+					reconnectTimer = null;
+					if (socket === stream) connect();
+				}, wait);
+				return;
+			}
+			connection = isLive ? 'Session ended' : 'Stream ended';
 		});
 		socket = stream;
 		stream.connect();

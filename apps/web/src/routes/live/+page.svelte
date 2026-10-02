@@ -50,9 +50,13 @@
 			if (error !== undefined) throw new Error('sessions request failed');
 			const found = pickLiveSession(data ?? []);
 			status = 'ready';
-			// Compare by key: re-assigning an equal session would re-key the
-			// workspace below and needlessly restart its stream every poll.
-			if (found?.key !== liveSession?.key) liveSession = found ?? null;
+			// Only ever switch to ANOTHER running session, never back to
+			// nothing: a session stops counting as live once the feed says it
+			// is over, and a viewer on a broadcast delay is still watching its
+			// last laps then. The finished race stays on screen until the next
+			// session starts. Compare by key: re-assigning an equal session
+			// would re-key the workspace below and restart its stream.
+			if (found !== null && found.key !== liveSession?.key) liveSession = found;
 		} catch {
 			// Keep showing a session we already found: one failed poll during
 			// a race should not tear down a working dashboard.

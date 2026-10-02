@@ -15,10 +15,13 @@ Nothing tested concurrent viewers, which is exactly why it shipped.
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from collections.abc import Collection, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import f1_api.stream.websocket as websocket_module
 from f1_api.config import Settings
 
 # Reaching for the private loop deliberately: it is the unit whose lifetime
@@ -184,3 +187,45 @@ async def _test_many_viewers_do_not_multiply_the_read() -> None:
     # One row each, not one row per poll per viewer.
     assert source.rows_served == len(sockets)
     assert all(ws.closed for ws in sockets)
+
+
+def test_a_slow_lap_analysis_does_not_hold_up_the_timing(monkeypatch: Any) -> None:
+    """The kernel recompute (up to a second a lap) and the narration call
+    (a network round trip) used to run inline on the event loop, so while
+    either ran nothing else on the server moved. They now run on the
+    stream's own thread; timing keeps flowing past a lap that is still
+    being analysed."""
+    release = threading.Event()
+
+    class SlowFeed:
+        def __init__(self, *_: Any, **__: Any) -> None:
+            pass
+
+        def feed(self, event: DomainEvent) -> None:
+            release.wait(timeout=10)
+
+    monkeypatch.setattr(websocket_module, "LapSnapshotFeed", SlowFeed)
+    try:
+        asyncio.run(_test_a_slow_lap_analysis_does_not_hold_up_the_timing())
+    finally:
+        release.set()
+
+
+async def _test_a_slow_lap_analysis_does_not_hold_up_the_timing() -> None:
+    started = time.monotonic()
+    websocket, source = FakeWebSocket(), FakeCursorSource()
+    source.append(_lap(1))
+    task = asyncio.create_task(_run(websocket, source))
+    await asyncio.sleep(0.3)
+
+    source.append(_lap(2))
+    await asyncio.sleep(0.8)
+    sent_laps = [m["payload"].get("lap_number") for m in websocket.sent]
+    assert sent_laps == [1, 2]
+    # An analysis blocking the loop shows up as time, not as a missing lap:
+    # the loop freezes, and every await in this test waits with it.
+    elapsed = time.monotonic() - started
+    assert elapsed < 3.0, f"the event loop was blocked for {elapsed:.1f}s by one lap's analysis"
+
+    websocket.disconnect()
+    await asyncio.wait_for(task, timeout=3.0)
