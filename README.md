@@ -4,11 +4,14 @@
 
 **A spoiler-safe Formula 1 second-screen companion that predicts as well as displays.**
 
-[Live beta](https://fastpitstop.online) ·
+### [🏁 Open the app: fastpitstop.online](https://fastpitstop.online/)
+
+[Production](https://fastpitstop.online/) ·
 [Getting started](#getting-started) ·
 [Architecture](docs/ARCHITECTURE.md) ·
 [Deploy guide](DEPLOY.md)
 
+[![Production: fastpitstop.online](https://img.shields.io/badge/production-fastpitstop.online-e10600)](https://fastpitstop.online/)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![SvelteKit + TypeScript](https://img.shields.io/badge/SvelteKit-TypeScript-FF3E00?logo=svelte&logoColor=white)
@@ -26,7 +29,13 @@ wearing, whether an undercut will work, and why a driver suddenly lost two
 seconds. It holds all of it back to match your delayed TV broadcast, so the
 app never gives away something you haven't seen yet.
 
-It is in public beta at **[fastpitstop.online](https://fastpitstop.online)**.
+## Try it
+
+The production app is live at **<https://fastpitstop.online/>**, currently in
+public beta. Nothing to install: open it on your phone next to the TV, pick a
+live session or replay a past race, and set your broadcast delay.
+
+Want to run it yourself instead? See [Getting started](#getting-started).
 
 ## Features
 
@@ -103,7 +112,7 @@ dashboard, with the same spoiler protection as a live session.
 ### Install
 
 ```sh
-git clone https://github.com/danielshdeed-bus/fastpitstop.git
+git clone https://github.com/Danieldotcomcoder/fastpitstop.git
 cd fastpitstop
 just setup   # uv sync + pnpm install + Playwright's Chromium for the E2E suites
 ```
@@ -313,7 +322,9 @@ exist without their work.
 ## Contributing
 
 Bug reports and ideas are welcome through
-[GitHub Issues](https://github.com/danielshdeed-bus/fastpitstop/issues).
+[GitHub Issues](https://github.com/Danieldotcomcoder/fastpitstop/issues),
+including anything you run into on the production site at
+[fastpitstop.online](https://fastpitstop.online/).
 If you open a pull request:
 
 1. Run `just check` (and `just web-check` / `just web-test` for frontend
