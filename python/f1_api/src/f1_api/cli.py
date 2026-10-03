@@ -29,6 +29,13 @@ def main() -> int:
         port=args.port,
         reload=args.reload,
         log_config=LOG_CONFIG,
+        # A viewer joining a live race mid-session first downloads the race
+        # so far; the keepalive ping queues behind that download, so on a
+        # slow phone connection uvicorn's default 20 s timeout dropped the
+        # viewer, who reconnected and started again. A dead peer is still
+        # detected, just within a minute instead of 20 seconds.
+        ws_ping_interval=20.0,
+        ws_ping_timeout=60.0,
     )
     return 0
 

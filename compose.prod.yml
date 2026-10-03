@@ -40,9 +40,12 @@ services:
         # reports OOMKilled=false (the kernel picks a child, not the container
         # init), so it presents as an unexplained restart loop: the browser
         # sees "Stream ended · 0 drivers" and the race view renders empty.
+        # 3G since 2026-10-03: idle sat at 1G, and a race day adds the live
+        # session's shared hub plus every concurrent replay's own kernel.
+        # The VM has ~5G free; a limit is a cap, not a reservation.
         limits:
           cpus: "2.0"
-          memory: 2G
+          memory: 3G
 
   web:
     restart: unless-stopped

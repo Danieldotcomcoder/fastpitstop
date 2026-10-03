@@ -64,6 +64,11 @@ services:
         BUILD_TIME: ${BUILD_TIME:-unknown}
     image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-web:${IMAGE_TAG:-latest}
     env_file: .env
+    environment:
+      # Server-side reads (page titles, the sitemap, the landing and archive
+      # pages rendered on the server) go straight to the API on the compose
+      # network instead of out through the public proxy and back.
+      F1_API_INTERNAL_URL: http://api:8000
     depends_on:
       - api
     healthcheck:
@@ -97,9 +102,12 @@ services:
     # disk (Phase 0), so nothing reached Postgres and the dashboard had no
     # live session to show. This records AND ingests, and reads which session
     # it is from the feed rather than being pinned to one race.
-    # --batch-size 200: the sink flushes by COUNT only, so the 10k default
-    # would hold a live race's events in memory for minutes.
-    command: ["f1-pipeline", "--batch-size", "200", "live", "--no-auth"]
+    # --batch-size 1: the sink flushes by COUNT only, and every viewer reads
+    # the database, so an event not yet flushed is an event nobody sees.
+    # 200 looked fine in a race (gap updates fill it in a second or two) but
+    # held the 2026 Bahrain GP qualifying 3-4 minutes behind TV: qualifying
+    # sends no gap updates, about one event a second.
+    command: ["f1-pipeline", "--batch-size", "1", "live", "--no-auth"]
     env_file: .env
     environment:
       F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}

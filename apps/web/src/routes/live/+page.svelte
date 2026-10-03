@@ -20,7 +20,7 @@
 	 * and stays the primary thing a visitor sees. */
 	import { onDestroy, onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { brand } from '$lib/brand';
+	import { seoFor, toSeoSession } from '$lib/seo';
 	import { api, type components } from '$lib/api/client';
 	import { pickLiveSession } from '$lib/live-session-picker';
 	import RaceWorkspace from '$lib/session-detail/RaceWorkspace.svelte';
@@ -75,7 +75,7 @@
 </script>
 
 <svelte:head>
-	<title>Live · {brand.name}</title>
+	<title>{seoFor('/live', liveSession ? [toSeoSession(liveSession)] : []).title}</title>
 </svelte:head>
 
 {#if liveSession}

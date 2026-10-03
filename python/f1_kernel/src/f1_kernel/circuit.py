@@ -185,13 +185,25 @@ def circuit_for_session(
 ) -> Circuit | None:
     """The circuit a session ran at: by the feed's own circuit name when the
     session carries one (unambiguous across seasons), else by Grand Prix
-    name. None when neither matches a shipped circuit."""
+    name. None when neither matches a shipped circuit.
+
+    A venue the feed names but no file knows is NOT resolved by Grand Prix
+    name to a circuit that records a different venue: that is another
+    track. The 2026 "Bahrain Grand Prix" ran at Sepang ("Kuala Lumpur" in
+    the feed), and falling back to the name drew it on Sakhir's outline
+    with Sakhir's lap length and pit loss. An unknown circuit is honest;
+    the wrong one is not. The name still decides when the matched file has
+    no venue names of its own to contradict the feed."""
     if feed_circuit_name:
         wanted = feed_circuit_name.strip().casefold()
         for circuit_id in list_circuits():
             circuit = load_circuit(circuit_id)
             if any(name.strip().casefold() == wanted for name in circuit.feed_circuit_names):
                 return circuit
+        by_name = circuit_for_event(event_name)
+        if by_name is not None and by_name.feed_circuit_names:
+            return None
+        return by_name
     return circuit_for_event(event_name)
 
 

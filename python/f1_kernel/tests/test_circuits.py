@@ -32,9 +32,9 @@ def test_every_shipped_circuit_is_valid(circuit_id: str) -> None:
     assert circuit.event_names or circuit.feed_circuit_names
 
 
-CORNERLESS = {"madring"}
+CORNERLESS = {"madring", "sepang"}
 """Venues shipped deliberately without corners: FastF1's circuit-info
-source had none for a brand-new venue, and corners are never guessed. Its
+source had none for a new (or returning, 2026 Sepang) venue, and corners are never guessed. Its
 map still works (outline and lap distance come from telemetry); braking
 analysis, which is keyed by corner, simply has nothing to report there."""
 
@@ -211,8 +211,9 @@ def test_circuit_files_live_in_the_package() -> None:
 
 def test_every_venue_on_the_calendar_ships() -> None:
     """The track map is drawn from these files, so a missing venue is a
-    race with no map. All 24 venues of the 2024 calendar ship."""
-    assert len([c for c in list_circuits() if c != "madring"]) == 24
+    race with no map. All 24 venues of the 2024 calendar ship, plus the two
+    2026 additions (Madring, and Sepang for that season's Bahrain GP)."""
+    assert len([c for c in list_circuits() if c not in {"madring", "sepang"}]) == 24
 
 
 @pytest.mark.parametrize("circuit_id", list_circuits())
@@ -250,9 +251,27 @@ def test_the_feed_venue_wins_over_the_grand_prix_name() -> None:
 def test_the_grand_prix_name_is_the_fallback() -> None:
     by_name = circuit_for_session("Spanish Grand Prix", None)
     assert by_name is not None and by_name.circuit_id == "barcelona"
-    unknown_venue = circuit_for_session("Spanish Grand Prix", "Somewhere New")
-    assert unknown_venue is not None and unknown_venue.circuit_id == "barcelona"
     assert circuit_for_session(None, None) is None
+
+
+def test_an_unknown_venue_is_never_drawn_on_another_track() -> None:
+    """The regression: the 2026 "Bahrain Grand Prix" ran at Sepang, which
+    the feed calls "Kuala Lumpur". With no file for that venue, the Grand
+    Prix name picked Sakhir, so the live map drew the wrong circuit. A
+    venue the feed names that no file knows is unknown, not Sakhir."""
+    assert circuit_for_session("Spanish Grand Prix", "Somewhere New") is None
+    assert circuit_for_session("Bahrain Grand Prix", "Somewhere New") is None
+
+
+def test_the_2026_bahrain_grand_prix_is_drawn_at_sepang() -> None:
+    sepang = circuit_for_session("Bahrain Grand Prix", "Kuala Lumpur")
+    assert sepang is not None and sepang.circuit_id == "sepang"
+    assert sepang.outline is not None
+    sakhir = circuit_for_session("Bahrain Grand Prix", "Sakhir")
+    assert sakhir is not None and sakhir.circuit_id == "bahrain"
+    # A historical session carries no venue: the name still means Sakhir.
+    by_name = circuit_for_session("Bahrain Grand Prix", None)
+    assert by_name is not None and by_name.circuit_id == "bahrain"
 
 
 def test_a_live_session_finds_its_circuit_from_its_own_stream() -> None:

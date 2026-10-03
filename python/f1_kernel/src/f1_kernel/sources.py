@@ -28,8 +28,9 @@ seqs to match an unfiltered one.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Iterator
+from collections.abc import Collection, Container, Iterable, Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -318,6 +319,23 @@ class StoreSource:
         from f1_store import replay_events_with_cursor
 
         yield from replay_events_with_cursor(self._conn, session_key, kinds=kinds, after=after)
+
+    def events_since(
+        self,
+        session_key: SessionKey,
+        since: datetime | None,
+        *,
+        kinds: Collection[str] | None = None,
+        seen: Container[tuple[int, int, datetime]] = (),
+    ) -> Iterator[tuple[DomainEvent, tuple[int, int, datetime]]]:
+        """Events at or after `since` in time order, skipping identities in
+        `seen` before parsing them: how the live WebSocket follows a growing
+        session (see `f1_store.replay_events_since` for why by time, not by
+        sequence). Not part of the `EventSource` protocol, like
+        `events_after`."""
+        from f1_store import replay_events_since
+
+        yield from replay_events_since(self._conn, session_key, kinds=kinds, since=since, seen=seen)
 
     def position_track(self, session_key: SessionKey) -> pl.DataFrame | None:
         """The `car_positions` hypertable for one session, bulk-read.

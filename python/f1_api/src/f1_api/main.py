@@ -33,7 +33,7 @@ from f1_api.routes.feedback import router as feedback_router
 from f1_api.routes.radio import router as radio_router
 from f1_api.routes.sessions import router as sessions_router
 from f1_api.routes.why import router as why_router
-from f1_api.schemas import HealthOut, ReadyOut, VersionOut
+from f1_api.schemas import HealthOut, ReadyOut, ServerTimeOut, VersionOut
 from f1_api.stream.websocket import router as stream_router
 
 logger = logging.getLogger("f1_api")
@@ -82,6 +82,20 @@ def readyz(settings: Annotated[Settings, Depends(get_settings)]) -> ReadyOut:
         raise HTTPException(status_code=503, detail=f"database unreachable: {exc}") from None
     last_ingest_at = row[0] if row else None
     return ReadyOut(last_ingest_at=last_ingest_at)
+
+
+@health_router.get("/time", response_model=ServerTimeOut)
+def server_time() -> ServerTimeOut:
+    """The server's clock, so a viewer can correct their own.
+
+    Every `event_time_utc` the stream sends is this machine's clock (the
+    live ingest stamps events on receipt; replay stamps each envelope as it
+    is sent), and Delay Sync compares it with the viewer's device clock. A
+    device a minute fast would release everything a minute early, a spoiler
+    for a viewer on a broadcast delay; one a minute slow would show "live"
+    a minute late. The frontend measures its offset from this, by round
+    trip, and runs Delay Sync on the corrected clock."""
+    return ServerTimeOut(server_time_ms=int(time.time() * 1000))
 
 
 @health_router.get("/version", response_model=VersionOut)

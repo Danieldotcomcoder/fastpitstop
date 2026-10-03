@@ -19,6 +19,7 @@ EXPECTED_PATHS = {
     "/health",
     "/healthz",
     "/readyz",
+    "/time",
     "/version",
     "/sessions",
     "/sessions/{key}",

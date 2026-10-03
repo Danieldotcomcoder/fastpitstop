@@ -29,6 +29,7 @@ import f1_api.sessions as sessions_module
 from f1_api.config import Settings
 from f1_api.main import create_app
 from f1_api.sessions import SessionEntry, list_sessions, resolve_session
+from f1_api.stream.live import LIVE_HUBS
 from f1_api.why import reset_narration_model
 from f1_domain import DomainEvent, LapCompleted, SessionKey, SessionType
 from f1_kernel import MemorySource, SessionRef
@@ -140,11 +141,15 @@ def test_mode_live_still_works_for_a_session_that_is_running(
     reset_narration_model()
 
     client = TestClient(create_app(store_settings))
-    with client.websocket_connect("/stream/2026-15-race?mode=live") as ws:
-        envelope = ws.receive_json()
-    assert envelope["kind"] == "lap_completed"
-
-    reset_narration_model()
+    try:
+        with client.websocket_connect("/stream/2026-15-race?mode=live") as ws:
+            envelope = ws.receive_json()
+        assert envelope["kind"] == "lap_completed"
+    finally:
+        # The process-wide hub outlives its viewer for a grace period; a
+        # later test must not inherit this one's fake store through it.
+        LIVE_HUBS.stop_all()
+        reset_narration_model()
 
 
 def test_historical_sessions_are_never_live(settings: Settings) -> None:

@@ -1,15 +1,21 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { brand } from '$lib/brand';
 	import { api, type components } from '$lib/api/client';
 	import Panel from '$lib/components/Panel.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
+	import { seoFor } from '$lib/seo';
+	import type { PageProps } from './$types';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
 
-	let status = $state<'loading' | 'error' | 'ready'>('loading');
-	let sessions = $state<SessionSummary[]>([]);
+	let { data }: PageProps = $props();
+
+	// Rendered on the server with the list already in hand (see
+	// `+page.server.ts`); the client fetch is the fallback when it is not.
+	const initial = untrack(() => data.sessions) as SessionSummary[];
+	let status = $state<'loading' | 'error' | 'ready'>(initial.length > 0 ? 'ready' : 'loading');
+	let sessions = $state<SessionSummary[]>(initial);
 	let errorMessage = $state('');
 	/** Races only by default — practice/qualifying behind a chip. */
 	let includeNonRace = $state(false);
@@ -60,11 +66,13 @@
 		return resolve(`/sessions/${year}/${round}`);
 	}
 
-	onMount(loadSessions);
+	onMount(() => {
+		if (sessions.length === 0) void loadSessions();
+	});
 </script>
 
 <svelte:head>
-	<title>Sessions · {brand.name}</title>
+	<title>{seoFor('/sessions', []).title}</title>
 </svelte:head>
 
 <h1>Sessions</h1>

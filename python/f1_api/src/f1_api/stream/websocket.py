@@ -3,13 +3,10 @@ the one Phase 3 actually develops against per CLAUDE.md) pumps a session's
 own event stream back out at `speed`; `mode=live` polls the store for a
 session currently being ingested.
 
-`mode=live` is deliberately the thinner of the two: per docs/PHASE0.md, the
-live feed only exists ~24 weekends/year and its connection layer is not
-unit-tested, so day-to-day development (and this package's own test suite)
-targets `mode=replay` exclusively. `mode=live` here is a straightforward
-DB-polling loop rather than a push (`LISTEN`/`NOTIFY`) pipe — correct, and
-enough to unblock a frontend once a real live session exists to develop it
-against, but not the last word on efficiency.
+`mode=live` reads one shared hub per running session
+(`f1_api.stream.live`): the store is polled, and the kernel and narrator
+run, once per session however many people are watching, and a viewer holds
+no database connection of its own.
 """
 
 from __future__ import annotations
@@ -17,11 +14,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import queue
 import threading
-from collections import deque
-from collections.abc import Collection, Iterator
-from typing import Annotated, Literal, Protocol, runtime_checkable
+from collections.abc import Collection, Generator
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
@@ -30,63 +25,31 @@ from f1_api.geometry import session_positions
 from f1_api.radio import radio_store_cm
 from f1_api.schemas import StreamEnvelope
 from f1_api.sessions import parse_session_key, resolve_session
+from f1_api.stream.live import LIVE_HUBS, LiveDeps, LiveHub
 from f1_api.stream.replay import (
     DEFAULT_STREAM_KINDS,
     POSITION_KIND,
-    LapSnapshotFeed,
-    car_positions_envelope,
-    envelope_for_event,
-    explanation_envelope,
-    kernel_snapshot_envelope,
-    live_position_frames,
     replay_envelopes,
 )
 from f1_api.why import (
     ExplanationSchedule,
-    cited_evidence_refs,
-    explain_session_anomaly,
-    most_salient,
     precompute_session_explanations,
     why_stream_deps_cm,
 )
-from f1_domain import DomainEvent, SessionKey
-from f1_kernel import EventSource, KernelReport, PositionFrame
+from f1_domain import SessionKey
+from f1_kernel import EventSource
 from f1_kernel.circuit import circuit_for_session
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptStore
-from f1_why import AnomalyParams, ExplanationStore, NarrationModel, detect_anomalies
-from f1_why import anomaly_id as why_anomaly_id
+from f1_why import ExplanationStore, NarrationModel
 
 _log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["stream"])
 
-LIVE_POLL_INTERVAL_S = 0.5
-"""How often the live path looks for new events.
-
-Twice a second, not once: at one second the dashboard visibly stutters
-against a broadcast. It is affordable only because the poll is incremental
-(`_CursorSource` below) -- the previous full-session re-read could not have
-survived being run twice as often.
-"""
-
-
-@runtime_checkable
-class _CursorSource(Protocol):
-    """An `EventSource` that can also resume from a cursor.
-
-    `f1_kernel.StoreSource` implements this; parquet and in-memory sources do
-    not, and fall back to the re-read path below. Structural rather than a
-    concrete import so the fallback stays honest in tests.
-    """
-
-    def events_after(
-        self,
-        session_key: SessionKey,
-        after: tuple[int, int] | None,
-        *,
-        kinds: Collection[str] | None = None,
-    ) -> Iterator[tuple[DomainEvent, tuple[int, int]]]: ...
+LIVE_FANOUT_INTERVAL_S = 0.25
+"""How often a live viewer picks up what its session's hub has published.
+A read of an in-memory list: costs nothing next to the hub's own poll."""
 
 
 async def _client_gone(websocket: WebSocket) -> None:
@@ -162,18 +125,18 @@ async def stream(
         if resolved is None:
             await websocket.close(code=4404, reason="session not found")
             return
-
-        with (
-            radio_store_cm(settings) as radio_store,
-            why_stream_deps_cm(settings) as (model, store, radio_index),
-        ):
-            if mode == "replay":
+        entry = resolved.entry
+        if mode == "replay":
+            with (
+                radio_store_cm(settings) as radio_store,
+                why_stream_deps_cm(settings) as (model, store, radio_index),
+            ):
                 await _stream_replay(
                     websocket,
                     resolved.source,
                     session_key,
                     settings=settings,
-                    event_name=resolved.entry.event_name,
+                    event_name=entry.event_name,
                     speed=speed,
                     kinds=kinds,
                     anchor_to_first_lap=anchor_to_first_lap,
@@ -181,31 +144,61 @@ async def stream(
                     narration_model=model,
                     explanation_store=store,
                     radio_index=radio_index,
-                    circuit_name=resolved.entry.circuit_name,
+                    circuit_name=entry.circuit_name,
                 )
-            elif resolved.entry.live:
-                await _stream_live(
-                    websocket,
-                    resolved.source,
-                    session_key,
-                    settings=settings,
-                    event_name=resolved.entry.event_name,
-                    kinds=kinds,
-                    radio_store=radio_store,
-                    narration_model=model,
-                    explanation_store=store,
-                    radio_index=radio_index,
-                )
-            else:
-                # Not merely "not in the store": a session that has been
-                # ingested but is over must be refused too. Accepting one
-                # replayed a finished race's whole event log through the
-                # kernel — and its anomalies through the narration model —
-                # once per connected tab, for free, forever.
-                await websocket.close(
-                    code=4404,
-                    reason="mode=live requires a session that is currently running",
-                )
+            return
+
+    # Live: the session's connection is released above. Every viewer reads
+    # the one shared hub for this session (see `f1_api.stream.live`), so a
+    # viewer costs no database connection and no kernel of its own.
+    if not entry.live:
+        # Not merely "not in the store": a session that has been ingested
+        # but is over must be refused too. Accepting one replayed a finished
+        # race's whole event log through the kernel — and its anomalies
+        # through the narration model — once per connected tab.
+        await websocket.close(
+            code=4404,
+            reason="mode=live requires a session that is currently running",
+        )
+        return
+    hub = LIVE_HUBS.acquire(
+        session_key,
+        kinds,
+        lambda: _make_live_hub(settings, session_key, entry.event_name, kinds),
+    )
+    try:
+        await _stream_live(websocket, hub)
+    finally:
+        LIVE_HUBS.release(hub)
+
+
+def _make_live_hub(
+    settings: Settings,
+    session_key: SessionKey,
+    event_name: str | None,
+    kinds: Collection[str] | None,
+) -> LiveHub:
+    @contextlib.contextmanager
+    def open_source() -> Generator[EventSource | None, None, None]:
+        with resolve_session(settings, session_key) as resolved:
+            yield resolved.source if resolved is not None else None
+
+    @contextlib.contextmanager
+    def open_deps() -> Generator[LiveDeps, None, None]:
+        with (
+            radio_store_cm(settings) as radio_store,
+            why_stream_deps_cm(settings) as (model, store, radio_index),
+        ):
+            yield radio_store, model, store, radio_index
+
+    return LiveHub(
+        session_key,
+        settings=settings,
+        event_name=event_name,
+        kinds=kinds,
+        open_source=open_source,
+        open_deps=open_deps,
+    )
 
 
 def _build_explanation_schedule(
@@ -375,202 +368,35 @@ async def _stream_replay(
 
 
 async def _stream_live(
-    websocket: WebSocket,
-    source: EventSource,
-    session_key: SessionKey,
-    *,
-    settings: Settings,
-    event_name: str | None,
-    kinds: Collection[str] | None,
-    radio_store: TranscriptStore | None,
-    narration_model: NarrationModel,
-    explanation_store: ExplanationStore,
-    radio_index: SearchIndex | None,
+    websocket: WebSocket, hub: LiveHub, *, interval_s: float = LIVE_FANOUT_INTERVAL_S
 ) -> None:
-    """Live path: domain events + kernel snapshots as before, plus
-    explanations generated on newly-detected anomalies against the same
-    `explain_cached` store historical precompute uses. An explanation's
-    `event_time_utc` is the anomaly's own (already-real) `anomaly_time` —
-    Delay Sync gates it the same way as every other envelope.
-
-    Explanations are budgeted exactly like the replay path
-    (`Settings.max_explanations`): a live race detects anomalies at the same
-    rate a replayed one does, and one model call each would blow both the
-    cost budget and the poll interval. Once the budget is spent this keeps
-    streaming timing and snapshots — the race stays watchable, it just
-    stops narrating."""
-    analysis = _LiveAnalysis(
-        settings,
-        session_key,
-        event_name=event_name,
-        narration_model=narration_model,
-        explanation_store=explanation_store,
-        radio_index=radio_index,
-    )
-    sent = 0
-    cursor: tuple[int, int] | None = None
-    incremental = source if isinstance(source, _CursorSource) else None
+    """One viewer of a live session: everything the hub has published so
+    far (the race as it stands, every snapshot and explanation already
+    made), then the tail as it grows. Joining at lap 40 costs one burst of
+    sends, not forty kernel recomputes."""
+    first, sent = hub.join()
     gone = asyncio.ensure_future(_client_gone(websocket))
     try:
+        for text in first:
+            if gone.done():
+                return
+            await websocket.send_text(text)
         while not gone.done():
-            # The read is a blocking database call: on the event loop it
-            # stalled every other request and socket for its duration.
-            if incremental is not None:
-                batch = await asyncio.to_thread(
-                    _events_after, incremental, session_key, cursor, kinds
-                )
-                if batch:
-                    cursor = batch[-1][1]
-                events = sorted((event for event, _ in batch), key=lambda event: event.ts_utc)
-            else:
-                seen = await asyncio.to_thread(_all_events, source, session_key, kinds)
-                events = seen[sent:]
-                sent = len(seen)
-            for item in live_position_frames(events):
-                if isinstance(item, PositionFrame):
-                    await websocket.send_json(
-                        car_positions_envelope(item.ts_utc, item).model_dump(mode="json")
-                    )
-                    continue
-                envelope = envelope_for_event(item, radio_store=radio_store)
-                await websocket.send_json(envelope.model_dump(mode="json"))
-                analysis.submit(item)
-            for envelope in analysis.ready():
-                await websocket.send_json(envelope.model_dump(mode="json"))
+            pending = hub.since(sent)
+            for text in pending:
+                await websocket.send_text(text)
+            sent += len(pending)
             # Wakes early when the client disconnects, so a closed tab stops
-            # costing a poll within milliseconds rather than forever.
-            await asyncio.wait({gone}, timeout=LIVE_POLL_INTERVAL_S)
-    except WebSocketDisconnect:
+            # costing anything within milliseconds rather than forever.
+            await asyncio.wait({gone}, timeout=interval_s)
+    except (WebSocketDisconnect, RuntimeError, OSError):
+        # The viewer went away mid-send (a closed tab, a dropped network):
+        # uvicorn raises from the write rather than the receive. Their
+        # stream simply ends; the hub and every other viewer carry on.
         pass
     finally:
-        analysis.close()
         gone.cancel()
         await _safe_close(websocket)
-
-
-def _events_after(
-    source: _CursorSource,
-    session_key: SessionKey,
-    cursor: tuple[int, int] | None,
-    kinds: Collection[str] | None,
-) -> list[tuple[DomainEvent, tuple[int, int]]]:
-    return list(source.events_after(session_key, cursor, kinds=kinds))
-
-
-def _all_events(
-    source: EventSource, session_key: SessionKey, kinds: Collection[str] | None
-) -> list[DomainEvent]:
-    return sorted(source.events(session_key, kinds=kinds), key=lambda e: e.ts_utc)
-
-
-class _LiveAnalysis:
-    """Kernel snapshots and explanations for one live stream, on its own
-    thread.
-
-    Each completed lap recomputes the whole kernel (up to a second on a real
-    race), then runs anomaly detection and may call the narration model over
-    the network. Inline in the polling coroutine, all of that ran on the
-    API's event loop: while it ran, no other viewer's socket was served and
-    no REST request was answered, and joining mid-race queued one recompute
-    per lap already run. Here the loop only hands events over and picks up
-    finished envelopes. They carry their lap's or anomaly's own instant and
-    may go out after it, which is spoiler-safe: Delay Sync releases a late
-    envelope on arrival, and nothing here can make one early.
-
-    Explanations read evidence through their own session source, never the
-    poll's: a store source wraps one database connection, and the poll uses
-    that from another thread."""
-
-    def __init__(
-        self,
-        settings: Settings,
-        session_key: SessionKey,
-        *,
-        event_name: str | None,
-        narration_model: NarrationModel,
-        explanation_store: ExplanationStore,
-        radio_index: SearchIndex | None,
-    ) -> None:
-        self._settings = settings
-        self._session_key = session_key
-        self._event_name = event_name
-        self._model = narration_model
-        self._store = explanation_store
-        self._radio_index = radio_index
-        self._feed = LapSnapshotFeed(session_key, event_name=event_name)
-        self._emitted: set[str] = set()
-        self._closed = threading.Event()
-        self._inbox: queue.SimpleQueue[DomainEvent | None] = queue.SimpleQueue()
-        self._ready: deque[StreamEnvelope] = deque()
-        self._thread = threading.Thread(target=self._run, name="f1-api-live-analysis", daemon=True)
-        self._thread.start()
-
-    def submit(self, event: DomainEvent) -> None:
-        if event.kind != POSITION_KIND:
-            self._inbox.put(event)
-
-    def ready(self) -> Iterator[StreamEnvelope]:
-        """Envelopes finished since the last call, oldest first."""
-        while self._ready:
-            yield self._ready.popleft()
-
-    def close(self) -> None:
-        self._closed.set()
-        self._inbox.put(None)
-
-    def _run(self) -> None:
-        while (event := self._inbox.get()) is not None and not self._closed.is_set():
-            try:
-                report = self._feed.feed(event)
-                if report is None:
-                    continue
-                if report.crossovers:
-                    self._ready.append(kernel_snapshot_envelope(event.ts_utc, report))
-                self._explain(report)
-            except Exception:
-                _log.warning(
-                    "live analysis failed for one lap; the stream continues", exc_info=True
-                )
-
-    def _explain(self, report: KernelReport) -> None:
-        # Budgeted exactly like the replay path (`Settings.max_explanations`):
-        # a live race detects anomalies at the same rate a replayed one does.
-        # Once it is spent, timing and snapshots keep streaming.
-        budget = self._settings.max_explanations - len(self._emitted)
-        if budget <= 0:
-            return
-        fresh = [
-            anomaly
-            for anomaly in most_salient(
-                detect_anomalies(report.frames, report, AnomalyParams()), budget
-            )
-            if why_anomaly_id(anomaly) not in self._emitted
-        ]
-        if not fresh:
-            return
-        with resolve_session(self._settings, self._session_key) as resolved:
-            if resolved is None:
-                return
-            for anomaly in fresh:
-                if self._closed.is_set() or len(self._emitted) >= self._settings.max_explanations:
-                    return
-                explanation, bundle = explain_session_anomaly(
-                    resolved.source,
-                    self._session_key,
-                    anomaly,
-                    self._model,
-                    self._store,
-                    report=report,
-                    radio_index=self._radio_index,
-                    event_name=self._event_name,
-                )
-                cited = cited_evidence_refs(self._session_key, bundle, explanation)
-                self._ready.append(
-                    explanation_envelope(
-                        anomaly.anomaly_time, self._session_key, anomaly, explanation, cited
-                    )
-                )
-                self._emitted.add(why_anomaly_id(anomaly))
 
 
 async def _safe_close(websocket: WebSocket) -> None:

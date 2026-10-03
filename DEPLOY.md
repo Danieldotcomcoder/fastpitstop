@@ -252,6 +252,23 @@ row counts and diff against expectations before ever touching production
 data. Drop the scratch database when done (the script prints the exact
 command).
 
+## Database capacity and where its data lives
+
+`timescaledb-ha` tunes Postgres for the container at first start, and on
+this VM that set `max_connections = 25`: a handful of concurrent replay
+viewers (each holds 3-5 connections) would exhaust it. It is raised with
+`ALTER SYSTEM SET max_connections = 100` (persisted in
+`postgresql.auto.conf`) and a `docker restart pitwall-db-1`. Live viewers
+hold none: they share one hub per session (`f1_api.stream.live`).
+
+**The database is not on the `pitwall-pgdata` volume.** compose.yml mounts
+the volume at `/var/lib/postgresql/data`, but this image keeps PGDATA at
+`/home/postgres/pgdata/data`, so the data lives in the `pitwall-db-1`
+container's own writable layer. A `docker restart` keeps it; anything that
+RECREATES the container (a change to the `db` service, `docker compose
+down`) loses it. Until the mount is fixed (dump, change the mount, restore),
+never recreate `db`, and take a `pg_dump` first whenever touching it.
+
 ## Health, logs, status
 
 - `GET /healthz` — liveness, no DB call.

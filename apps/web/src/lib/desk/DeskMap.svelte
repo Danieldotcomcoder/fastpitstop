@@ -13,7 +13,12 @@
   line says which one the viewer is looking at.
 -->
 <script lang="ts">
-	import { playbackClockMs, type DelaySyncController } from '$lib/delay-sync';
+	import {
+		playbackClockMs,
+		serverClockOffsetMs,
+		serverNowMs,
+		type DelaySyncController
+	} from '$lib/delay-sync';
 	import { colorForTeam } from '$lib/teams';
 	import type { DriverRow } from '$lib/timing-tower';
 	import {
@@ -204,7 +209,7 @@
 	 * releases (every 100 ms), the release and the panels' updates run
 	 * first, the draw starts a few milliseconds late, and every car jumped
 	 * ahead on that frame and lagged on the next. */
-	function draw(frameWallMs: number = Date.now()): void {
+	function draw(frameWallMs: number = serverNowMs()): void {
 		if (!canvas || !samples || !view.w) return;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
@@ -392,7 +397,7 @@
 			// Reduced motion: one redraw a second instead of a continuous glide.
 			if (!reduced.matches || now - last >= 1000) {
 				last = now;
-				draw(performance.timeOrigin + now);
+				draw(performance.timeOrigin + now + serverClockOffsetMs());
 			}
 			handle = requestAnimationFrame(loop);
 		};

@@ -22,9 +22,11 @@ from f1_store.migrations import apply_migrations, load_migrations, split_stateme
 from f1_store.postgres import (
     DEFAULT_LIVE_WINDOW,
     TERMINAL_SESSION_STATUSES,
+    EventIdentity,
     PostgresSink,
     live_session_keys,
     replay_events,
+    replay_events_since,
     replay_events_with_cursor,
 )
 from f1_store.rows import TableRow, derive_rows
@@ -38,6 +40,7 @@ __all__ = [
     "IDENTITY_KEYS",
     "TABLE_COLUMNS",
     "TERMINAL_SESSION_STATUSES",
+    "EventIdentity",
     "EventSink",
     "MemorySink",
     "NullSink",
@@ -51,6 +54,7 @@ __all__ = [
     "live_session_keys",
     "load_migrations",
     "replay_events",
+    "replay_events_since",
     "replay_events_with_cursor",
     "split_statements",
 ]

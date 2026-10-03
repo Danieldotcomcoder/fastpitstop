@@ -1,0 +1,6 @@
+# FastPitStop — unofficial F1 live timing dashboard.
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://fastpitstop.online/sitemap.xml

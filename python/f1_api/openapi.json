@@ -2206,6 +2206,20 @@
         "title": "Reliability",
         "type": "string"
       },
+      "ServerTimeOut": {
+        "description": "`GET /time` \u2014 the server's wall clock, epoch milliseconds.",
+        "properties": {
+          "server_time_ms": {
+            "title": "Server Time Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "server_time_ms"
+        ],
+        "title": "ServerTimeOut",
+        "type": "object"
+      },
       "SessionDetailOut": {
         "description": "`GET /sessions/{key}`: metadata plus classification.",
         "properties": {
@@ -3446,6 +3460,28 @@
         "summary": "Get Telemetry",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/time": {
+      "get": {
+        "description": "The server's clock, so a viewer can correct their own.\n\nEvery `event_time_utc` the stream sends is this machine's clock (the\nlive ingest stamps events on receipt; replay stamps each envelope as it\nis sent), and Delay Sync compares it with the viewer's device clock. A\ndevice a minute fast would release everything a minute early, a spoiler\nfor a viewer on a broadcast delay; one a minute slow would show \"live\"\na minute late. The frontend measures its offset from this, by round\ntrip, and runs Delay Sync on the corrected clock.",
+        "operationId": "server_time_time_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerTimeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Server Time",
+        "tags": [
+          "health"
         ]
       }
     },

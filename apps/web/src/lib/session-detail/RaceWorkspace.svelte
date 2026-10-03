@@ -22,6 +22,9 @@
 	import {
 		DelaySyncController,
 		EMPTY_VISIBLE_STATE,
+		measureServerOffset,
+		serverNowMs,
+		setServerClockOffsetMs,
 		type VisibleSessionState
 	} from '$lib/delay-sync';
 	import { RevealTracker } from '$lib/kernel-views';
@@ -65,7 +68,7 @@
 
 	const SPEEDS = [0, 1, 4, 5, 16, 20, 50];
 	let speed = $state(16);
-	let controller = $state(new DelaySyncController({ initialDelaySeconds: 0 }));
+	let controller = $state(new DelaySyncController({ initialDelaySeconds: 0, now: serverNowMs }));
 	// Raw, not deep: the released state is replaced, never mutated, and a
 	// deep proxy made every reducer's read of every event a proxy trap
 	// (16% of CPU at 16x on the live-recorded 2026 race, frames dropped).
@@ -166,6 +169,30 @@
 		return records.classify(driver, lapTime);
 	}
 
+	// --- the clock -------------------------------------------------------------
+	/** Delay Sync compares the viewer's clock with the server's timestamps,
+	 * so it runs on the device clock corrected to the server's
+	 * (`$lib/delay-sync/server-clock`). Nothing is released until the
+	 * correction is known: a device clock running fast would otherwise
+	 * release the first moments early, a spoiler for anyone on a delay. */
+	let clockKnown = false;
+
+	async function syncClock(): Promise<void> {
+		try {
+			const offset = await measureServerOffset(async () => {
+				const { data } = await api.GET('/time', { signal: AbortSignal.timeout(2_000) });
+				if (data === undefined) throw new Error('no server time');
+				return data.server_time_ms;
+			});
+			setServerClockOffsetMs(offset);
+		} finally {
+			// Measured, or every attempt failed (offset 0, the uncorrected
+			// behaviour): either way the dashboard runs.
+			clockKnown = true;
+		}
+	}
+	void syncClock();
+
 	// --- the stream ----------------------------------------------------------
 	/** Close codes the API uses to refuse a stream outright: a malformed key,
 	 * or (for `mode=live`) a session that is no longer running. Reconnecting
@@ -191,7 +218,7 @@
 		visible = EMPTY_VISIBLE_STATE;
 		lightsOutUtc = null;
 		firstEventUtc = null;
-		const c = new DelaySyncController({ initialDelaySeconds: delay });
+		const c = new DelaySyncController({ initialDelaySeconds: delay, now: serverNowMs });
 		controller = c;
 		connection = 'Connecting';
 		const stream = new SessionStream(session.key, { mode: isLive ? 'live' : 'replay', speed });
@@ -238,7 +265,9 @@
 		socket = stream;
 		stream.connect();
 		// Ten releases a second: the page moves as the race does.
-		timer = setInterval(() => c.tick(), 100);
+		timer = setInterval(() => {
+			if (clockKnown) c.tick();
+		}, 100);
 	}
 
 	async function loadLaps(key: string): Promise<void> {

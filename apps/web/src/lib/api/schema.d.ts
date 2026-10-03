@@ -385,6 +385,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Server Time
+         * @description The server's clock, so a viewer can correct their own.
+         *
+         *     Every `event_time_utc` the stream sends is this machine's clock (the
+         *     live ingest stamps events on receipt; replay stamps each envelope as it
+         *     is sent), and Delay Sync compares it with the viewer's device clock. A
+         *     device a minute fast would release everything a minute early, a spoiler
+         *     for a viewer on a broadcast delay; one a minute slow would show "live"
+         *     a minute late. The frontend measures its offset from this, by round
+         *     trip, and runs Delay Sync on the corrected clock.
+         */
+        get: operations["server_time_time_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/version": {
         parameters: {
             query?: never;
@@ -1153,6 +1181,14 @@ export interface components {
          */
         Reliability: "good" | "thin" | "unreliable";
         /**
+         * ServerTimeOut
+         * @description `GET /time` — the server's wall clock, epoch milliseconds.
+         */
+        ServerTimeOut: {
+            /** Server Time Ms */
+            server_time_ms: number;
+        };
+        /**
          * SessionDetailOut
          * @description `GET /sessions/{key}`: metadata plus classification.
          */
@@ -1826,6 +1862,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    server_time_time_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerTimeOut"];
                 };
             };
         };

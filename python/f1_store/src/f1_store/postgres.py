@@ -14,8 +14,8 @@ upserted with plain `ON CONFLICT DO UPDATE` — no COPY needed there.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Iterator
-from datetime import timedelta
+from collections.abc import Collection, Container, Iterable, Iterator
+from datetime import datetime, timedelta
 
 import psycopg
 from psycopg import sql
@@ -280,6 +280,58 @@ def replay_events_with_cursor(
         cur.execute(stmt, params)
         for row in cur:
             yield DOMAIN_EVENT_ADAPTER.validate_python(row[0]), (int(row[1]), int(row[2]))
+
+
+EventIdentity = tuple[int, int, datetime]
+"""`(source_seq, event_index, ts_utc)`: the `events_identity` unique key
+within one session."""
+
+
+def replay_events_since(
+    conn: psycopg.Connection[TupleRow],
+    session_key: SessionKey,
+    *,
+    kinds: Collection[str] | None = None,
+    since: datetime | None = None,
+    seen: Container[EventIdentity] = (),
+) -> Iterator[tuple[DomainEvent, EventIdentity]]:
+    """A session's events at or after `since`, in time order, minus any
+    whose identity is in `seen` (skipped before they are parsed).
+
+    How a live follower reads a growing session. Following by
+    `(source_seq, event_index)` instead broke on 2026-10-03: the recorder's
+    sequence restarts whenever its process restarts, so every event after a
+    worker restart sorted BELOW the follower's cursor and was never
+    delivered; the Bahrain GP qualifying froze for every viewer. Event time
+    survives a restart. A follower re-reads a short overlap behind its
+    newest event (events stamped with the feed's own clock can land a few
+    seconds "in the past") and passes what it has already sent as `seen`.
+    """
+    conditions = [
+        sql.SQL("session_year = %(year)s AND session_round = %(round)s AND session_type = %(type)s")
+    ]
+    params: dict[str, object] = {
+        "year": session_key.year,
+        "round": session_key.round,
+        "type": session_key.session_type.value,
+    }
+    if kinds is not None:
+        conditions.append(sql.SQL("kind = ANY(%(kinds)s)"))
+        params["kinds"] = list(kinds)
+    if since is not None:
+        conditions.append(sql.SQL("ts_utc >= %(since)s"))
+        params["since"] = since
+    stmt = sql.SQL(
+        "SELECT source_seq, event_index, ts_utc, payload::text FROM events WHERE {where} "
+        "ORDER BY ts_utc, source_seq, event_index"
+    ).format(where=sql.SQL(" AND ").join(conditions))
+    with conn.cursor() as cur:
+        cur.execute(stmt, params)
+        for source_seq, event_index, ts_utc, payload in cur:
+            identity: EventIdentity = (int(source_seq), int(event_index), ts_utc)
+            if identity in seen:
+                continue
+            yield DOMAIN_EVENT_ADAPTER.validate_json(payload), identity
 
 
 DEFAULT_LIVE_WINDOW = timedelta(minutes=10)

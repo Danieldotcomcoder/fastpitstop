@@ -5,7 +5,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api, type components } from '$lib/api/client';
-	import { brand } from '$lib/brand';
+	import { seoFor, toSeoSession } from '$lib/seo';
 	import LoadingState from '$lib/components/LoadingState.svelte';
 	import RaceWorkspace from '$lib/session-detail/RaceWorkspace.svelte';
 
@@ -48,7 +48,12 @@
 	});
 </script>
 
-<svelte:head><title>{session?.event_name ?? 'Session'} · {brand.name}</title></svelte:head>
+<!-- The same title the server writes into the HTML (`$lib/seo`), so the
+     page search engines render keeps it. -->
+<svelte:head
+	><title>{seoFor(page.url.pathname, session ? [toSeoSession(session)] : []).title}</title
+	></svelte:head
+>
 
 {#if status === 'loading'}
 	<LoadingState label="Opening the race…" />

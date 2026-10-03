@@ -41,7 +41,11 @@ class RecordingWriter:
         self._directory = directory
         self._directory.mkdir(parents=True, exist_ok=True)
         self._manifest = manifest
-        self._next_seq = 0
+        # Reopening an existing recording (the live recorder restarting into
+        # the same directory) continues its sequence rather than restarting
+        # at 0: `seq` is one monotonic counter per recording, and the live
+        # follower froze when a restart sent it backwards.
+        self._next_seq = _resume_seq(self._directory / STREAM_FILENAME)
         (self._directory / MANIFEST_FILENAME).write_text(
             manifest.model_dump_json(indent=2), encoding="utf-8"
         )
@@ -108,3 +112,47 @@ class RecordingWriter:
         tb: TracebackType | None,
     ) -> None:
         self.close()
+
+
+_TAIL_CHUNK = 1 << 20
+
+
+def _resume_seq(stream: Path) -> int:
+    """The seq the next record of an existing stream should take: one past
+    its last complete record, or 0 for a new or empty stream.
+
+    A torn final line (the process died mid-write, which the reader already
+    tolerates by dropping it) is trimmed first. Appending after it would
+    glue the next record onto it, and a malformed line anywhere but last is
+    corruption the reader refuses."""
+    if not stream.exists():
+        return 0
+    with stream.open("rb+") as handle:
+        size = handle.seek(0, os.SEEK_END)
+        if size == 0:
+            return 0
+        window = min(size, _TAIL_CHUNK)
+        while True:
+            handle.seek(size - window)
+            tail = handle.read(window)
+            complete_end = tail.rfind(b"\n")
+            # The last complete line starts after the newline before it; read
+            # further back until that one is in the window too (a subscribe
+            # snapshot record alone can be ~100 KB).
+            line_start = tail.rfind(b"\n", 0, complete_end) if complete_end > 0 else -1
+            if line_start >= 0 or window == size:
+                break
+            window = min(size, window * 2)
+        if complete_end < 0:
+            # Not one complete line: the whole file is a torn first record.
+            handle.truncate(0)
+            return 0
+        if complete_end != len(tail) - 1:
+            handle.truncate(size - window + complete_end + 1)
+        lines = tail[: complete_end + 1].splitlines()
+    for line in reversed(lines):
+        try:
+            return RawRecord.model_validate_json(line).seq + 1
+        except ValueError:
+            continue
+    return 0

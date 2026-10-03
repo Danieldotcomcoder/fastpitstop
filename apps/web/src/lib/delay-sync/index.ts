@@ -19,3 +19,13 @@ export {
 	POSITION_FRAME_WINDOW
 } from './visible-state';
 export type { VisibleSessionState } from './visible-state';
+export {
+	bestOffset,
+	type ClockSample,
+	measureServerOffset,
+	NEGLIGIBLE_OFFSET_MS,
+	offsetFromSample,
+	serverClockOffsetMs,
+	serverNowMs,
+	setServerClockOffsetMs
+} from './server-clock';

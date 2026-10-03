@@ -611,6 +611,39 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   differs from 2024's by 13-30 m, beyond any rigid fit.
   `deploy/check_outline_fit.py` measures dots against the drawn lines per
   session.
+- Race-weekend hardening (2026-10-03), each proven by a rehearsal of the
+  recorded Baku race through the real live path with ten viewers:
+  `mode=live` is one shared `LiveHub` per running session
+  (`f1_api.stream.live`): one store poll, one kernel, one narrator, fanned
+  out to every viewer from an append-only backlog, so a viewer holds no DB
+  connection (production Postgres allowed 25) and no kernel of its own
+  (a replay's kernel measured past 400 MB; the API is capped at 3 GB). A
+  viewer joining mid-race gets the race so far with gap history older than
+  `JOIN_GAP_HISTORY_S` reduced to each driver's latest (exact for any
+  Delay Sync delay); uvicorn's ping timeout is 60 s because a slow
+  catch-up queued the keepalive and dropped viewers in a reconnect loop.
+  Delay Sync runs on the device clock corrected to the server's
+  (`GET /time`, `$lib/delay-sync/server-clock`): a fast phone clock
+  released moments early, a spoiler. `circuit_for_session` no longer
+  falls back to the Grand Prix name when the feed names a venue no file
+  knows: the 2026 "Bahrain Grand Prix" ran at Sepang ("Kuala Lumpur" in
+  the feed) and was drawn on Sakhir; `sepang.json` is built from that
+  weekend's practice. SEO: `$lib/seo` is the one source of every page's
+  title/description/canonical/social card/JSON-LD; `hooks.server.ts`
+  writes them into the HTML of the client-rendered dashboards, and `/`
+  (now a real landing page), `/about` and `/sessions` render on the
+  server; `/sitemap.xml`, `robots.txt` and a web-app manifest ship.
+  Found live during the 2026 Bahrain GP qualifying (2026-10-03): the
+  worker flushed every 200 events, which a race fills in seconds but
+  qualifying (no gap updates) took 3-4 minutes, so the tower ran minutes
+  behind TV; it now runs `--batch-size 1`. And the hub followed the store
+  by `(source_seq, event_index)`, which restarts with the worker process,
+  so a worker restart froze live for everyone: it now follows by event
+  time (`f1_store.replay_events_since`, re-reading `FOLLOW_OVERLAP`,
+  skipping identities already sent), and `RecordingWriter` continues a
+  reopened recording's sequence (and trims a torn last line) instead of
+  restarting at 0. Proven by restarting the worker mid-race in a VM
+  rehearsal: the viewer carried on from lap 8 with no gap or duplicate.
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.

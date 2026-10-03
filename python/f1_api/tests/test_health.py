@@ -115,3 +115,14 @@ def test_readyz_reports_last_ingest(settings: Settings, fresh_db: str) -> None:
     response = client.get("/readyz")
     assert response.status_code == 200
     assert response.json()["last_ingest_at"] is not None
+
+
+def test_time_reports_the_server_clock(client: TestClient) -> None:
+    """What the frontend corrects a wrong device clock against (Delay Sync
+    compares every event's server timestamp with the viewer's clock)."""
+    import time
+
+    before = int(time.time() * 1000)
+    body = client.get("/time").json()
+    after = int(time.time() * 1000)
+    assert before <= body["server_time_ms"] <= after

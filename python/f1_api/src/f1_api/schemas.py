@@ -43,6 +43,12 @@ class ReadyOut(BaseModel):
     yet), not a failure."""
 
 
+class ServerTimeOut(BaseModel):
+    """`GET /time` — the server's wall clock, epoch milliseconds."""
+
+    server_time_ms: int
+
+
 class VersionOut(BaseModel):
     """`GET /version` — image build metadata, read from the `GIT_SHA`/
     `BUILD_TIME` env vars the Dockerfiles set. Surfaced on the `/status`
@@ -554,6 +560,7 @@ __all__ = [
     "RadioSearchResultOut",
     "RadioSegmentOut",
     "ReadyOut",
+    "ServerTimeOut",
     "SessionDetailOut",
     "SessionSummaryOut",
     "StoryMomentOut",

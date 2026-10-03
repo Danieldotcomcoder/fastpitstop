@@ -421,6 +421,25 @@ SPECS: tuple[CircuitSpec, ...] = (
             "median. See calibration/pit_loss.json."
         ),
     ),
+    # Back for 2026 under ANOTHER race's name: the 2026 "Bahrain Grand Prix"
+    # (round 16) ran at Sepang, and the feed says so only through its venue
+    # name ("Kuala Lumpur"). Deliberately not listed under "Bahrain Grand
+    # Prix" -- that name is Sakhir's in every other season (see `bahrain`).
+    # Practice 2 is the reference: the race had not run when this was built.
+    CircuitSpec(
+        circuit_id="sepang",
+        name="Sepang International Circuit",
+        country="Malaysia",
+        event_names=("Malaysian Grand Prix",),
+        season=2026,
+        round_no=16,
+        session="Practice 2",
+        pit_loss_s=23.03,
+        pit_loss_note=(
+            "No measured stops at this venue yet: provisional at the 2024 cross-circuit "
+            "median. See calibration/pit_loss.json."
+        ),
+    ),
 )
 
 

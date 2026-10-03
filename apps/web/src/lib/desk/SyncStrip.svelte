@@ -5,7 +5,12 @@
   restart.
 -->
 <script lang="ts">
-	import { playbackClockMs, type DelaySyncController, type DelayState } from '$lib/delay-sync';
+	import {
+		playbackClockMs,
+		serverNowMs,
+		type DelaySyncController,
+		type DelayState
+	} from '$lib/delay-sync';
 	import type { TrackStatusChip } from './race-feed';
 
 	interface Props {
@@ -33,7 +38,7 @@
 	let clock = $state('');
 	$effect(() => {
 		const tick = () => {
-			const ms = playbackClockMs(Date.now(), controller.delayState.get().delaySeconds);
+			const ms = playbackClockMs(serverNowMs(), controller.delayState.get().delaySeconds);
 			clock = new Date(ms).toLocaleTimeString([], { hour12: false });
 		};
 		tick();
@@ -48,7 +53,8 @@
 
 	function onTap(): void {
 		if (lightsOutUtc === null) return;
-		const seconds = controller.calibrateFromTap(Date.now(), lightsOutUtc);
+		// The server's clock, like the lights-out timestamp it is compared with.
+		const seconds = controller.calibrateFromTap(serverNowMs(), lightsOutUtc);
 		fromTap = true;
 		toast = `Synced: ${seconds.toFixed(1)} s behind live`;
 		if (toastTimer) clearTimeout(toastTimer);

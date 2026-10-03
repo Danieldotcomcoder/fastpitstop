@@ -1,0 +1,20 @@
+{
+	"name": "FastPitStop — F1 live timing",
+	"short_name": "FastPitStop",
+	"description": "Unofficial F1 live timing dashboard with tyre, pit and undercut analysis, synced to your TV delay.",
+	"start_url": "/live",
+	"scope": "/",
+	"display": "standalone",
+	"background_color": "#EEEFEA",
+	"theme_color": "#EEEFEA",
+	"icons": [
+		{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+		{ "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+		{
+			"src": "/icon-maskable-512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	]
+}
