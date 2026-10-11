@@ -33,6 +33,23 @@ export interface DriverRow {
 	stintNumber: number | null;
 	/** True from `pit_entry` until the matching `pit_exit`. */
 	inPit: boolean;
+	/** This driver's fastest lap so far, from released laps only. */
+	bestLapS: number | null;
+	/** The sector times of the last completed lap (S1, S2, S3); `null` until
+	 * a lap carries them, an entry `null` where the feed had no time. */
+	lastSectorsS: (number | null)[] | null;
+	/** Every stint started so far, in stint order. */
+	stints: TowerStint[];
+	/** Out of the race, as far as the released laps show (`retirements.ts`).
+	 * Recomputed every time the rows are sorted, never folded. */
+	retired: boolean;
+}
+
+export interface TowerStint {
+	stintNumber: number;
+	compound: string | null;
+	/** First lap of the stint; `null` when the feed didn't say. */
+	startLap: number | null;
 }
 
 export function createDriverRow(driver: string): DriverRow {
@@ -52,8 +69,28 @@ export function createDriverRow(driver: string): DriverRow {
 		compound: null,
 		tyreAge: null,
 		stintNumber: null,
-		inPit: false
+		inPit: false,
+		bestLapS: null,
+		lastSectorsS: null,
+		stints: [],
+		retired: false
 	};
+}
+
+/** The stints as the stint bar draws them: each ends the lap before the
+ * next begins, and the last is still running. A stint whose start the feed
+ * didn't give starts where the previous one ended (lap 1 for the first). */
+export function stintsForBar(
+	row: DriverRow
+): { compound: string | null; startLap: number; endLap: number | null }[] {
+	const out: { compound: string | null; startLap: number; endLap: number | null }[] = [];
+	row.stints.forEach((stint, i) => {
+		const previous = out[i - 1];
+		const startLap = stint.startLap ?? (previous ? (previous.endLap ?? previous.startLap) + 1 : 1);
+		if (previous) previous.endLap = Math.max(previous.startLap, startLap - 1);
+		out.push({ compound: stint.compound, startLap, endLap: null });
+	});
+	return out;
 }
 
 /** Places gained (positive) or lost (negative) since this driver's first

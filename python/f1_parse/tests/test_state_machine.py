@@ -836,3 +836,59 @@ class TestSeeding:
         assert [type(e) for e in sm.apply(feed.record("Heartbeat", {}))] == [UnknownEvent]
         # ...while the gap-era swap is still reflected in state.
         assert sm.state.drivers["16"].position == 1
+
+
+class TestRaceLapOne:
+    """The feed counts a race's lap 1 but never times it (the 2026 Singapore
+    GP: `NumberOfLaps: 1` alone, the first `LastLapTime` is lap 2's)."""
+
+    @staticmethod
+    def _started(feed: Feed) -> RawRecord:
+        return feed.record("SessionData", {"StatusSeries": {"1": {"SessionStatus": "Started"}}})
+
+    def test_lap_one_is_emitted_and_timed_from_the_start(self):
+        sm, feed = machine(), Feed()
+        sm.apply(self._started(feed))  # received at T0
+        for _ in range(3):
+            sm.apply(feed.record("Heartbeat", {}))
+        events = sm.apply(timing(feed, "1", {"NumberOfLaps": 1}))  # T0 + 4 s
+        (lap,) = only(events, LapCompleted)
+        assert lap.lap_number == 1
+        assert lap.lap_time == timedelta(seconds=4)
+        events = sm.apply(
+            timing(feed, "1", {"NumberOfLaps": 2, "LastLapTime": {"Value": "1:38.874"}})
+        )
+        (lap,) = only(events, LapCompleted)
+        assert lap.lap_number == 2
+        assert lap.lap_time == timedelta(minutes=1, seconds=38.874)
+
+    def test_a_lap_one_time_from_the_feed_wins(self):
+        sm, feed = machine(), Feed()
+        sm.apply(self._started(feed))
+        events = sm.apply(
+            timing(feed, "1", {"NumberOfLaps": 1, "LastLapTime": {"Value": "1:45.002"}})
+        )
+        (lap,) = only(events, LapCompleted)
+        assert lap.lap_time == timedelta(minutes=1, seconds=45.002)
+
+    def test_not_in_qualifying(self):
+        """Qualifying's lap 1 is an out-lap from the pits, not a lap from
+        the start: the first count stays the baseline."""
+        sm = SessionStateMachine(
+            session_key=SessionKey(year=2024, round=1, session_type=SessionType.QUALIFYING)
+        )
+        feed = Feed()
+        sm.apply(self._started(feed))
+        assert only(sm.apply(timing(feed, "1", {"NumberOfLaps": 1})), LapCompleted) == []
+
+    def test_not_when_the_start_was_not_seen(self):
+        """Joined mid-race: lap 1 was never observed, so nothing is
+        invented for it."""
+        sm, feed = machine(), Feed()
+        assert only(sm.apply(timing(feed, "1", {"NumberOfLaps": 1})), LapCompleted) == []
+
+    def test_emitted_once(self):
+        sm, feed = machine(), Feed()
+        sm.apply(self._started(feed))
+        sm.apply(timing(feed, "1", {"NumberOfLaps": 1}))
+        assert only(sm.apply(timing(feed, "1", {"NumberOfLaps": 1})), LapCompleted) == []

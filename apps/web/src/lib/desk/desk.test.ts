@@ -97,6 +97,23 @@ describe('LapRecordReducer', () => {
 	});
 });
 
+describe('LapRecordReducer sectors', () => {
+	it("colours each sector by the session best and the driver's own", () => {
+		const records = new LapRecordReducer();
+		records.update([
+			envelope('lap_completed', { driver: '1', sector_times: ['PT30.5S', 'PT31.0S', 'PT30.0S'] }),
+			envelope('lap_completed', { driver: '4', sector_times: ['PT30.2S', 'PT31.4S', null] }),
+			envelope('lap_completed', { driver: '1', sector_times: ['PT30.4S', 'PT31.1S', 'PT29.9S'] })
+		]);
+		expect(records.classifySector('4', 0, 30.2)).toBe('fastest');
+		expect(records.classifySector('1', 0, 30.4)).toBe('pb');
+		expect(records.classifySector('1', 1, 31.0)).toBe('fastest');
+		expect(records.classifySector('1', 1, 31.1)).toBe('');
+		expect(records.classifySector('1', 2, 29.9)).toBe('fastest');
+		expect(records.classifySector('4', 2, null)).toBe('');
+	});
+});
+
 describe('focusPair', () => {
 	const rows = [row('1', { position: 1 }), row('4', { position: 2 }), row('16', { position: 3 })];
 	it('follows the fight for the lead by default', () => {

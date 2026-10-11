@@ -1,11 +1,12 @@
 /*
  * Design tokens — paper and ink, colour reserved for meaning.
  *
- * Light by default (a dashboard read next to a television in a lit room),
- * with a dark theme under `prefers-color-scheme` and an explicit
- * `[data-theme]` override. Chrome is achromatic; the only colour on screen
- * is data colour: timing purple/green, flag red, tyre compounds, team
- * swatches from teams.ts — plus one accent for interactive affordances.
+ * Dark by default (decided 2026-10-11), with the paper-light theme under an
+ * explicit `[data-theme='light']`, which the header's theme switch sets and
+ * app.html restores before first paint. Chrome is achromatic; the only
+ * colour on screen is data colour: timing purple/green, flag red, tyre
+ * compounds, team swatches from teams.ts — plus one accent for interactive
+ * affordances.
  *
  * The pit board (--board-*) is the deliberate exception: the undercut call
  * is the one thing on screen that should read as an object, not a panel.
@@ -123,6 +124,45 @@
 	--duration-crossfade: 120ms;
 	--duration-fast: 120ms;
 	--duration-normal: 120ms;
+	/* v2: motion shows change and never decorates (ROADMAP W2 D4). Every
+	 * use sits behind `prefers-reduced-motion: no-preference`. */
+	--ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--ease-in-out: cubic-bezier(0.6, 0, 0.3, 1);
+	--duration-move: 240ms; /* a row reordering, a sheet opening */
+	--duration-roll: 400ms; /* a number rolling to its new value */
+	--duration-flash: 900ms; /* a fastest lap flashing purple */
+	--duration-sweep: 600ms; /* a flag change sweeping across the top */
+
+	/* --- Elevation (v2): layers, light theme by shadow --- */
+	--elev-1: 0 1px 2px rgba(22, 25, 28, 0.06);
+	--elev-2: 0 2px 6px rgba(22, 25, 28, 0.08), 0 1px 2px rgba(22, 25, 28, 0.06);
+	--elev-3: 0 12px 32px rgba(22, 25, 28, 0.16), 0 2px 6px rgba(22, 25, 28, 0.08);
+
+	/* --- Track status (v2): banner fills and the ink that sits on them --- */
+	--status-green: var(--pb);
+	--status-yellow: #f2c94c;
+	--status-yellow-ink: #1b1f23;
+	--status-sc: #e7a91c;
+	--status-sc-ink: #1b1f23;
+	--status-vsc: #e7a91c;
+	--status-vsc-ink: #1b1f23;
+	--status-red: #b42318;
+	--status-red-ink: #ffffff;
+	--status-chequered: #16191c;
+	--status-chequered-ink: #ffffff;
+
+	/* --- Data vis (v2) --- */
+	/* The second car of a team is told apart by line style, never colour
+	 * alone (two cars share one team colour). */
+	--teammate-dash: 5 3;
+	--gain: var(--pb);
+	--loss: var(--flag-red);
+
+	/* --- Display numerals (v2): lining, tabular figures for anything timed --- */
+	--num-hero: clamp(2.75rem, 2rem + 3vw, 4rem);
+	--num-xl: 2.25rem;
+	--num-lg: 1.625rem;
+	--num-md: 1.125rem;
 
 	/* --- Layout --- */
 	--content-max: 1680px;
@@ -150,52 +190,12 @@
 	--shadow-panel: var(--shadow);
 }
 
-
-/* --- Dark theme -------------------------------------------------------
+/* --- Dark theme (the default) -----------------------------------------
  * Only the tokens that must change are redefined; everything structural
- * (spacing, type scale, shape) is shared. Defined for BOTH the system
- * preference and the explicit override, so the manual toggle wins in each
- * direction.
+ * (spacing, type scale, shape) is shared. Applies unless the viewer chose
+ * light with the header's theme switch.
  */
-@media (prefers-color-scheme: dark) {
-	:root:not([data-theme='light']) {
-		color-scheme: dark;
-		--paper: #101214;
-		--panel: #181b1e;
-		--panel-sunk: #14171a;
-		--ink: #ecede8;
-		--ink-2: #b9bdb8;
-		--muted: #8e9497;
-		--rule: #2a2e32;
-		--rule-strong: #3c4146;
-		--text-inverse: #0e1330;
-		--accent: #93a6ff;
-		--accent-ink: #0e1330;
-		--accent-wash: rgba(147, 166, 255, 0.1);
-		--accent-wash-2: rgba(147, 166, 255, 0.2);
-		--fastest: #c08bf0;
-		--pb: #5cc97f;
-		--timing-yellow: #e0a93a;
-		--warn-fill: #e0a93a;
-		--flag-red: #f07167;
-		--low: #8e9497;
-		--tyre-hard: #e9e9e4;
-		--tyre-ring: #0e1012;
-		--grid: #24282b;
-		--axis: #3c4146;
-		--other-line: #363b40;
-		--track: #2e3337;
-		--track-edge: #4a5056;
-		--band: rgba(147, 166, 255, 0.12);
-		--board: #23282d;
-		--board-2: #2c3237;
-		--board-rule: #444b52;
-		--board-edge: #3a4046;
-		--shadow: none;
-	}
-}
-
-:root[data-theme='dark'] {
+:root:not([data-theme='light']) {
 	color-scheme: dark;
 	--paper: #101214;
 	--panel: #181b1e;
@@ -229,4 +229,9 @@
 	--board-rule: #444b52;
 	--board-edge: #3a4046;
 	--shadow: none;
+	--elev-1: 0 0 0 1px var(--rule);
+	--elev-2: 0 0 0 1px var(--rule-strong);
+	--elev-3: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--rule-strong);
+	--status-chequered: #ecede8;
+	--status-chequered-ink: #101214;
 }

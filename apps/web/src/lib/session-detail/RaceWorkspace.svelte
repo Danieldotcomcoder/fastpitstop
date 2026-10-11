@@ -168,6 +168,10 @@
 		void revision;
 		return records.classify(driver, lapTime);
 	}
+	function sectorClass(driver: string, index: number, time: number | null): '' | 'fastest' | 'pb' {
+		void revision;
+		return records.classifySector(driver, index, time);
+	}
 
 	// --- the clock -------------------------------------------------------------
 	/** Delay Sync compares the viewer's clock with the server's timestamps,
@@ -176,6 +180,8 @@
 	 * correction is known: a device clock running fast would otherwise
 	 * release the first moments early, a spoiler for anyone on a delay. */
 	let clockKnown = false;
+	/** The correction in use, for the release gate's readout below. */
+	let clockOffsetMs = $state(0);
 
 	async function syncClock(): Promise<void> {
 		try {
@@ -185,6 +191,7 @@
 				return data.server_time_ms;
 			});
 			setServerClockOffsetMs(offset);
+			clockOffsetMs = offset;
 		} finally {
 			// Measured, or every attempt failed (offset 0, the uncorrected
 			// behaviour): either way the dashboard runs.
@@ -390,7 +397,17 @@
 	/>
 
 	<main class="desk">
-		<DeskTower {rows} {focus} {pair} {names} {lastLapClass} onFocus={(d) => (focus = d)} />
+		<DeskTower
+			{rows}
+			{focus}
+			{pair}
+			{names}
+			currentLap={lap.current}
+			{totalLaps}
+			{lastLapClass}
+			{sectorClass}
+			onFocus={(d) => (focus = d)}
+		/>
 		<WhyLane {explanations} {codes} {teams} />
 		<DeskMap
 			{controller}
@@ -435,6 +452,7 @@
 	<DeskTooltip />
 	<span hidden data-testid="session-visible-events">{visible.events.length}</span>
 	<span hidden data-testid="session-last-event">{visible.lastEventTimeUtc ?? ''}</span>
+	<span hidden data-testid="session-clock-offset">{clockOffsetMs}</span>
 </div>
 
 <style>

@@ -20,7 +20,7 @@ Pure and deterministic, like the detector it reads.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -312,6 +312,27 @@ def is_story_moment(anomaly: Anomaly, params: StoryParams) -> bool:
     return False
 
 
+def as_told(anomalies: Sequence[Anomaly], told: Mapping[str, str]) -> list[Anomaly]:
+    """A live race's anomalies, with every neutralization whose card has
+    already gone out pinned to what that card said. `told` maps the card's
+    `story_key` to the `retired` it listed ("" when it named nobody or was
+    never shown).
+
+    A retirement confirmed after its neutralization's card went out then
+    gets its own card, rather than being folded into a card nobody will see
+    again: live, the 2024 Monaco GP's red-flag card went out on lap 2 naming
+    nobody, and the four lap-1 crashers, confirmed on lap 4, were never
+    told. A finished race has nothing told yet, so the replay story is
+    unchanged."""
+    out: list[Anomaly] = []
+    for anomaly in anomalies:
+        key = story_key(anomaly)
+        if anomaly.kind is AnomalyKind.NEUTRALIZATION and key in told:
+            anomaly = replace(anomaly, summary={**anomaly.summary, "retired": told[key]})
+        out.append(anomaly)
+    return out
+
+
 def select_story(anomalies: Sequence[Anomaly], params: StoryParams | None = None) -> list[Anomaly]:
     """The race's story: merged, filtered, one card per event, in race
     order. When more than `params.max_moments` qualify, the least salient
@@ -338,6 +359,7 @@ def select_story(anomalies: Sequence[Anomaly], params: StoryParams | None = None
 
 __all__ = [
     "StoryParams",
+    "as_told",
     "is_story_moment",
     "merge_incidents",
     "select_story",

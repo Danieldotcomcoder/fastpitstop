@@ -135,7 +135,7 @@ from f1_api.why import (
     anomaly_id_path,
     precompute_session_explanations,
 )
-from f1_domain import DomainEvent, SessionKey, TeamRadioClip
+from f1_domain import DomainEvent, LapCounterUpdated, SessionKey, TeamRadioClip
 from f1_domain.events import DOMAIN_EVENT_ADAPTER
 from f1_kernel import (
     EventSource,
@@ -412,6 +412,8 @@ class LapSnapshotFeed:
         )
         self._pending: list[DomainEvent] = []
         self._highest_flushed_lap: int | None = None
+        # The race distance: given, or read off the feed's lap counter.
+        self._race_laps = total_laps
 
     def feed(self, event: DomainEvent) -> KernelReport | None:
         """Buffer `event`; returns a fresh `KernelReport` exactly on the
@@ -421,16 +423,32 @@ class LapSnapshotFeed:
         if event.kind == POSITION_KIND:
             return None
         self._pending.append(event)
+        if isinstance(event, LapCounterUpdated) and event.total_laps:
+            self._race_laps = event.total_laps
         if event.kind != "lap_completed":
             return None
         lap_number = getattr(event, "lap_number", None)
-        if lap_number is None or (
-            self._highest_flushed_lap is not None and lap_number <= self._highest_flushed_lap
+        if lap_number is None:
+            return None
+        # Once the leader has finished, every car crossing the line is news:
+        # the rest of the podium, and a car that stopped on the last laps.
+        # Before this, nothing after the winner's crossing was ever analysed
+        # live (the 2026 Singapore GP's Albon, out after lap 59 of 62, never
+        # got a card, and the finish card had no second or third).
+        finished = (
+            self._race_laps is not None
+            and self._highest_flushed_lap is not None
+            and self._highest_flushed_lap >= self._race_laps
+        )
+        if (
+            not finished
+            and self._highest_flushed_lap is not None
+            and lap_number <= self._highest_flushed_lap
         ):
             return None
         report = self._live.push(self._pending)
         self._pending = []
-        self._highest_flushed_lap = lap_number
+        self._highest_flushed_lap = max(self._highest_flushed_lap or 0, lap_number)
         return report
 
     @property

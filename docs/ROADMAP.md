@@ -81,6 +81,25 @@ friend watching the race with you.
 
 ### W0. The release gate ("flawless" as a process)
 
+**Status (2026-10-11): built; the post-session check is still manual.**
+- `just verify-real` runs. Its first run caught real layout-shift defects:
+  - the empty tower filling;
+  - the map appearing late;
+  - the loading column snapping to full width.
+
+  CLS went from 0.41 to 0.02 on desktop, all fixed. It also showed that the
+  Delay Sync clock offset could read the server as AHEAD under load; it is
+  now a lower bound that can only release late.
+- Two departures from the plan below, both measured:
+  - the frame check is a main-thread budget (headless Chromium composites
+    the map canvas in software, so frame intervals measure the test
+    machine, not the app);
+  - qualifying and sprint sessions are not in the set yet, because
+    `/sessions/{year}/{round}` always opens the race (W4).
+- The watchdog is the `watchdog` service (`f1_api.watchdog`), tested
+  against a real stalled stream. The post-session check is the existing
+  `f1-historical-compare`, documented in DEPLOY.md; automating it is open.
+
 Comes first because every other workstream ships through it.
 
 - **Real-race replay check (`just verify-real`).** Replays a fixed set of
@@ -168,6 +187,37 @@ step of this workstream is that measurement.
 - no incident produces more than one card;
 - the story renders with no model call.
 
+**Live story fixes (2026-10-11).** The story judged live, as the live hub
+does, replaying a race lap by lap. Every finding below came from that
+replay, and none showed in replays, which judge with hindsight:
+- **Pit stops as retirements:** 2024 Miami called Verstappen, Sainz and
+  Piastri retired for pit stops. A running race now needs two laps of
+  evidence.
+- **Lapped backmarkers as retirements:** 2024 Monaco called six of them
+  retired. The last-car rule now counts from the car's own deficit.
+- **A lapped car named on a VSC card:** 2026 Singapore's VSC card named
+  Bottas, three laps down and still running. A neutralization now names
+  only the detector's own retirements.
+- **Crashers never told:** 2024 Monaco's red-flag card went out before its
+  four crashers were confirmed. Later retirements now get their own cards
+  (`f1_why.as_told`).
+- **Nothing after the winner's crossing:** that was never analysed live, so
+  Singapore's Albon and the podium went untold. It now is, and the finish
+  card waits for the podium.
+- **The finish itself:** that exposed one more case. At 2024 Miami,
+  Piastri passed Zhou on the last lap and crossed 0.2 s ahead, which made
+  Zhou look retired. After the flag a car must now be overdue (a lap and a
+  half of its own laps since its last timed crossing,
+  `AnomalyParams.retirement_overdue_laps`), and a timed crossing after the
+  winner's is a finish. "Timed" matters: the backfill gives a lap a car
+  never finished a placeholder end time (2024 Australia's Russell), which
+  would otherwise read as a finish.
+
+On today's Singapore race, live now tells the start, the two VSCs,
+Bortoleto, Colapinto, Stroll, Albon and the finish, and nothing false;
+production's live story had a false Bottas card. Replays are unchanged
+(story eval 109/109, 35/35).
+
 ### W2. Design system v2 and screen redesigns
 
 The brief is "more from our design." We keep the identity: an editorial
@@ -238,6 +288,41 @@ dark themes. What's missing is life, depth and richness.
 3. Build the components, then the screens.
 4. Record visual-regression baselines (W0).
 
+Status (2026-10-11): step 1 done. Three directions, each with home, race
+desk desktop and race desk phone, all drawn from the real 2024 Miami race
+at lap 33 (nothing after lap 33 shown):
+- **A, broadcast glance:** dark theme, the battle as the hero, stint bars in
+  the tower, the story down the side, bottom tabs on the phone.
+- **B, race programme:** paper theme, print-style classification, the
+  battle as a headline, a stints-so-far strategy timeline, the next call
+  as a dark pit board.
+- **C, strategy radar:** calls first (every adjacent pair, with
+  confidence), the model's record beside them, the field as one line by
+  gap, the story as a lap axis.
+
+Step 2 done the same day: **A** chosen. Your note on it: the three looked
+alike, and apart from the stint bars they showed nothing the app lacks
+today. The new things the plan adds come from W3, W4 and W5's data, not
+from restyling, so each redesigned screen should lead with those.
+
+D2 built 2026-10-11 (`$lib/ui/`, gallery at `/design`, kept out of
+search):
+- **Tokens:** motion, elevation, track-status fills, teammate dash, display
+  numerals.
+- **Components:** `StatTile`, `DeltaChip`, `PositionChange`, `TyreBadge`,
+  `StintBar`, `GapBar`, `Sparkline`, `FlagBanner`, `Countdown`,
+  `TrackThumbnail`, `Tabs`, `BottomNav`, `Sheet`, `Toaster`, `Skeleton`.
+- **Pure helpers, unit-tested:** stint bars never draw past the viewer's
+  lap, and fill the laps run so far when the race distance is unknown.
+- **Contrast:** checked by `contrast.test.ts`, which reads `tokens.css`:
+  every text colour on every surface, and every banner and board ink on
+  its fill, meets AA in both themes.
+- **Browser checks:** both themes at 390 and 1440 px, with no overflow and
+  no console errors; the sheet, toasts, keyboard tabs, 44 px targets and
+  reduced motion all work.
+
+No screen uses these components yet: the screens are W3, W4 and M3.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 
@@ -293,6 +378,36 @@ by a Playwright pass over every state with a stubbed schedule.
 - **Standings:** drivers and constructors, computed from backfilled results.
 - **Stretch: mini-sectors.** These need the Phase 1 parser to decode
   `TimingData` segments. Decide after M2.
+- **Live races lost lap 1 (found and fixed 2026-10-11).** A race taken
+  from the live feed had no lap 1, so it got no start card. The recording
+  of the 2026 Singapore GP showed why: at the end of lap 1 the feed sends
+  `NumberOfLaps: 1` and no lap time (the first `LastLapTime` is lap 2's).
+  The parser now emits a race's or sprint's lap 1, timed from the
+  "Started" status it saw (both receive times, so the feed's latency
+  cancels): all 22 Singapore drivers get a lap 1 of 1:42 to 1:55, and the
+  live story opens with its start card. A worker that joins after the
+  start invents nothing.
+
+Status (2026-10-11):
+- **Tower, built:**
+  - "Timing" and "Sectors" tabs;
+  - an Int/Gap switch;
+  - places gained since the start;
+  - a stint-history bar that stops at the viewer's lap;
+  - S1 to S3 of the last lap, plus best lap, coloured purple and green;
+  - retired cars marked OUT and moved to the bottom.
+- **OUT rule:** judged from the released laps with the story's rule, made
+  safe for a running race: a car behind two laps on, or the leader two laps
+  past the car's own deficit. Replayed with no false marks on 2024 Miami
+  (Sargeant), Monaco (the four lap-1 crashers) and São Paulo (Colapinto,
+  Hülkenberg, Sainz). F1's own `Retired` flag is no substitute: in
+  Singapore it came only for Albon, after the race had finished.
+- **Flag banner:** the sticky sync strip is the full-width flag banner,
+  tinted for yellow, SC, VSC and red. It occupies the same space on green,
+  so a flag never moves the page.
+- **Still open:** pit count beyond stints, the race control feed on every
+  layout, qualifying, sprint, standings, mini-sectors, and the check
+  against official timing.
 
 **Done when** every tower field is checked against the official timing for
 the W0 sessions, and qualifying shows the right drivers eliminated at each

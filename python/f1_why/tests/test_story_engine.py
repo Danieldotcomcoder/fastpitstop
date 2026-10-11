@@ -11,9 +11,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from datetime import timedelta
 
+import polars as pl
 import pytest
-from landmark_race import GRID, SESSION_KEY, TOTAL_LAPS, build_frames, driver_list, grid_events
+from landmark_race import (
+    GRID,
+    LAP_S,
+    SESSION_KEY,
+    START,
+    TOTAL_LAPS,
+    build_frames,
+    driver_list,
+    grid_events,
+)
 
 from f1_kernel import KernelParams, KernelReport, SessionFrames, analyze_session_from_frames
 from f1_why import (
@@ -118,6 +129,38 @@ def test_every_moment_says_which_lap_reveals_it(anomalies: list[Anomaly]) -> Non
     (sc,) = _of(anomalies, AnomalyKind.NEUTRALIZATION)
     assert sc.summary["reveal_lap"] == 11
     assert sc.summary["reveal_driver"] == "2"
+
+
+def _live_at(frames: SessionFrames, seconds: float) -> list[Anomaly]:
+    """What the live hub would detect with the race seen up to `seconds`
+    after the start (only laps completed by then), the race distance known
+    from the lap counter as it is live."""
+    cutoff = START + timedelta(seconds=seconds)
+    laps = frames.laps.filter(pl.col("lap_end_utc") <= cutoff)
+    sliced = SessionFrames(
+        session_key=frames.session_key, laps=laps, stints=frames.stints, event_name=None
+    )
+    report = analyze_session_from_frames(sliced, KernelParams(), total_laps=TOTAL_LAPS)
+    return detect_anomalies(sliced, report, AnomalyParams(), grid=GRID)
+
+
+def test_a_car_in_the_pits_is_never_called_retired_live(frames: SessionFrames) -> None:
+    """Live, "5" is on its out-lap after pitting on lap 5 when "6", which
+    was behind it, completes lap 6 a second earlier. One lap further was
+    enough for the old rule: replaying the 2024 Miami GP lap by lap called
+    Verstappen, Sainz and Piastri retired for their pit stops."""
+    between = 6 * LAP_S + 4.5  # "6" has finished lap 6, "5" not yet
+    retired = [a.drivers for a in _of(_live_at(frames, between), AnomalyKind.RETIREMENT)]
+    assert ("5",) not in retired
+
+
+def test_a_real_stop_is_still_found_while_the_race_runs(frames: SessionFrames) -> None:
+    """ "3" stopped after lap 8: live, it is out once a car that was behind
+    it has gone two laps further (lap 10), well before the flag."""
+    before = _of(_live_at(frames, 9 * LAP_S + 10), AnomalyKind.RETIREMENT)
+    after = _of(_live_at(frames, 10 * LAP_S + 10), AnomalyKind.RETIREMENT)
+    assert ("3",) not in [a.drivers for a in before]
+    assert ("3",) in [a.drivers for a in after]
 
 
 def test_no_grid_means_no_start_and_no_lap_one_retirement(
@@ -332,3 +375,131 @@ def test_a_retirement_keeps_the_incident_that_caused_it(
     assert not any("ZHO" in m for m in messages)
     text = explain(bundle, TemplateNarrationModel(), NarrationParams()).text
     assert text == "Leclerc retired from P4 on lap 9, after an incident at turn 3 with Piastri."
+
+
+def _paced_race(lap_s: dict[str, float], laps: int, stops_after: dict[str, int]) -> SessionFrames:
+    """Cars lapping at a constant pace, classified in that order, each
+    stopping after `stops_after[driver]` laps (default: the full distance)."""
+    from f1_kernel import STINT_FRAME_SCHEMA
+    from f1_kernel.schemas import LAP_FRAME_SCHEMA
+
+    rows: list[dict[str, object]] = []
+    for position, (driver, pace) in enumerate(lap_s.items(), start=1):
+        for lap in range(1, stops_after.get(driver, laps) + 1):
+            rows.append(
+                {
+                    "session_year": SESSION_KEY.year,
+                    "session_round": SESSION_KEY.round,
+                    "session_type": SESSION_KEY.session_type.value,
+                    "driver": driver,
+                    "lap_number": lap,
+                    "lap_start_utc": START + timedelta(seconds=(lap - 1) * pace),
+                    "lap_end_utc": START + timedelta(seconds=lap * pace),
+                    "lap_time_s": pace,
+                    "sector1_s": pace / 3,
+                    "sector2_s": pace / 3,
+                    "sector3_s": pace / 3,
+                    "is_personal_best": False,
+                    "compound": "medium",
+                    "tyre_age": lap,
+                    "stint_number": 1,
+                    "position": position,
+                    "gap_ahead_s": None,
+                    "gap_ahead_min_s": None,
+                    "gap_ahead_samples": 0,
+                    "gap_to_leader_s": None,
+                    "track_status": "green",
+                    "track_status_flags": ["green"],
+                    "is_pit_in": False,
+                    "is_pit_out": False,
+                    "provenance": "historical",
+                }
+            )
+    frame = pl.DataFrame(rows, schema=LAP_FRAME_SCHEMA).sort("driver", "lap_number")
+    stints = pl.DataFrame(schema=STINT_FRAME_SCHEMA)
+    return SessionFrames(session_key=SESSION_KEY, laps=frame, stints=stints, event_name=None)
+
+
+def _retired_live(frames: SessionFrames, seconds: float, total_laps: int) -> list[str]:
+    cutoff = START + timedelta(seconds=seconds)
+    sliced = SessionFrames(
+        session_key=frames.session_key,
+        laps=frames.laps.filter(pl.col("lap_end_utc") <= cutoff),
+        stints=frames.stints,
+        event_name=None,
+    )
+    report = analyze_session_from_frames(sliced, KernelParams(), total_laps=total_laps)
+    found = detect_anomalies(sliced, report, AnomalyParams())
+    return [a.drivers[0] for a in _of(found, AnomalyKind.RETIREMENT)]
+
+
+def test_a_lapped_backmarker_is_never_called_retired_live() -> None:
+    """The last car on the road, three laps down and still running: live,
+    the leader is three laps ahead of it every time it crosses the line
+    (six of the 2024 Monaco GP's lapped finishers were called retired)."""
+    frames = _paced_race({"1": 90.0, "2": 90.5, "3": 100.0}, laps=40, stops_after={})
+    assert "3" not in _retired_live(frames, 2750, total_laps=40)
+
+
+def test_a_lapped_car_that_stops_is_still_found_live() -> None:
+    """The same backmarker stopping after lap 20 (two laps down by then) is
+    out once the leader is three laps beyond that deficit."""
+    frames = _paced_race({"1": 90.0, "2": 90.5, "3": 100.0}, laps=40, stops_after={"3": 20})
+    assert "3" not in _retired_live(frames, 2200, total_laps=40)
+    assert "3" in _retired_live(frames, 2300, total_laps=40)
+
+
+def test_a_retirement_after_its_neutralization_card_gets_its_own_card(
+    anomalies: list[Anomaly],
+) -> None:
+    """Live, a neutralization's card can go out before the retirement that
+    caused it is confirmed (the 2024 Monaco GP's lap-1 red flag). Pinned to
+    what the card said, the retirement is told on its own instead of being
+    folded into a card already shown."""
+    from f1_why import as_told
+
+    (neutralization,) = [
+        a for a in anomalies if a.kind is AnomalyKind.NEUTRALIZATION and a.summary.get("retired")
+    ]
+    assert "3" in str(neutralization.summary["retired"])
+    folded = select_story(anomalies)
+    assert ("3",) not in [a.drivers for a in _of(folded, AnomalyKind.RETIREMENT)]
+
+    told = {story_key(neutralization): ""}
+    pinned = select_story(as_told(anomalies, told))
+    assert ("3",) in [a.drivers for a in _of(pinned, AnomalyKind.RETIREMENT)]
+    # Nothing told yet (a finished race replayed): the story is unchanged.
+    assert select_story(as_told(anomalies, {})) == folded
+
+
+def test_a_lapped_finisher_is_never_called_retired_at_the_flag() -> None:
+    """The flag has fallen and a lapped car has taken it; a car behind it
+    on the road comes home later on the lead lap. Live, that last crossing
+    used to call the lapped finisher retired (2024 Miami's Zhou)."""
+    # The winner finishes lap 10 at 900 s; "2", a lap down, takes the flag
+    # on its lap 9 at 909 s; "3", classified behind it, crosses at 912 s.
+    frames = _paced_race({"1": 90.0, "2": 101.0, "3": 91.2}, laps=10, stops_after={"2": 9})
+    assert "2" not in _retired_live(frames, 913, total_laps=10)
+
+
+def test_a_car_passed_on_the_last_lap_is_not_called_retired() -> None:
+    """2024 Miami: Piastri, behind Zhou a lap earlier, passed him on the
+    last lap and crossed 0.2 s ahead. At that crossing Zhou has not finished
+    the lap a car behind him has, after the flag. He is not overdue, so he
+    is still coming."""
+    # Positions follow the dict order, so "3" is classified behind "2" but
+    # is faster: it finishes lap 10 at 905 s, "2" not until 910 s.
+    frames = _paced_race({"1": 90.0, "2": 91.0, "3": 90.5}, laps=10, stops_after={})
+    assert "2" not in _retired_live(frames, 906, total_laps=10)
+
+
+def test_a_last_lap_stop_is_found_once_the_car_is_overdue() -> None:
+    """The 2024 Australian GP's Russell: stopped on the last lap, out once
+    the field has been home a lap and a half of his own laps later."""
+    frames = _paced_race(
+        {"1": 90.0, "2": 91.0, "3": 91.5, "4": 99.0}, laps=10, stops_after={"2": 9}
+    )
+    # "2" last crossed at 819 s, so it is overdue at 819 + 1.5 x 91 = 955.5 s.
+    # "3" comes home at 915 s, too soon to tell; slow "4" crosses at 990 s.
+    assert "2" not in _retired_live(frames, 916, total_laps=10)
+    assert "2" in _retired_live(frames, 991, total_laps=10)

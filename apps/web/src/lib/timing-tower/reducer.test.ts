@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Envelope } from '$lib/delay-sync';
-import { applyTowerEnvelope, createTimingTowerState, sortedRows, TimingTowerReducer } from './reducer';
-import { positionsGained } from './types';
+import {
+	applyTowerEnvelope,
+	createTimingTowerState,
+	sortedRows,
+	TimingTowerReducer
+} from './reducer';
+import { positionsGained, stintsForBar } from './types';
 
 function envelope(kind: string, payload: Record<string, unknown>): Envelope {
 	return { event_time_utc: new Date(0).toISOString(), kind, payload };
@@ -12,7 +17,9 @@ describe('applyTowerEnvelope: driver_list_updated', () => {
 		const state = createTimingTowerState();
 		applyTowerEnvelope(
 			state,
-			envelope('driver_list_updated', { drivers: [{ number: '44', code: 'HAM', team: 'Mercedes' }] })
+			envelope('driver_list_updated', {
+				drivers: [{ number: '44', code: 'HAM', team: 'Mercedes' }]
+			})
 		);
 		const row = state.rows.get('44');
 		expect(row?.code).toBe('HAM');
@@ -150,7 +157,12 @@ describe('applyTowerEnvelope: stint_started', () => {
 		);
 		applyTowerEnvelope(
 			state,
-			envelope('stint_started', { driver: '44', stint_number: 3, compound: 'medium', tyre_age_at_start: 0 })
+			envelope('stint_started', {
+				driver: '44',
+				stint_number: 3,
+				compound: 'medium',
+				tyre_age_at_start: 0
+			})
 		);
 		expect(state.rows.get('44')?.tyreAge).toBe(0);
 	});
@@ -241,5 +253,82 @@ describe('start position and places gained', () => {
 		// position at either end — that is unknown, not "no change".
 		applyTowerEnvelope(state, envelope('lap_completed', { driver: '10', lap_number: 3 }));
 		expect(positionsGained(state.rows.get('10')!)).toBeNull();
+	});
+});
+
+describe('best lap and sectors', () => {
+	it("keeps the fastest lap so far and the last lap's sectors", () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(
+			state,
+			envelope('lap_completed', {
+				driver: '4',
+				lap_number: 5,
+				lap_time: 'PT1M31.5S',
+				sector_times: ['PT30.1S', 'PT31.2S', 'PT30.2S']
+			})
+		);
+		applyTowerEnvelope(
+			state,
+			envelope('lap_completed', {
+				driver: '4',
+				lap_number: 6,
+				lap_time: 'PT1M32.0S',
+				sector_times: ['PT30.4S', null, 'PT30.3S']
+			})
+		);
+		const row = state.rows.get('4')!;
+		expect(row.bestLapS).toBeCloseTo(91.5);
+		expect(row.lastLapTimeS).toBeCloseTo(92.0);
+		expect(row.lastSectorsS?.[0]).toBeCloseTo(30.4);
+		expect(row.lastSectorsS?.[1]).toBeNull();
+		expect(row.lastSectorsS?.[2]).toBeCloseTo(30.3);
+	});
+
+	it('keeps the last sectors when a later lap carries none', () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(
+			state,
+			envelope('lap_completed', {
+				driver: '4',
+				lap_number: 1,
+				sector_times: ['PT30S', 'PT31S', 'PT30S']
+			})
+		);
+		applyTowerEnvelope(state, envelope('lap_completed', { driver: '4', lap_number: 2 }));
+		expect(state.rows.get('4')?.lastSectorsS).toHaveLength(3);
+	});
+});
+
+describe('stint history', () => {
+	it('records each stint once, in order, and ends each where the next begins', () => {
+		const state = createTimingTowerState();
+		const stint = (n: number, compound: string, start: number | null) =>
+			envelope('stint_started', { driver: '4', stint_number: n, compound, start_lap: start });
+		applyTowerEnvelope(state, stint(2, 'hard', 28));
+		applyTowerEnvelope(state, stint(1, 'medium', 1));
+		applyTowerEnvelope(state, stint(2, 'hard', 28)); // re-sent: no duplicate
+		const row = state.rows.get('4')!;
+		expect(row.stints.map((s) => s.stintNumber)).toEqual([1, 2]);
+		expect(stintsForBar(row)).toEqual([
+			{ compound: 'medium', startLap: 1, endLap: 27 },
+			{ compound: 'hard', startLap: 28, endLap: null }
+		]);
+	});
+
+	it('starts a stint with no given start lap after the previous one', () => {
+		const state = createTimingTowerState();
+		applyTowerEnvelope(
+			state,
+			envelope('stint_started', { driver: '4', stint_number: 1, compound: 'soft', start_lap: null })
+		);
+		applyTowerEnvelope(
+			state,
+			envelope('stint_started', { driver: '4', stint_number: 2, compound: 'hard', start_lap: 20 })
+		);
+		expect(stintsForBar(state.rows.get('4')!)).toEqual([
+			{ compound: 'soft', startLap: 1, endLap: 19 },
+			{ compound: 'hard', startLap: 20, endLap: null }
+		]);
 	});
 });

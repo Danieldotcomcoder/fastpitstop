@@ -56,7 +56,11 @@
 >
 
 {#if status === 'loading'}
-	<LoadingState label="Opening the race…" />
+	<!-- Holds the desk's full width and the viewport while the session
+	     resolves. A centred 640px loading column that then snapped to the
+	     desk's full width was the largest single layout shift on the page
+	     (CLS 0.26, `just verify-real`). -->
+	<div class="opening desk-page"><LoadingState label="Opening the race…" /></div>
 {:else if status === 'error'}
 	<h1>Could not open the race</h1>
 	<p>{error}</p>
@@ -68,6 +72,11 @@
 {/if}
 
 <style>
+	.opening {
+		min-height: 100dvh;
+		padding: var(--space-5) var(--space-4);
+	}
+
 	button {
 		font: inherit;
 		padding: 0.65rem 0.9rem;

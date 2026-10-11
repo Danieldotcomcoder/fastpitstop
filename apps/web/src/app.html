@@ -3,7 +3,20 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="color-scheme" content="dark" />
+		<meta name="color-scheme" content="dark light" />
+		<meta name="theme-color" content="#101214" />
+		<script>
+			// Dark is the default; restore a viewer's choice of light before first
+			// paint so the page never flashes dark first (AppHeader's switch).
+			try {
+				if (localStorage.getItem('theme') === 'light') {
+					document.documentElement.dataset.theme = 'light';
+					document.querySelector('meta[name="theme-color"]').content = '#eeefea';
+				}
+			} catch {
+				// Storage blocked (private mode): stay dark.
+			}
+		</script>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link

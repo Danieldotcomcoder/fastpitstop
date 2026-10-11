@@ -108,6 +108,21 @@ verify-phase4:
 verify-phase5:
     pnpm --filter @pitwall/web exec playwright test why.spec.ts
 
+# The release gate on REAL races (docs/ROADMAP.md W0): run before every
+# deploy, after `just check`. Needs the backfill under data/historical/; each
+# step skips itself without it (CI has no F1 data).
+#   1. the story: every card borne out by the raw FastF1 tables, the
+#      headline moments found, no unsupported number (f1_why story_eval);
+#   2. the map: measured car dots on the drawn track (check_outline_fit);
+#   3. the browser: five real races at phone and desktop size through the
+#      production build: no console/request errors, no race information
+#      before the delay, the released log never ahead of the clock, layout
+#      shift and main-thread budgets, no filler story cards.
+verify-real:
+    uv run python python/f1_why/tools/story_eval.py --check
+    uv run python deploy/check_outline_fit.py --gate 2024-1-race 2025-3-race
+    pnpm --filter @pitwall/web exec playwright test --config playwright.real.config.ts
+
 # Dev-only: refresh every committed Phase 2 calibration/backtest report
 # (fuel coefficient, per-circuit pit loss, degradation, undercut) from
 # data/historical/ in one pass. Needs a populated backfill; never run in

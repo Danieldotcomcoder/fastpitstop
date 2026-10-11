@@ -9,9 +9,16 @@
  * Every clock read that is compared with a stream timestamp goes through
  * `serverNowMs()` instead of `Date.now()`.
  *
- * The offset is measured by round trip against `GET /time`: the server read
- * its clock about halfway between sending and receiving, and the sample with
- * the shortest round trip pins that halfway point most tightly. */
+ * The offset is measured by round trip against `GET /time`, and taken as
+ * its LOWER BOUND: the server read its clock somewhere between the request
+ * leaving and the response arriving, so "server time minus arrival time" is
+ * never more than the true offset. Delay Sync on that bound can release a
+ * moment late by up to a round trip, never early. It used to assume the
+ * server read its clock halfway through, which a busy server breaks: while
+ * the page's own heavy requests (the circuit geometry, the story) held the
+ * API, `/time` was answered seconds late, the offset read seconds ahead, and
+ * replays released up to two seconds before the viewer's delay
+ * (`just verify-real`, 2026-10-11). */
 
 export interface ClockSample {
 	/** Device clock just before the request, epoch ms. */
@@ -22,24 +29,25 @@ export interface ClockSample {
 	serverMs: number;
 }
 
-/** Below this an offset is network noise, not a wrong clock: correcting it
- * would only make releases jitter between page loads. */
+/** A positive correction (the device clock slow) smaller than this is
+ * network noise, not a wrong clock: correcting it would only make releases
+ * jitter between page loads. A negative one is always applied: it can only
+ * make a release later, never earlier. */
 export const NEGLIGIBLE_OFFSET_MS = 500;
 
-/** What to add to the device clock to read the server's, from one round trip. */
+/** A lower bound on what to add to the device clock to read the server's,
+ * from one round trip: the server's reading cannot postdate the response
+ * arriving. */
 export function offsetFromSample(sample: ClockSample): number {
-	return sample.serverMs - (sample.sentMs + sample.receivedMs) / 2;
+	return sample.serverMs - sample.receivedMs;
 }
 
-/** The offset from the shortest round trip, or 0 when there is no sample
- * or the device clock is already right to within `NEGLIGIBLE_OFFSET_MS`. */
+/** The tightest lower bound across `samples` (the largest), or 0 when there
+ * is no sample or it is a positive offset under `NEGLIGIBLE_OFFSET_MS`. */
 export function bestOffset(samples: readonly ClockSample[]): number {
 	if (samples.length === 0) return 0;
-	const best = samples.reduce((a, b) =>
-		b.receivedMs - b.sentMs < a.receivedMs - a.sentMs ? b : a
-	);
-	const offset = offsetFromSample(best);
-	return Math.abs(offset) < NEGLIGIBLE_OFFSET_MS ? 0 : Math.round(offset);
+	const offset = Math.max(...samples.map(offsetFromSample));
+	return offset >= 0 && offset < NEGLIGIBLE_OFFSET_MS ? 0 : Math.round(offset);
 }
 
 /** Measure the offset with `samples` round trips. A failed request is

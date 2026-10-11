@@ -64,6 +64,10 @@ services:
       - ./data:/app/data
       - ./python:/app/python
 
+  # No live sessions in dev, so nothing to watch.
+  watchdog:
+    profiles: ["donotstart"]
+
   # No proxy in dev — talk to api (8000) and web (5173) directly.
   proxy:
     profiles: ["donotstart"]

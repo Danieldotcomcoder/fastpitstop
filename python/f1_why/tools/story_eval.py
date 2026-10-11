@@ -360,12 +360,46 @@ def render(results: list[RaceResult]) -> str:
     return "\n".join(lines)
 
 
+TARGET_PRECISION = 0.90
+TARGET_RECALL = 0.80
+"""docs/ROADMAP.md W1's targets, which `--check` (the release gate,
+`just verify-real`) enforces."""
+
+
+def shortfalls(results: list[RaceResult]) -> list[str]:
+    """What keeps `results` short of the targets; empty when they are met."""
+    cards = [card for result in results for card in result.cards]
+    true = sum(1 for card in cards if card[2] is None)
+    found = sum(len(result.found) for result in results)
+    headlines = found + sum(len(result.missed) for result in results)
+    facts = sum(len(card[3]) for card in cards)
+    problems: list[str] = []
+    if cards and true / len(cards) < TARGET_PRECISION:
+        problems.append(f"precision {true}/{len(cards)} is under {TARGET_PRECISION:.0%}")
+    if headlines and found / headlines < TARGET_RECALL:
+        problems.append(f"recall {found}/{headlines} is under {TARGET_RECALL:.0%}")
+    if facts:
+        problems.append(f"{facts} number(s) in sentences are not in their evidence")
+    for result in results:
+        for anomaly, _, verdict, _ in result.cards:
+            if verdict is not None:
+                problems.append(
+                    f"{result.race} L{anomaly.lap_number} {anomaly.kind.value}: {verdict}"
+                )
+    return problems
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--races", default=",".join(DEFAULT_RACES))
     parser.add_argument("--out", type=Path, default=REPORT)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="release-gate mode: write no report, exit 1 when a target is missed",
+    )
     args = parser.parse_args(argv)
     warnings.filterwarnings("ignore")
     headlines: dict[str, list[dict[str, object]]] = json.loads(
@@ -378,6 +412,19 @@ def main(argv: list[str] | None = None) -> int:
             continue
         print(f"evaluating {race}", file=sys.stderr)
         results.append(evaluate(race, headlines.get(race, [])))
+    if args.check:
+        if not results:
+            print("story check: SKIPPED (no backfilled race to evaluate)")
+            return 0
+        problems = shortfalls(results)
+        cards = sum(len(result.cards) for result in results)
+        if problems:
+            print(f"story check: FAIL over {len(results)} races, {cards} cards")
+            for problem in problems:
+                print(f"  - {problem}")
+            return 1
+        print(f"story check: OK over {len(results)} races, {cards} cards, targets met")
+        return 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(render(results), encoding="utf-8")
     print(f"wrote {args.out}", file=sys.stderr)

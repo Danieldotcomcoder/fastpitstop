@@ -149,6 +149,26 @@ configured — it is the dependency graph, not the runtime, that is heavy.
 
 ## Deploying
 
+### Before every deploy: the release gate
+
+From your own machine, with the backfill under `data/historical/`:
+
+```sh
+just check         # lint, types, unit tests, the phase verifications (fixture data)
+just verify-real   # the same product on REAL races (docs/ROADMAP.md W0)
+```
+
+`just verify-real` fails the deploy on anything a viewer would notice:
+the story's cards not borne out by F1's raw tables or its headline moments
+missing; measured car dots off the drawn track; and, through the production
+build in Chromium on five real races at phone and desktop size, any console
+or request error, race information before the viewer's delay, the released
+log ahead of the playback clock, layout shift above 0.05, main-thread work
+above 15% at 1x, or a "no clear cause" filler card. Don't deploy on red.
+
+Then deploy (`just deploy-host` builds on the VM; `just deploy` goes
+through GHCR):
+
 From your own machine, with `GHCR_NAMESPACE`, `DEPLOY_HOST`, `DEPLOY_USER`,
 `DEPLOY_PATH` set (in your local `.env`, or exported):
 
@@ -198,6 +218,23 @@ docker compose -f compose.yml -f compose.prod.yml run --rm worker \
 Checks disk space, database reachability, and that the recordings path is
 actually writable. A missed race weekend is a permanent gap in the dataset
 — don't skip this.
+
+During a live session the `watchdog` service (`f1-watchdog`, compose.yml)
+watches every live stream as a synthetic viewer and alerts when one goes
+quiet for a minute, and again when it recovers. Alerts are always in
+`docker compose -f compose.yml -f compose.prod.yml logs watchdog`, and are
+emailed to `F1_ALERT_TO` (else `F1_FEEDBACK_TO`) when `F1_SMTP_*` is set.
+A red flag can be legitimately quiet; anything else is a frozen dashboard
+for every viewer, so look at `logs worker api` straight away.
+
+After the session, check the live recording against F1's own archive once
+it is published (typically within a few hours): backfill the session, then
+compare (lap counts, classification, pit stops):
+
+```sh
+docker compose -f compose.yml -f compose.prod.yml run --rm worker   f1-backfill --season <YEAR> --round <N>
+docker compose -f compose.yml -f compose.prod.yml run --rm worker   f1-historical-compare /app/data/recordings/<session-dir> --year <YEAR> --round <N>
+```
 
 After the session, ingest the recording into the database (this does not
 happen automatically — `mode=live`'s direct SignalR→API wiring is a known

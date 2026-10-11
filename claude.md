@@ -98,6 +98,10 @@ Phase 1 packages (under python/, in dependency order):
   against a synthetic full-race recording driven through the real f1_replay
   path with exact ground truth (f1_parse/tests/race_sim.py); when the first
   real recording lands, add a sibling suite pinned to that race's results.
+  A race's lap 1 is counted by the feed but never timed (`NumberOfLaps: 1`,
+  no `LastLapTime`), so for a race or sprint whose start it saw, the
+  machine emits lap 1 timed from the "Started" status (both receive times);
+  before 2026-10-11 every live race began at lap 2 with no start card.
 - f1_store (1.4): the TimescaleDB sink — append-only `events` log (source of
   truth) + typed materialized tables (laps, car_telemetry/car_positions
   hypertables, stints, pit_stops, race_control, weather, team_radio) +
@@ -644,6 +648,17 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   reopened recording's sequence (and trims a torn last line) instead of
   restarting at 0. Proven by restarting the worker mid-race in a VM
   rehearsal: the viewer carried on from lap 8 with no gap or duplicate.
+- Design system v2 + tower depth (2026-10-11, docs/ROADMAP.md W2/W4):
+  dark is the default theme (light via the header switch, restored by
+  app.html before first paint). `$lib/ui/` holds the v2 components
+  (stat tile, delta chip, tyre badge, stint bar, sparkline, flag banner,
+  countdown, track thumbnail, tabs, bottom nav, sheet, toaster, skeleton)
+  with a gallery at `/design`; `contrast.test.ts` holds every token pair
+  to WCAG AA in both themes. The tower gained Timing/Sectors tabs, an
+  Int/Gap switch, places gained, stint bars and last-lap sectors (purple/
+  green), and marks cars OUT (`timing-tower/retirements.ts`: the story's
+  retirement rule made safe for a running race, judged from released laps
+  only). The sync strip doubles as the full-width flag banner.
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.
@@ -1123,6 +1138,19 @@ Phase 5 packages (under python/f1_why, in dependency order):
   moments carry `reveal_driver`/`reveal_lap`, which the story panel gates
   on. Now 109/109 cards true and 35/35 headlines found
   (`python/f1_why/tools/story_eval.py`, report under `f1_why/reports/`).
+  Judged LIVE (a race replayed lap by lap through `LapSnapshotFeed`, as the
+  hub does), which hindsight replays can't show, it called pit stops and
+  lapped backmarkers retired (2024 Miami, Monaco) and named a running car
+  on a VSC card (2026 Singapore). Fixed 2026-10-11: a running race needs
+  two laps of evidence, the last-car rule counts from the car's own
+  deficit, a neutralization names only detected retirements, `as_told`
+  gives a retirement confirmed after its neutralization card its own card,
+  and the feed keeps analysing every crossing after the winner's (the
+  finish card waits for the podium). After the flag a car must also be
+  overdue (`AnomalyParams.retirement_overdue_laps`, from its last TIMED
+  crossing: backfill placeholder lap ends are not crossings), since a car
+  passed on the last lap looked retired (2024 Miami's Zhou). Replays
+  unchanged (109/109, 35/35).
 - (next) Phase 5's own exit criteria are now all met. Remaining gaps are
   depth, not product surface: telemetry-derived evidence kinds, and `AnomalyParams`/`EvidenceParams`/
   `NarrationParams` calibration against a measured corpus. Phase 6

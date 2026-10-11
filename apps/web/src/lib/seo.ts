@@ -26,6 +26,7 @@ const NOINDEX_PREFIXES = [
 	'/race',
 	'/analytics',
 	'/delay-sync',
+	'/design',
 	'/track-map',
 	'/status',
 	'/feedback',

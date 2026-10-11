@@ -2,7 +2,8 @@
   The spoiler shield: the design's sticky Delay Sync strip. One control for
   the one clock everything on the page is gated by — the delay slider,
   tap-to-sync at lights out, the track status, and (replays only) speed and
-  restart.
+  restart. It is also the full-width flag banner (W4): tinted for a yellow,
+  safety car, VSC or red flag, from the released track status only.
 -->
 <script lang="ts">
 	import {
@@ -62,7 +63,7 @@
 	}
 </script>
 
-<section class="sync" aria-label="Delay Sync">
+<section class="sync flag-{status.tone}" aria-label="Delay Sync">
 	<div class="shield">
 		<span class="shield-icon"><svg width="16" height="16"><use href="#i-shield" /></svg></span>
 		<div class="shield-text">

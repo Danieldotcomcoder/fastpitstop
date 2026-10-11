@@ -58,10 +58,12 @@ from f1_kernel import EventSource, KernelReport, PositionFrame
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptStore
 from f1_why import (
+    AnomalyKind,
     AnomalyParams,
     ExplanationStore,
     Narrator,
     StoryParams,
+    as_told,
     detect_anomalies,
     select_story,
     starting_grid,
@@ -452,6 +454,8 @@ class _LiveAnalysis:
         self._radio_index = radio_index
         self._feed = LapSnapshotFeed(session_key, event_name=event_name)
         self._considered: set[str] = set()
+        self._told: dict[str, str] = {}
+        """Each neutralization card considered: the retirements it named."""
         self._shown = 0
         self._closed = threading.Event()
         self._inbox: queue.SimpleQueue[DomainEvent | None] = queue.SimpleQueue()
@@ -497,7 +501,12 @@ class _LiveAnalysis:
         if self._shown >= self._settings.max_explanations:
             return
         grid = starting_grid(self._feed.events, report.frames.laps)
-        anomalies = detect_anomalies(report.frames, report, AnomalyParams(), grid=grid)
+        # Neutralizations already shown keep what their card said, so a
+        # retirement confirmed after the card went out gets its own card
+        # (`f1_why.as_told`).
+        anomalies = as_told(
+            detect_anomalies(report.frames, report, AnomalyParams(), grid=grid), self._told
+        )
         fresh = [
             moment
             for moment in select_story(anomalies, LIVE_STORY_PARAMS)
@@ -511,6 +520,10 @@ class _LiveAnalysis:
             for moment in fresh:
                 if self._closed.is_set() or self._shown >= self._settings.max_explanations:
                     return
+                if moment.kind is AnomalyKind.RACE_FINISH and len(moment.drivers) < 3:
+                    # Wait for the podium: considered now, the card would
+                    # name the winner alone and never be told again.
+                    continue
                 explanation, bundle = explain_session_anomaly(
                     resolved.source,
                     self._session_key,
@@ -522,7 +535,12 @@ class _LiveAnalysis:
                     event_name=self._event_name,
                 )
                 self._considered.add(story_key(moment))
-                if not worth_showing(explanation):
+                shown = worth_showing(explanation)
+                if moment.kind is AnomalyKind.NEUTRALIZATION:
+                    self._told[story_key(moment)] = (
+                        str(moment.summary.get("retired") or "") if shown else ""
+                    )
+                if not shown:
                     continue
                 cited = cited_evidence_refs(self._session_key, bundle, explanation)
                 self._ready.append(

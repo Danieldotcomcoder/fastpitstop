@@ -25,6 +25,9 @@
 
 	/** The latest Grand Prix weekends, newest first, one link each. */
 	let recent = $derived.by(() => {
+		// A local lookup built and read inside this derivation, never
+		// reactive state, so SvelteMap is not needed.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const rounds = new Map<string, SeoSession>();
 		for (const s of data.sessions) {
 			const key = `${s.year}/${s.round}`;

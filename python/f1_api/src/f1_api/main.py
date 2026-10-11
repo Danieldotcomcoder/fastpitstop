@@ -85,7 +85,7 @@ def readyz(settings: Annotated[Settings, Depends(get_settings)]) -> ReadyOut:
 
 
 @health_router.get("/time", response_model=ServerTimeOut)
-def server_time() -> ServerTimeOut:
+async def server_time() -> ServerTimeOut:
     """The server's clock, so a viewer can correct their own.
 
     Every `event_time_utc` the stream sends is this machine's clock (the
@@ -94,7 +94,13 @@ def server_time() -> ServerTimeOut:
     device a minute fast would release everything a minute early, a spoiler
     for a viewer on a broadcast delay; one a minute slow would show "live"
     a minute late. The frontend measures its offset from this, by round
-    trip, and runs Delay Sync on the corrected clock."""
+    trip, and runs Delay Sync on the corrected clock.
+
+    `async` so the reading is taken on the event loop as soon as the request
+    lands, never queued behind sync routes in the threadpool; a late reading
+    is what made the frontend think the server was ahead (it now uses a
+    lower bound, `$lib/delay-sync/server-clock`, so lateness can only delay
+    a release, but a prompt reading keeps that delay small)."""
     return ServerTimeOut(server_time_ms=int(time.time() * 1000))
 
 

@@ -18,3 +18,9 @@ export const WEB_PORT = 4319;
  * `f1_api` backends needs two frontend processes, not a runtime switch. */
 export const RADIO_API_PORT = 8837;
 export const RADIO_WEB_PORT = 4320;
+
+/** The release gate's pair (`just verify-real`, `playwright.real.config.ts`):
+ * `f1_api` over the REAL local backfill (`data/historical/`) and a frontend
+ * pointed at it. */
+export const REAL_API_PORT = 8840;
+export const REAL_WEB_PORT = 4321;

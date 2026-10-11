@@ -56,7 +56,7 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -139,6 +139,7 @@ def detect_anomalies(
     )
     table = _LapTable(kernel_report.annotated_laps)
 
+    retirements = _detect_retirements(table, grid, kernel_report.total_laps, params)
     anomalies: list[Anomaly] = [
         *_detect_pace_loss(annotated, params),
         *_detect_off_track(annotated, params),
@@ -147,8 +148,8 @@ def detect_anomalies(
         *_detect_deg_cliff(session_frames, kernel_report, table, params),
         *_detect_undercut_resolved(session_frames, kernel_report, table, params),
         *_detect_race_start(table, grid, params),
-        *_detect_neutralizations(table, grid, params),
-        *_detect_retirements(table, grid, params),
+        *_detect_neutralizations(table, grid, retirements, params),
+        *retirements,
         *_detect_race_finish(table, kernel_report.total_laps, grid, params),
     ]
     anomalies = [_with_reveal(anomaly, table) for anomaly in anomalies]
@@ -376,6 +377,10 @@ class _LapRow:
     position: int | None
     lap_start_utc: datetime | None
     lap_end_utc: datetime | None
+    lap_time_s: float | None
+    """`None` for an untimed lap: the backfill gives a lap a car never
+    finished a placeholder end time (the 2024 Australian GP's Russell), so
+    only a timed lap is proof the car crossed the line."""
     is_pit_in: bool
     is_pit_out: bool
     track_status: str | None
@@ -413,6 +418,7 @@ class _LapTable:
                 position=_as_int(raw.get("position")),
                 lap_start_utc=raw.get("lap_start_utc"),
                 lap_end_utc=raw.get("lap_end_utc"),
+                lap_time_s=raw.get("lap_time_s"),
                 is_pit_in=bool(raw.get("is_pit_in")),
                 is_pit_out=bool(raw.get("is_pit_out")),
                 track_status=raw.get("track_status"),
@@ -1039,28 +1045,33 @@ def _neutral_periods(table: _LapTable) -> list[_Period]:
     return periods
 
 
-def _retired_around(table: _LapTable, grid: Mapping[str, int] | None, first: int) -> list[str]:
+def _retired_around(table: _LapTable, retirements: Sequence[Anomaly], first: int) -> list[str]:
     """Cars whose race ended on lap `first` or the lap before: what a
     neutralization starting on `first` was most likely called for. Measured
     from the lap frame, so it never rests on which race-control message
     happened to be sent first (the 2024 Monaco GP noted a Gasly/Ocon
-    contact before the crash that actually stopped the race)."""
-    retired: list[tuple[int, str]] = []
-    for driver in table.drivers:
-        completed = [row for row in table.driver_laps(driver) if row.position is not None]
-        if completed:
-            last, position = completed[-1].lap_number, completed[-1].position or 99
-        elif grid and driver in grid:
-            last, position = 0, grid[driver]
-        else:
-            continue
-        if first - 1 <= last <= first and table.max_lap > last + 2:
-            retired.append((position, driver))
+    contact before the crash that actually stopped the race).
+
+    Taken from the retirements the detector found, so a car is named here
+    only when it would get a retirement card: live, judging by the leader's
+    lap count alone named a lapped car (the 2026 Singapore GP's Bottas, three
+    laps down and still running) as the reason for a VSC. And only when the
+    race went on at least two more laps: a car that stopped on the last lap
+    keeps its own card (the 2024 Australian GP's Russell, whose crash
+    brought out a VSC as the race ended)."""
+    retired: list[tuple[float, str]] = []
+    for anomaly in retirements:
+        last = anomaly.summary.get("last_completed_lap")
+        if isinstance(last, int) and first - 1 <= last <= first and table.max_lap > last + 2:
+            retired.append((anomaly.magnitude, anomaly.drivers[0]))
     return [driver for _, driver in sorted(retired)]
 
 
 def _detect_neutralizations(
-    table: _LapTable, grid: Mapping[str, int] | None, params: AnomalyParams
+    table: _LapTable,
+    grid: Mapping[str, int] | None,
+    retirements: Sequence[Anomaly],
+    params: AnomalyParams,
 ) -> list[Anomaly]:
     """NEUTRALIZATION: each safety car / VSC / red flag, reported at the end
     of the first green lap after it, with what it did to the order: who
@@ -1069,7 +1080,7 @@ def _detect_neutralizations(
     anomalies: list[Anomaly] = []
     for period in _neutral_periods(table):
         first, last, status = period.first, period.last, period.status
-        retired = _retired_around(table, grid, first)
+        retired = _retired_around(table, retirements, first)
         restart = table.leader(last + 1)
         if restart is None or restart.lap_end_utc is None:
             continue
@@ -1137,8 +1148,35 @@ def _detect_neutralizations(
     return anomalies
 
 
+def _typical_lap_s(rows: Sequence[_LapRow]) -> float | None:
+    """A car's usual lap time: the median of its recorded laps."""
+    times = sorted(row.lap_time_s for row in rows if row.lap_time_s is not None)
+    return times[len(times) // 2] if times else None
+
+
+def _laps_down(table: _LapTable, at: datetime | None, last: int) -> int:
+    """How many laps the race leader had completed beyond lap `last` by
+    `at`: a car's deficit when it crossed the line at `at`."""
+    if at is None:
+        return 0
+    led = max(
+        (
+            lap
+            for lap in range(last + 1, table.max_lap + 1)
+            if (row := table.leader(lap)) is not None
+            and row.lap_end_utc is not None
+            and row.lap_end_utc <= at
+        ),
+        default=last,
+    )
+    return led - last
+
+
 def _detect_retirements(
-    table: _LapTable, grid: Mapping[str, int] | None, params: AnomalyParams
+    table: _LapTable,
+    grid: Mapping[str, int] | None,
+    total_laps: int | None,
+    params: AnomalyParams,
 ) -> list[Anomaly]:
     """RETIREMENT: a car that never completed a lap the cars behind it did.
 
@@ -1159,8 +1197,24 @@ def _detect_retirements(
     it is the lap before.
 
     The last car on the road has nobody behind it: it counts as stopped once
-    any car ahead has gone three laps further, by which time even a lapped
-    car would have completed one."""
+    any car ahead has gone three laps further than its own deficit (the laps
+    the leader had already completed beyond it when it last crossed the
+    line), by which time even a lapped car would have completed one.
+
+    While the race is still running, a car behind must have gone TWO laps
+    further, not one. Watching live, a car in a long pit stop has also not
+    completed a lap the cars passing it have: replaying the 2024 Miami GP lap
+    by lap, as the live hub does, announced Verstappen (lap 23) and Sainz and
+    Piastri (lap 27) as retired, each only pitting, and a live card can't be
+    withdrawn. No stop costs a whole extra lap. Once the leader has completed
+    the race distance, one lap settles it again, so a car that stops on the
+    final lap still counts (and a finished race reads exactly as before)."""
+    winner = table.leader(total_laps) if total_laps is not None else None
+    race_over = winner is not None
+    flag_at = winner.lap_end_utc if winner is not None else None
+    laps_on = 1 if race_over else 2
+    # How far the frame reaches: live, the latest crossing seen so far.
+    horizon = _latest([row.lap_end_utc for d in table.drivers for row in table.driver_laps(d)])
     anomalies: list[Anomaly] = []
     for driver in table.drivers:
         rows = table.driver_laps(driver)
@@ -1193,16 +1247,41 @@ def _detect_retirements(
             continue
         if position is None:
             continue
-        went_on = [table.row(other, last + 1) for other in behind]
+        if (
+            flag_at is not None
+            and last_row is not None
+            and last_row.lap_time_s is not None
+            and since is not None
+            and since >= flag_at
+        ):
+            # A timed crossing after the winner's: took the chequered flag.
+            continue
+        crossed = _latest([row.lap_end_utc for row in completed if row.lap_time_s is not None])
+        if race_over and crossed is not None and horizon is not None:
+            # After the flag one lap of evidence is enough only once the car
+            # is overdue, counted from its last timed crossing: a car passed
+            # on the last lap is still coming
+            # (`AnomalyParams.retirement_overdue_laps`).
+            typical = _typical_lap_s(completed)
+            if typical is not None and horizon < crossed + timedelta(
+                seconds=typical * params.retirement_overdue_laps
+            ):
+                continue
+        went_on = [table.row(other, last + laps_on) for other in behind]
         anchor = _latest(
             [row.lap_end_utc for row in went_on if row is not None and row.position is not None]
         )
         if anchor is None:
+            # Counted from the car's own deficit: a car two laps down is
+            # already three behind each time the leader crosses the line,
+            # and live that called six of the 2024 Monaco GP's lapped
+            # finishers retired.
+            down = _laps_down(table, since, last)
             further = [
                 row
                 for other in table.drivers
                 if other != driver
-                and (row := table.row(other, last + 3)) is not None
+                and (row := table.row(other, last + down + 3)) is not None
                 and row.position is not None
             ]
             anchor = min((row.lap_end_utc for row in further if row.lap_end_utc), default=None)

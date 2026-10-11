@@ -5,6 +5,7 @@
  * `$lib/kernel-views/gap-stream.ts` gives for skipping `RevealTracker`. */
 import type { Envelope } from '$lib/delay-sync';
 import { parseIsoDurationSeconds } from '$lib/kernel-views';
+import { retiredDrivers } from './retirements';
 import { createDriverRow, type DriverRow } from './types';
 
 export interface TimingTowerState {
@@ -88,7 +89,14 @@ export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope):
 			const lapNumber = asNumber(payload.lap_number);
 			if (lapNumber !== null) row.lapNumber = lapNumber;
 			const lapTimeS = parseIsoDurationSeconds(payload.lap_time);
-			if (lapTimeS !== null) row.lastLapTimeS = lapTimeS;
+			if (lapTimeS !== null) {
+				row.lastLapTimeS = lapTimeS;
+				if (lapTimeS > 0 && (row.bestLapS === null || lapTimeS < row.bestLapS))
+					row.bestLapS = lapTimeS;
+			}
+			if (Array.isArray(payload.sector_times)) {
+				row.lastSectorsS = payload.sector_times.map((t) => parseIsoDurationSeconds(t));
+			}
 			const isPersonalBest = asBoolean(payload.is_personal_best);
 			if (isPersonalBest !== null) row.isPersonalBest = isPersonalBest;
 			const compound = asString(payload.compound);
@@ -105,6 +113,15 @@ export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope):
 			if (stintNumber !== null) row.stintNumber = stintNumber;
 			const compound = asString(payload.compound);
 			if (compound !== null) row.compound = compound;
+			if (stintNumber !== null) {
+				const stint = { stintNumber, compound, startLap: asNumber(payload.start_lap) };
+				const at = row.stints.findIndex((s) => s.stintNumber === stintNumber);
+				if (at >= 0) row.stints[at] = stint;
+				else {
+					row.stints.push(stint);
+					row.stints.sort((a, b) => a.stintNumber - b.stintNumber);
+				}
+			}
 			const tyreAgeAtStart = asNumber(payload.tyre_age_at_start);
 			if (tyreAgeAtStart !== null) row.tyreAge = tyreAgeAtStart;
 			return;
@@ -135,9 +152,17 @@ function driverNumberCompare(a: string, b: string): number {
 
 /** Race order for display: classified position ascending, with drivers the
  * feed hasn't placed yet (`position === null`) sorted after every classified
- * one rather than treated as P0 — an unknown position is not a leader. */
+ * one rather than treated as P0 — an unknown position is not a leader. Cars
+ * out of the race (`retiredDrivers`) go to the bottom, the latest to stop
+ * first, as a timing screen lists them; their `retired` flag is set here. */
 export function sortedRows(state: TimingTowerState): DriverRow[] {
-	return Array.from(state.rows.values()).sort((a, b) => {
+	const rows = Array.from(state.rows.values());
+	const out = retiredDrivers(rows);
+	for (const row of rows) row.retired = out.has(row.driver);
+	return rows.sort((a, b) => {
+		if (a.retired !== b.retired) return a.retired ? 1 : -1;
+		if (a.retired && b.retired && a.lapNumber !== b.lapNumber)
+			return (b.lapNumber ?? 0) - (a.lapNumber ?? 0);
 		if (a.position !== null && b.position !== null) return a.position - b.position;
 		if (a.position !== null) return -1;
 		if (b.position !== null) return 1;

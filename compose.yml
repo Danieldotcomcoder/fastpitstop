@@ -134,6 +134,17 @@ services:
       db:
         condition: service_healthy
 
+  # A synthetic viewer of every live session: alerts (log, and email when
+  # SMTP is configured) when a live stream goes quiet for a minute, the
+  # failure that otherwise freezes every dashboard unnoticed. Idle between
+  # sessions: one /sessions request every 30 seconds. f1_api.watchdog.
+  watchdog:
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
+    command: ["f1-watchdog", "--api", "http://api:8000"]
+    env_file: .env
+    depends_on:
+      - api
+
   proxy:
     image: caddy:2.10.0
     volumes:

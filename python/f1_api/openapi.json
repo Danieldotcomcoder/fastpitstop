@@ -3465,7 +3465,7 @@
     },
     "/time": {
       "get": {
-        "description": "The server's clock, so a viewer can correct their own.\n\nEvery `event_time_utc` the stream sends is this machine's clock (the\nlive ingest stamps events on receipt; replay stamps each envelope as it\nis sent), and Delay Sync compares it with the viewer's device clock. A\ndevice a minute fast would release everything a minute early, a spoiler\nfor a viewer on a broadcast delay; one a minute slow would show \"live\"\na minute late. The frontend measures its offset from this, by round\ntrip, and runs Delay Sync on the corrected clock.",
+        "description": "The server's clock, so a viewer can correct their own.\n\nEvery `event_time_utc` the stream sends is this machine's clock (the\nlive ingest stamps events on receipt; replay stamps each envelope as it\nis sent), and Delay Sync compares it with the viewer's device clock. A\ndevice a minute fast would release everything a minute early, a spoiler\nfor a viewer on a broadcast delay; one a minute slow would show \"live\"\na minute late. The frontend measures its offset from this, by round\ntrip, and runs Delay Sync on the corrected clock.\n\n`async` so the reading is taken on the event loop as soon as the request\nlands, never queued behind sync routes in the threadpool; a late reading\nis what made the frontend think the server was ahead (it now uses a\nlower bound, `$lib/delay-sync/server-clock`, so lateness can only delay\na release, but a prompt reading keeps that delay small).",
         "operationId": "server_time_time_get",
         "responses": {
           "200": {

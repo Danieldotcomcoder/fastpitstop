@@ -73,6 +73,16 @@ services:
           cpus: "1.0"
           memory: 2G
 
+  # About 190 MB: importing f1_api loads the API package (measured 2026-10-11).
+  watchdog:
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
   proxy:
     restart: unless-stopped
     logging: *default-logging

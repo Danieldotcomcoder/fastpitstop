@@ -175,6 +175,19 @@ class AnomalyParams(BaseModel):
             "front-of-field weight for the position the car was running in."
         ),
     )
+    retirement_overdue_laps: float = Field(
+        default=1.5,
+        gt=1.0,
+        description=(
+            "After the chequered flag, how many of its own typical laps a car "
+            "must have gone without crossing the line before a car that was "
+            "behind it finishing ahead counts as proof it stopped. One lap is "
+            "not enough live: at the 2024 Miami GP Piastri passed Zhou on the "
+            "last lap and beat him to the line by 0.2 s, and on Piastri's "
+            "crossing Zhou looked retired. STRUCTURAL: a margin over one lap, "
+            "not calibrated."
+        ),
+    )
     race_finish_seconds: float = Field(
         default=6.0,
         gt=0,

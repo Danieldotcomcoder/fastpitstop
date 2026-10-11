@@ -77,7 +77,7 @@ pit-stop "duels" in which nothing changed, and 2 of the 35 headline moments foun
 - ✓ L49 `position_change` Russell passed Norris for P2 on lap 49. The gap had come down from 24.5 s to 0.6 s over three laps.
 - ✓ L51 `position_change` Norris passed Russell for P2 on lap 51. Norris was on mediums, Russell on hards.
 - ✓ L53 `retirement` Perez retired from P13, in the pits after lap 52, after an incident.
-- ✓ L54 `neutralization` Safety car from lap 54 to lap 58, after Albon and Sainz retired. Russell, Hamilton and Magnussen pitted.
+- ✓ L54 `neutralization` Safety car from lap 54 to lap 58, after Sainz and Albon retired. Russell, Hamilton and Magnussen pitted.
 - ✓ L66 `position_change` Tsunoda dropped from P9 to P14 on lap 66, passed by Ricciardo, Gasly, Hulkenberg and Magnussen.
 - ✓ L70 `race_finish` Verstappen took the chequered flag from P2 on the grid, 3.9 s ahead of Norris, with Russell third.
 

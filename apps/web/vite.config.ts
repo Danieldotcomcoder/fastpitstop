@@ -28,6 +28,9 @@ export default defineConfig({
 		// framework-agnostic TS with no DOM dependency — its spoiler-safety
 		// guarantee has to be provable without a browser, so 'node' is enough.
 		environment: 'node',
-		include: ['src/**/*.test.ts']
+		include: ['src/**/*.test.ts'],
+		// CSS imports come back empty under vitest unless opted in; the token
+		// contrast test (src/lib/ui/contrast.test.ts) reads tokens.css itself.
+		css: { include: [/tokens\.css/] }
 	}
 });

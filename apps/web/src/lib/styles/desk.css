@@ -298,13 +298,67 @@
 	border-radius: 50%;
 	background: var(--good);
 }
-.desk-page .status-chip.vsc {
-	background: var(--warn-fill);
-	border-color: var(--warn-fill);
-	color: #1b1f23;
+.desk-page .status-chip.vsc,
+.desk-page .status-chip.sc {
+	background: var(--status-sc);
+	border-color: var(--status-sc);
+	color: var(--status-sc-ink);
 }
-.desk-page .status-chip.vsc i {
-	background: #1b1f23;
+.desk-page .status-chip.yellow {
+	background: var(--status-yellow);
+	border-color: var(--status-yellow);
+	color: var(--status-yellow-ink);
+}
+.desk-page .status-chip.red {
+	background: var(--status-red);
+	border-color: var(--status-red);
+	color: var(--status-red-ink);
+}
+.desk-page .status-chip.vsc i,
+.desk-page .status-chip.sc i,
+.desk-page .status-chip.yellow i {
+	background: var(--status-sc-ink);
+}
+.desk-page .status-chip.red i {
+	background: var(--status-red-ink);
+}
+/* The strip is the full-width flag banner: tinted while the race is not
+   running normally. It is always there and always the same size, so a flag
+   never moves the page (W0's layout-shift budget). */
+.desk-page .sync.flag-sc,
+.desk-page .sync.flag-vsc {
+	background: color-mix(in srgb, var(--status-sc) 20%, var(--paper));
+	box-shadow: inset 0 -3px 0 var(--status-sc);
+}
+.desk-page .sync.flag-vsc {
+	background: repeating-linear-gradient(
+		-45deg,
+		color-mix(in srgb, var(--status-vsc) 20%, var(--paper)) 0 14px,
+		color-mix(in srgb, var(--status-vsc) 10%, var(--paper)) 14px 28px
+	);
+}
+.desk-page .sync.flag-yellow {
+	background: color-mix(in srgb, var(--status-yellow) 16%, var(--paper));
+	box-shadow: inset 0 -3px 0 var(--status-yellow);
+}
+.desk-page .sync.flag-red {
+	background: color-mix(in srgb, var(--status-red) 22%, var(--paper));
+	box-shadow: inset 0 -3px 0 var(--status-red);
+}
+/* On a tinted strip the muted grey falls just under AA (about 4.3:1 in
+   both themes), so the strip's secondary text takes the stronger ink. */
+.desk-page .sync.flag-sc,
+.desk-page .sync.flag-vsc,
+.desk-page .sync.flag-yellow,
+.desk-page .sync.flag-red {
+	--muted: var(--ink-2);
+}
+@media (prefers-reduced-motion: no-preference) {
+	.desk-page .sync {
+		transition:
+			background-color var(--duration-move) var(--ease-out),
+			box-shadow var(--duration-move) var(--ease-out);
+	}
 }
 .desk-page .status-chip.chequered {
 	background: var(--ink);
@@ -353,7 +407,8 @@
 		--gap: 14px;
 	}
 	.desk-page .desk {
-		grid-template-columns: minmax(320px, 350px) minmax(0, 1fr);
+		/* Wide enough for the tower's stint bars beside its timing columns. */
+		grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
 	}
 	.desk-page .p-tower {
 		grid-column: 1;
@@ -617,13 +672,47 @@
 	color: var(--muted);
 	display: none;
 }
-.desk-page .tower .t-last.fastest {
+.desk-page .tower .t-last.fastest,
+.desk-page .tower .t-sector.fastest {
 	color: var(--fastest);
 	font-weight: 600;
 }
-.desk-page .tower .t-last.pb {
+.desk-page .tower .t-last.pb,
+.desk-page .tower .t-sector.pb {
 	color: var(--pb);
 	font-weight: 600;
+}
+.desk-page .tower tbody tr.out td {
+	color: var(--muted);
+}
+.desk-page .tower tbody tr.out .code {
+	color: var(--muted);
+}
+.desk-page .tower .outchip {
+	font: 600 10px/1 var(--f-mono);
+	letter-spacing: 0.06em;
+	padding: 3px 4px;
+	border-radius: 3px;
+	border: 1px solid var(--rule-strong);
+	color: var(--muted);
+}
+.desk-page .tower .col-gain {
+	width: 30px;
+	padding-inline: 0 2px;
+	text-align: left;
+}
+.desk-page .tower .col-stints {
+	width: 56px;
+	min-width: 48px;
+}
+.desk-page .tower-tabs {
+	margin: -6px -16px 8px;
+	padding-inline: 8px;
+}
+@media (max-width: 479px) {
+	.desk-page .tower .col-stints {
+		display: none;
+	}
 }
 .desk-page .tower .pitchip {
 	font: 600 10px/1 var(--f-mono);
@@ -1470,4 +1559,30 @@
 .desk-page .btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
+}
+
+/* The tower's placeholder rows, holding its height until the driver list
+   arrives behind the viewer's delay (see DeskTower.svelte). */
+.desk-page .tower-waiting tbody td {
+	color: var(--muted);
+}
+.desk-page .tower-more:disabled {
+	visibility: hidden;
+}
+.desk-page .map-wrap-loading {
+	display: grid;
+	place-items: center;
+}
+.desk-page .map-loading-note {
+	margin: 0;
+	color: var(--muted);
+}
+/* Values that replace a dash ("—" becomes "1:35.123", "Lap" becomes
+   "Finished") keep their box, so nothing beside them moves. */
+/* A cell's width is its minimum in an auto-layout table (min-width is not). */
+.desk-page .tower td.t-last {
+	width: 9ch;
+}
+.desk-page .lapcount {
+	min-width: 150px;
 }

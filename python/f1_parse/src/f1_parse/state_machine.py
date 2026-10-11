@@ -93,6 +93,7 @@ from f1_domain import (
     SessionKey,
     SessionState,
     SessionStatusChanged,
+    SessionType,
     StintStarted,
     TeamRadioClip,
     TrackStatusChanged,
@@ -376,6 +377,9 @@ class SessionStateMachine:
         self._drivers: dict[str, _DriverTracker] = {}
         self._identities: dict[str, DriverRef] = {}
         self._session_status: str | None = None
+        # When this connection saw the session start (receive time), which
+        # times a race's lap 1; `None` if it joined after the start.
+        self._started_ts: datetime | None = None
         self._current_lap: int | None = None
         self._total_laps: int | None = None
         # SessionInfo's meeting and venue, published as SessionInfoUpdated.
@@ -704,6 +708,9 @@ class SessionStateMachine:
         post-reseed catch-up inert."""
         if new.laps is None:
             return
+        if new.laps == 1 and not tracker.last_emitted_lap and self._times_lap_one():
+            self._emit_lap_one(events, number, tracker, new, fresh_by_delta, ts, seq)
+            return
         if tracker.last_emitted_lap is None:
             # First sighting: any lap time seen so far belongs to this
             # baseline lap, so consume the freshness flag along with it.
@@ -726,6 +733,56 @@ class SessionStateMachine:
                 lap_time=parse_lap_time(new.last_lap),
                 sector_times=sector_times if any(t is not None for t in sector_times) else None,
                 is_personal_best=new.last_lap_pb,
+                compound=_map_compound(stint.compound),
+                tyre_age=_tyre_age(stint),
+            )
+        )
+
+    def _times_lap_one(self) -> bool:
+        """A race or sprint whose start this connection saw: its lap 1 is
+        a lap from the grid, and the feed never times it."""
+        return self._started_ts is not None and self._session_key.session_type in (
+            SessionType.RACE,
+            SessionType.SPRINT,
+        )
+
+    def _emit_lap_one(
+        self,
+        events: list[DomainEvent],
+        number: str,
+        tracker: _DriverTracker,
+        new: _TimingFacts,
+        fresh_by_delta: bool,
+        ts: datetime,
+        seq: int,
+    ) -> None:
+        """Lap 1 of a race. The feed counts it (`NumberOfLaps: 1`) but sends
+        no `LastLapTime` for it (the 2026 Singapore GP: the first time is
+        lap 2's), so the old rules took it as the baseline or held it for a
+        time that never came, and every live race began at lap 2 with no
+        start card. Timed here from the start: the receive time of the
+        crossing minus the receive time of the "Started" status, one clock
+        for both, so the feed's latency cancels. Approximate by that
+        latency's jitter, and lap 1 is never a clean lap for the kernel. A
+        time the feed does send wins."""
+        assert self._started_ts is not None
+        fresh = new.last_lap is not None and (tracker.lap_time_dirty or fresh_by_delta)
+        elapsed = ts - self._started_ts
+        lap_time = (
+            parse_lap_time(new.last_lap)
+            if fresh and new.last_lap is not None
+            else (elapsed if elapsed > timedelta(0) else None)
+        )
+        tracker.last_emitted_lap = 1
+        tracker.lap_time_dirty = False
+        stint = tracker.stints[-1] if tracker.stints else _StintFacts()
+        events.append(
+            LapCompleted(
+                **self._envelope(ts, seq),
+                driver=number,
+                lap_number=1,
+                lap_time=lap_time,
+                is_personal_best=new.last_lap_pb if fresh else None,
                 compound=_map_compound(stint.compound),
                 tyre_age=_tyre_age(stint),
             )
@@ -980,6 +1037,8 @@ class SessionStateMachine:
             if entry.session_status == self._session_status:
                 continue
             self._session_status = entry.session_status
+            if entry.session_status == "Started":
+                self._started_ts = ts
             events.append(
                 SessionStatusChanged(
                     **self._envelope(entry.ts_utc or ts, seq), status=entry.session_status

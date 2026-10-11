@@ -439,11 +439,21 @@
 			<span><i class="dot hollow"></i>In the pit lane</span>
 			{#if (circuit?.drs_zones ?? []).length}<span><i class="dash"></i>DRS zone</span>{/if}
 		</div>
+	{:else if circuitStatus === 'loading'}
+		<!-- The map's own frame, held while the circuit loads: a one-line
+		     note that then became a 16:10 map pushed every panel below it
+		     down (measured by `just verify-real`). -->
+		<div class="map-wrap map-wrap-loading" role="status">
+			<p class="map-loading-note">Loading the circuit…</p>
+		</div>
+		<div class="map-summary">&nbsp;</div>
+		<div class="map-legend" aria-hidden="true">
+			<span><i class="dot" style="background:var(--ink-2)"></i>Car, in team colour</span>
+			<span><i class="dot hollow"></i>In the pit lane</span>
+		</div>
 	{:else}
 		<div class="empty">
-			{circuitStatus === 'loading'
-				? 'Loading the circuit…'
-				: 'No outline for this circuit yet, so there is nothing to draw the cars on.'}
+			No outline for this circuit yet, so there is nothing to draw the cars on.
 		</div>
 	{/if}
 </section>

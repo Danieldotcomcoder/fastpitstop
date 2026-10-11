@@ -90,7 +90,14 @@ from f1_why.openrouter import (
 )
 from f1_why.params import AnomalyParams
 from f1_why.store import NARRATION_VERSION, PostgresExplanationStore
-from f1_why.story import StoryParams, is_story_moment, merge_incidents, select_story, story_key
+from f1_why.story import (
+    StoryParams,
+    as_told,
+    is_story_moment,
+    merge_incidents,
+    select_story,
+    story_key,
+)
 from f1_why.templates import TemplateNarrationModel
 
 __all__ = [
@@ -127,6 +134,7 @@ __all__ = [
     "TemplateNarrationModel",
     "anomalies_to_frame",
     "anomaly_id",
+    "as_told",
     "assemble_evidence",
     "build_prompt",
     "detect_anomalies",

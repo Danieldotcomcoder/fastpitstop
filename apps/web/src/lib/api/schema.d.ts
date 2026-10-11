@@ -404,6 +404,12 @@ export interface paths {
          *     for a viewer on a broadcast delay; one a minute slow would show "live"
          *     a minute late. The frontend measures its offset from this, by round
          *     trip, and runs Delay Sync on the corrected clock.
+         *
+         *     `async` so the reading is taken on the event loop as soon as the request
+         *     lands, never queued behind sync routes in the threadpool; a late reading
+         *     is what made the frontend think the server was ahead (it now uses a
+         *     lower bound, `$lib/delay-sync/server-clock`, so lateness can only delay
+         *     a release, but a prompt reading keeps that delay small).
          */
         get: operations["server_time_time_get"];
         put?: never;

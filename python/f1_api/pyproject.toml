@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 f1-api = "f1_api.cli:main"
+f1-watchdog = "f1_api.watchdog:main"
 
 # httpx (needed for FastAPI's TestClient) lives in the root workspace's dev
 # group alongside pytest/hypothesis — the same "shared dev tooling" home
