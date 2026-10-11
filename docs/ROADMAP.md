@@ -439,6 +439,23 @@ Status (2026-10-11):
 the W0 sessions, and qualifying shows the right drivers eliminated at each
 Q break in a real qualifying replay.
 
+Mockups for M2's new screens (2026-10-11, direction A, on the design canvas,
+waiting for your approval):
+- **Qualifying:** 2024 Miami, Q2 with 1:15 to go. Who makes Q3, with the cut
+  line; what each car in the drop zone needs to beat (1:28.323); a strip of
+  every time against the cut; who is on a flying lap now; the Q1 knockouts
+  greyed out.
+- **Standings:** 2024 after Miami, behind their own spoiler shield ("as of
+  the last race you watched"). A points sparkline per driver, how the top
+  six got here, constructors, and the points still available.
+- **Circuit page (S2):** Marina Bay. Its outline with numbered corners and
+  DRS zones, the measured pit loss with its uncertainty, and tyre wear by
+  compound, with thin fits marked.
+- **Grand Prix page (S3):** 2026 United States GP. A countdown, the
+  sessions at the track and in your time, what a stop costs there, and how
+  the 2024 race was run (strategy only, no results). The mockup proposes an
+  "Add to calendar" button that is not built yet.
+
 ### W5. Strategy radar and scorecard (signature)
 
 Forward-looking calls, released through Delay Sync like everything else:
