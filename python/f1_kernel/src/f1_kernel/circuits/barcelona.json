@@ -9,6 +9,9 @@
   "feed_circuit_names": [
     "Catalunya"
   ],
+  "schedule_locations": [
+    "Barcelona"
+  ],
   "lap_distance_m": 4609.8,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "calibrated",

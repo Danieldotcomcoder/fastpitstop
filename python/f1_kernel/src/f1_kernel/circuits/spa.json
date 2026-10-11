@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Spa-Francorchamps"
   ],
+  "schedule_locations": [
+    "Spa-Francorchamps"
+  ],
   "lap_distance_m": 6920.7,
   "pit_loss_s": 18.78,
   "pit_loss_provenance": "calibrated",

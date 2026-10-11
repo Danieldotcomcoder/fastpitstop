@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Imola"
   ],
+  "schedule_locations": [
+    "Imola"
+  ],
   "lap_distance_m": 4858.6,
   "pit_loss_s": 28.5,
   "pit_loss_provenance": "calibrated",

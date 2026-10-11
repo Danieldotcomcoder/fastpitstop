@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Mexico City"
   ],
+  "schedule_locations": [
+    "Mexico City"
+  ],
   "lap_distance_m": 4228.2,
   "pit_loss_s": 23.5,
   "pit_loss_provenance": "calibrated",

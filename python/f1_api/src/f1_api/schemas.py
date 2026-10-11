@@ -378,6 +378,36 @@ class PitLaneOut(BaseModel):
     source_stops: int
 
 
+class ScheduleSessionOut(BaseModel):
+    """One session of a calendar round (`f1_api.schedule.ScheduledSession`)."""
+
+    name: str
+    """FastF1's name: "Practice 1", "Sprint Qualifying", "Race"."""
+    session_type: str | None
+    """Our `SessionType` value, or null for a session we don't model."""
+    start_utc: datetime
+    start_local: datetime | None
+    """The same instant in the circuit's own time, with its UTC offset."""
+
+
+class ScheduleEventOut(BaseModel):
+    """`GET /schedule` and `GET /schedule/next`: one round of the calendar.
+    Holds no results, so it needs no spoiler gate."""
+
+    season: int
+    round: int
+    event_name: str
+    location: str
+    country: str
+    event_format: str
+    """FastF1's "conventional", "sprint_qualifying", ..."""
+    circuit_id: str | None
+    """The shipped circuit it runs at (`f1_kernel.circuit_for_schedule`), or
+    null for a venue no circuit file knows yet."""
+    circuit_name: str | None
+    sessions: list[ScheduleSessionOut]
+
+
 class CircuitOut(BaseModel):
     """`GET /sessions/{key}/circuit` — `f1_kernel.Circuit`'s geometry, for
     the track map. `None` (not a 404) when the session's event does not

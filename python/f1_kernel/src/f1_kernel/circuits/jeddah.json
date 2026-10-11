@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Jeddah"
   ],
+  "schedule_locations": [
+    "Jeddah"
+  ],
   "lap_distance_m": 6085.1,
   "pit_loss_s": 19.5,
   "pit_loss_provenance": "provisional",

@@ -123,6 +123,20 @@
 		min-width: 0;
 	}
 
+	/* A phone has no room for the wordmark, the tag, three links and the
+	   theme switch in one row: the tag goes under the wordmark. */
+	@media (max-width: 479px) {
+		.app-header {
+			align-items: center;
+		}
+
+		.brand-block {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 4px;
+		}
+	}
+
 	.wordmark {
 		font: italic 600 24px/1 var(--font-display);
 		letter-spacing: -0.02em;

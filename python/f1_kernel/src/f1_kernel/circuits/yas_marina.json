@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Yas Marina Circuit"
   ],
+  "schedule_locations": [
+    "Yas Island"
+  ],
   "lap_distance_m": 5208.3,
   "pit_loss_s": 22.87,
   "pit_loss_provenance": "calibrated",

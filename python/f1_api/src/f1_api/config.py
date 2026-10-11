@@ -22,6 +22,8 @@ CORS_ORIGINS_ENV_VAR = "F1_API_CORS_ORIGINS"
 DEFAULT_CORS_ORIGINS: tuple[str, ...] = ("*",)
 RADIO_FIXTURE_ENV_VAR = "F1_API_RADIO_FIXTURE"
 WHY_FIXTURE_ENV_VAR = "F1_API_WHY_FIXTURE"
+SCHEDULE_FIXTURE_ENV_VAR = "F1_API_SCHEDULE_FIXTURE"
+DEFAULT_FASTF1_CACHE_DIR = Path("data/fastf1_cache")
 MAX_EXPLANATIONS_ENV_VAR = "F1_WHY_MAX_EXPLANATIONS"
 DEFAULT_MAX_EXPLANATIONS = 20
 """Ceiling on story cards per session. Template narration costs nothing, so
@@ -48,6 +50,11 @@ class Settings:
     normal deployment) means the radio corpus is served from Postgres, or
     degrades to empty when no `F1_STORE_DSN` is configured, exactly like
     every other radio dependency already does."""
+    schedule_fixture_path: Path | None = None
+    """A JSON race calendar (`f1_api.schedule.fixture_schedule`) in place of
+    FastF1's, for the browser tests of the home page and `/live` states."""
+    fastf1_cache_dir: Path = DEFAULT_FASTF1_CACHE_DIR
+    """Where FastF1 caches the event schedule it fetches."""
     why_fixture: bool = False
     """Set only by `just verify-phase5`'s Playwright harness — see
     `f1_api.why_fixture`'s module docstring. When true,
@@ -120,6 +127,11 @@ def get_settings() -> Settings:
         cors_origins=origins,
         radio_fixture_path=Path(radio_fixture_raw) if radio_fixture_raw else None,
         why_fixture=bool(why_fixture_raw and why_fixture_raw.strip()),
+        schedule_fixture_path=(
+            Path(os.environ[SCHEDULE_FIXTURE_ENV_VAR])
+            if os.environ.get(SCHEDULE_FIXTURE_ENV_VAR)
+            else None
+        ),
         max_explanations=max_explanations,
         feedback_enabled=os.environ.get(FEEDBACK_ENABLED_ENV_VAR, "1").strip()
         not in {"0", "false", "False"},

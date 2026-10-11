@@ -5,6 +5,7 @@
 	 * page is the way into it. Nothing here names a result. */
 	import { resolve } from '$app/paths';
 	import { brand } from '$lib/brand';
+	import NextRace from '$lib/home/NextRace.svelte';
 	import { HOME_FAQ, seoFor, type SeoSession } from '$lib/seo';
 	import type { PageProps } from './$types';
 
@@ -22,6 +23,26 @@
 
 	const title = seoFor('/').title;
 	let live = $derived(data.sessions.find((s) => s.live) ?? null);
+
+	/** The latest finished race outside the next round, for "watch from the
+	 * start": named, never its result. */
+	let lastRace = $derived.by(() => {
+		const next = data.next?.event;
+		return (
+			data.sessions
+				.filter(
+					(s) =>
+						s.sessionType === 'race' &&
+						!s.live &&
+						!(next && s.year === next.season && s.round === next.round)
+				)
+				.sort((a, b) => b.year - a.year || b.round - a.round)[0] ?? null
+		);
+	});
+	let liveThisWeekend = $derived.by(() => {
+		const next = data.next?.event;
+		return live && next && live.year === next.season && live.round === next.round ? live : null;
+	});
 
 	/** The latest Grand Prix weekends, newest first, one link each. */
 	let recent = $derived.by(() => {
@@ -46,110 +67,135 @@
 	<title>{title}</title>
 </svelte:head>
 
-<article class="home">
-	{#if live}
-		<a class="live-now" href={resolve('/live')}>
-			<span class="dot" aria-hidden="true"></span>
-			<span class="label">Live now</span>
-			<span class="what"
-				>{eventName(live)} · {SESSION_LABELS[live.sessionType] ?? live.sessionType}</span
-			>
-			<span class="go">Open the live dashboard →</span>
-		</a>
+<article class="home wide-dashboard">
+	{#if data.next}
+		<NextRace
+			event={data.next.event}
+			outline={data.next.outline}
+			live={liveThisWeekend}
+			{lastRace}
+		/>
 	{/if}
 
-	<header class="hero">
-		<p class="kicker">Unofficial F1 dashboard</p>
-		<h1>F1 live timing that never spoils the race</h1>
-		<p class="lede">
-			{brand.name} is a free second-screen dashboard for Formula 1. It shows live timing, tyre wear, pit
-			strategy and undercut predictions, and holds every number back to match your TV delay so you never
-			see a moment before it happens on screen.
-		</p>
-		<p class="actions">
-			<a class="primary" href={resolve('/live')}>Open the live dashboard</a>
-			<a class="secondary" href={resolve('/sessions')}>Browse race replays</a>
-		</p>
-	</header>
+	<div class="reading">
+		{#if live && !liveThisWeekend}
+			<a class="live-now" href={resolve('/live')}>
+				<span class="dot" aria-hidden="true"></span>
+				<span class="label">Live now</span>
+				<span class="what"
+					>{eventName(live)} · {SESSION_LABELS[live.sessionType] ?? live.sessionType}</span
+				>
+				<span class="go">Open the live dashboard →</span>
+			</a>
+		{/if}
 
-	<section aria-labelledby="features">
-		<h2 id="features">More than the timing screen</h2>
-		<div class="features">
-			<div>
-				<h3>Live timing and gaps</h3>
-				<p>
-					Running order, intervals, last laps, tyre compound and age, pit stops and race control
-					messages, updated as the session runs. Open it at any point and it shows where the race
-					stands now.
-				</p>
-			</div>
-			<div>
-				<h3>Spoiler-free Delay Sync</h3>
-				<p>
-					TV and streaming feeds run seconds to a minute behind the track. Set your delay, or tap
-					when the lights go out, and everything waits for your broadcast, even if your phone's
-					clock is wrong.
-				</p>
-			</div>
-			<div>
-				<h3>Undercut and pit-window predictor</h3>
-				<p>
-					For the closest battles it predicts whether pitting now would get a driver ahead, and on
-					which lap, with a confidence level. Tested against past races it never saw.
-				</p>
-			</div>
-			<div>
-				<h3>Tyre degradation</h3>
-				<p>
-					How fast each set of tyres is losing time, fitted per stint from fuel-corrected laps, with
-					an honest verdict on how far each fit can be trusted.
-				</p>
-			</div>
-			<div>
-				<h3>Why it happened</h3>
-				<p>
-					When something notable happens, such as a pass, a slow stop or a sudden loss of pace, one
-					sentence explains it, citing the timing and race control evidence behind it.
-				</p>
-			</div>
-			<div>
-				<h3>Race replays</h3>
-				<p>
-					Rewatch past Grands Prix lap by lap at any speed through the same dashboard, with the same
-					spoiler protection and the cars on F1's own recorded positions.
-				</p>
-			</div>
-		</div>
-	</section>
+		<header class="hero">
+			<p class="kicker">Unofficial F1 dashboard</p>
+			<h1>F1 live timing that never spoils the race</h1>
+			<p class="lede">
+				{brand.name} is a free second-screen dashboard for Formula 1. It shows live timing, tyre wear,
+				pit strategy and undercut predictions, and holds every number back to match your TV delay so you
+				never see a moment before it happens on screen.
+			</p>
+			<p class="actions">
+				<a class="primary" href={resolve('/live')}>Open the live dashboard</a>
+				<a class="secondary" href={resolve('/sessions')}>Browse race replays</a>
+			</p>
+		</header>
 
-	{#if recent.length > 0}
-		<section aria-labelledby="recent">
-			<h2 id="recent">Recent races</h2>
-			<ul class="recent">
-				{#each recent as s (`${s.year}/${s.round}`)}
-					<li>
-						<a href={resolve(`/sessions/${s.year}/${s.round}`)}>{eventName(s)}</a>
-						{#if s.circuitName}<span class="venue">{s.circuitName}</span>{/if}
-					</li>
-				{/each}
-			</ul>
-			<p><a href={resolve('/sessions')}>All races →</a></p>
+		<section aria-labelledby="features">
+			<h2 id="features">More than the timing screen</h2>
+			<div class="features">
+				<div>
+					<h3>Live timing and gaps</h3>
+					<p>
+						Running order, intervals, last laps, tyre compound and age, pit stops and race control
+						messages, updated as the session runs. Open it at any point and it shows where the race
+						stands now.
+					</p>
+				</div>
+				<div>
+					<h3>Spoiler-free Delay Sync</h3>
+					<p>
+						TV and streaming feeds run seconds to a minute behind the track. Set your delay, or tap
+						when the lights go out, and everything waits for your broadcast, even if your phone's
+						clock is wrong.
+					</p>
+				</div>
+				<div>
+					<h3>Undercut and pit-window predictor</h3>
+					<p>
+						For the closest battles it predicts whether pitting now would get a driver ahead, and on
+						which lap, with a confidence level. Tested against past races it never saw.
+					</p>
+				</div>
+				<div>
+					<h3>Tyre degradation</h3>
+					<p>
+						How fast each set of tyres is losing time, fitted per stint from fuel-corrected laps,
+						with an honest verdict on how far each fit can be trusted.
+					</p>
+				</div>
+				<div>
+					<h3>Why it happened</h3>
+					<p>
+						When something notable happens, such as a pass, a slow stop or a sudden loss of pace,
+						one sentence explains it, citing the timing and race control evidence behind it.
+					</p>
+				</div>
+				<div>
+					<h3>Race replays</h3>
+					<p>
+						Rewatch past Grands Prix lap by lap at any speed through the same dashboard, with the
+						same spoiler protection and the cars on F1's own recorded positions.
+					</p>
+				</div>
+			</div>
 		</section>
-	{/if}
 
-	<section aria-labelledby="faq">
-		<h2 id="faq">Questions</h2>
-		<dl class="faq">
-			{#each HOME_FAQ as item (item.question)}
-				<dt>{item.question}</dt>
-				<dd>{item.answer}</dd>
-			{/each}
-		</dl>
-	</section>
+		{#if recent.length > 0}
+			<section aria-labelledby="recent">
+				<h2 id="recent">Recent races</h2>
+				<ul class="recent">
+					{#each recent as s (`${s.year}/${s.round}`)}
+						<li>
+							<a href={resolve(`/sessions/${s.year}/${s.round}`)}>{eventName(s)}</a>
+							{#if s.circuitName}<span class="venue">{s.circuitName}</span>{/if}
+						</li>
+					{/each}
+				</ul>
+				<p><a href={resolve('/sessions')}>All races →</a></p>
+			</section>
+		{/if}
+
+		<section aria-labelledby="faq">
+			<h2 id="faq">Questions</h2>
+			<dl class="faq">
+				{#each HOME_FAQ as item (item.question)}
+					<dt>{item.question}</dt>
+					<dd>{item.answer}</dd>
+				{/each}
+			</dl>
+		</section>
+	</div>
 </article>
 
 <style>
+	/* Wide for the next-race block (the page opts into the layout's wide
+	   column), with the text below kept to a reading width. */
 	.home {
+		width: 100%;
+		max-width: 1180px;
+		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-5);
+	}
+
+	.reading {
+		width: 100%;
+		max-width: 640px;
+		margin: var(--space-5) auto 0;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-7);

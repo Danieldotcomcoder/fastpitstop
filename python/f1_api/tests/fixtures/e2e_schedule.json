@@ -1,0 +1,18 @@
+{
+  "current": [
+    {
+      "round": 17,
+      "event_name": "Singapore Grand Prix",
+      "location": "Marina Bay",
+      "country": "Singapore",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Practice 1", "start_in_h": -26},
+        {"name": "Practice 2", "start_in_h": -22},
+        {"name": "Practice 3", "start_in_h": -3},
+        {"name": "Qualifying", "start_in_h": 1},
+        {"name": "Race", "start_in_h": 25}
+      ]
+    }
+  ]
+}

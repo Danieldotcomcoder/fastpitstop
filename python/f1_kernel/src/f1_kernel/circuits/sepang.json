@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Kuala Lumpur"
   ],
+  "schedule_locations": [
+    "Kuala Lumpur"
+  ],
   "lap_distance_m": 5455.7,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "provisional",

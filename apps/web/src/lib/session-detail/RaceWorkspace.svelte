@@ -47,6 +47,7 @@
 	import { buildBoard, crossoverFor, type Crossover } from '$lib/desk/pit-board';
 	import { RaceFeedReducer, trackStatusChip } from '$lib/desk/race-feed';
 	import { SnapshotHistory } from '$lib/desk/snapshot-history';
+	import { latestWeather, weatherReadings } from '$lib/desk/weather';
 
 	type Session = components['schemas']['SessionSummaryOut'];
 	type Lap = components['schemas']['LapRowOut'];
@@ -128,6 +129,12 @@
 	});
 	let totalLaps = $derived(lap.total ?? (finished ? completedLaps : null));
 	let status = $derived(trackStatusChip(visible.events, finished));
+
+	/** Conditions as of the viewer's clock (W3's weather strip). */
+	let weather = $derived.by(() => {
+		void revision;
+		return weatherReadings(latestWeather(visible.events));
+	});
 
 	let revealedLaps = $derived.by(() => {
 		void revision;
@@ -377,6 +384,14 @@
 			{#if showBackLink}<a class="back-link" href={resolve('/sessions')}>← Sessions</a>{/if}
 			<h1 class="session-title">{session.event_name ?? session.key}</h1>
 			<div class="session-meta">{meta}</div>
+			<dl class="weather" data-testid="weather" aria-label="Weather as of your clock">
+				{#each weather as reading (reading.label)}
+					<div>
+						<dt>{reading.label}</dt>
+						<dd class="num">{reading.value}</dd>
+					</div>
+				{/each}
+			</dl>
 		</div>
 		<div class="lapcount" aria-live="polite">
 			<span class="caps">{finished ? 'Finished' : 'Lap'}</span>

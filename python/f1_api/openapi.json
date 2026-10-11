@@ -2206,6 +2206,122 @@
         "title": "Reliability",
         "type": "string"
       },
+      "ScheduleEventOut": {
+        "description": "`GET /schedule` and `GET /schedule/next`: one round of the calendar.\nHolds no results, so it needs no spoiler gate.",
+        "properties": {
+          "circuit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Id"
+          },
+          "circuit_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Circuit Name"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "event_format": {
+            "title": "Event Format",
+            "type": "string"
+          },
+          "event_name": {
+            "title": "Event Name",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "integer"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleSessionOut"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "season",
+          "round",
+          "event_name",
+          "location",
+          "country",
+          "event_format",
+          "circuit_id",
+          "circuit_name",
+          "sessions"
+        ],
+        "title": "ScheduleEventOut",
+        "type": "object"
+      },
+      "ScheduleSessionOut": {
+        "description": "One session of a calendar round (`f1_api.schedule.ScheduledSession`).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "session_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Type"
+          },
+          "start_local": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Local"
+          },
+          "start_utc": {
+            "format": "date-time",
+            "title": "Start Utc",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "session_type",
+          "start_utc",
+          "start_local"
+        ],
+        "title": "ScheduleSessionOut",
+        "type": "object"
+      },
       "ServerTimeOut": {
         "description": "`GET /time` \u2014 the server's wall clock, epoch milliseconds.",
         "properties": {
@@ -2611,6 +2727,49 @@
         ]
       }
     },
+    "/circuits/{circuit_id}": {
+      "get": {
+        "description": "A shipped circuit's geometry by id, for a calendar entry that has no\nsession yet (the home page's track drawing).",
+        "operationId": "get_circuit_by_id_circuits__circuit_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "circuit_id",
+            "required": true,
+            "schema": {
+              "title": "Circuit Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Circuit By Id",
+        "tags": [
+          "schedule"
+        ]
+      }
+    },
     "/feedback": {
       "post": {
         "operationId": "post_feedback_feedback_post",
@@ -2947,6 +3106,92 @@
         "summary": "Readyz",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/schedule": {
+      "get": {
+        "description": "Every round of `season` (default: this year) with its sessions in UTC\nand circuit-local time. 503 when no schedule could be fetched yet.",
+        "operationId": "get_schedule_schedule_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 2018,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScheduleEventOut"
+                  },
+                  "title": "Response Get Schedule Schedule Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Schedule",
+        "tags": [
+          "schedule"
+        ]
+      }
+    },
+    "/schedule/next": {
+      "get": {
+        "description": "This weekend's round while its race may still be running, else the\nnext to start, looking into next season after the last round. Null when\nneither season has anything left.",
+        "operationId": "get_next_event_schedule_next_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScheduleEventOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Next Event Schedule Next Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Next Event",
+        "tags": [
+          "schedule"
         ]
       }
     },

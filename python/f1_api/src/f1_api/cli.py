@@ -5,11 +5,15 @@ deployment invokes uvicorn/gunicorn directly against `f1_api.main:app`.
 from __future__ import annotations
 
 import argparse
+import os
+from datetime import UTC, datetime
 
 import uvicorn
 
-from f1_api.env_check import validate_production_env
+from f1_api.config import get_settings
+from f1_api.env_check import PROD_ENV_FLAG, PROD_ENV_VALUE, validate_production_env
 from f1_api.logging_config import LOG_CONFIG, configure_logging
+from f1_api.routes.schedule import get_schedule_cache
 
 
 def main() -> int:
@@ -22,6 +26,11 @@ def main() -> int:
     configure_logging()
     # no-op unless F1_ENV=production — fails loudly, before uvicorn ever starts.
     validate_production_env()
+    if os.environ.get(PROD_ENV_FLAG) == PROD_ENV_VALUE:
+        # The calendar is fetched in the background before the first request,
+        # so the first home page after a deploy doesn't wait on FastF1. Never
+        # elsewhere: tests and CI must not reach the network unasked.
+        get_schedule_cache(get_settings()).warm(datetime.now(UTC).year)
 
     uvicorn.run(
         "f1_api.main:app",

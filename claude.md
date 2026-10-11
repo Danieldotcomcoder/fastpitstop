@@ -659,6 +659,15 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   green), and marks cars OUT (`timing-tower/retirements.ts`: the story's
   retirement rule made safe for a running race, judged from released laps
   only). The sync strip doubles as the full-width flag banner.
+- Weekend hub (2026-10-11, ROADMAP W3): `f1_api.schedule` serves FastF1's
+  calendar (`GET /schedule`, `/schedule/next`, cached daily, stale-on-error,
+  `F1_API_SCHEDULE_FIXTURE` for tests with times relative to now) and
+  `GET /circuits/{id}`; a round finds its circuit by FastF1's schedule
+  location (`f1_kernel.circuit_for_schedule`, `schedule_locations` per
+  circuit file). The home page (server-rendered) and an idle `/live` show
+  the next race: countdown, sessions at the track and in the viewer's time,
+  the outline, and the last race with no result. The desk masthead shows
+  released weather.
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.

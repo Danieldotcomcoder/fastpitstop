@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Baku"
   ],
+  "schedule_locations": [
+    "Baku"
+  ],
   "lap_distance_m": 5917.5,
   "pit_loss_s": 22.29,
   "pit_loss_provenance": "calibrated",

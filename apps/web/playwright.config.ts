@@ -56,6 +56,10 @@ export default defineConfig({
 			url: `${API_BASE_URL}/health`,
 			env: {
 				F1_API_HISTORICAL_ROOT: 'python/f1_kernel/tests/fixtures/historical',
+				// A calendar with a race weekend always in progress (times
+				// relative to now), so the home page and /live are tested
+				// between sessions without ever reaching FastF1.
+				F1_API_SCHEDULE_FIXTURE: 'python/f1_api/tests/fixtures/e2e_schedule.json',
 				F1_API_CORS_ORIGINS: '*'
 				// Phase 5.5 (`just verify-phase5`) reuses this same pair with
 				// the PRODUCTION narrator: `f1_why.TemplateNarrationModel`
@@ -97,6 +101,7 @@ export default defineConfig({
 			env: {
 				F1_API_HISTORICAL_ROOT: 'python/f1_radio/tests/fixtures/e2e_historical',
 				F1_API_RADIO_FIXTURE: 'python/f1_radio/tests/fixtures/e2e_radio_fixture.json',
+				F1_API_SCHEDULE_FIXTURE: 'python/f1_api/tests/fixtures/e2e_schedule.json',
 				F1_API_CORS_ORIGINS: '*'
 			},
 			reuseExistingServer: REUSE_EXISTING,

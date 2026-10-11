@@ -27,6 +27,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circuits/{circuit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Circuit By Id
+         * @description A shipped circuit's geometry by id, for a calendar entry that has no
+         *     session yet (the home page's track drawing).
+         */
+        get: operations["get_circuit_by_id_circuits__circuit_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/feedback": {
         parameters: {
             query?: never;
@@ -147,6 +168,49 @@ export interface paths {
          *     the same way as any other liveness/readiness split.
          */
         get: operations["readyz_readyz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Schedule
+         * @description Every round of `season` (default: this year) with its sessions in UTC
+         *     and circuit-local time. 503 when no schedule could be fetched yet.
+         */
+        get: operations["get_schedule_schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Next Event
+         * @description This weekend's round while its race may still be running, else the
+         *     next to start, looking into next season after the last round. Null when
+         *     neither season has anything left.
+         */
+        get: operations["get_next_event_schedule_next_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1188,6 +1252,48 @@ export interface components {
          */
         Reliability: "good" | "thin" | "unreliable";
         /**
+         * ScheduleEventOut
+         * @description `GET /schedule` and `GET /schedule/next`: one round of the calendar.
+         *     Holds no results, so it needs no spoiler gate.
+         */
+        ScheduleEventOut: {
+            /** Circuit Id */
+            circuit_id: string | null;
+            /** Circuit Name */
+            circuit_name: string | null;
+            /** Country */
+            country: string;
+            /** Event Format */
+            event_format: string;
+            /** Event Name */
+            event_name: string;
+            /** Location */
+            location: string;
+            /** Round */
+            round: number;
+            /** Season */
+            season: number;
+            /** Sessions */
+            sessions: components["schemas"]["ScheduleSessionOut"][];
+        };
+        /**
+         * ScheduleSessionOut
+         * @description One session of a calendar round (`f1_api.schedule.ScheduledSession`).
+         */
+        ScheduleSessionOut: {
+            /** Name */
+            name: string;
+            /** Session Type */
+            session_type: string | null;
+            /** Start Local */
+            start_local: string | null;
+            /**
+             * Start Utc
+             * Format: date-time
+             */
+            start_utc: string;
+        };
+        /**
          * ServerTimeOut
          * @description `GET /time` — the server's wall clock, epoch milliseconds.
          */
@@ -1393,6 +1499,37 @@ export interface operations {
             };
         };
     };
+    get_circuit_by_id_circuits__circuit_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                circuit_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CircuitOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_feedback_feedback_post: {
         parameters: {
             query?: never;
@@ -1560,6 +1697,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReadyOut"];
+                };
+            };
+        };
+    };
+    get_schedule_schedule_get: {
+        parameters: {
+            query?: {
+                season?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_next_event_schedule_next_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleEventOut"] | null;
                 };
             };
         };

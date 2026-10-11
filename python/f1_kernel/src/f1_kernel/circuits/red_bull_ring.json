@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Spielberg"
   ],
+  "schedule_locations": [
+    "Spielberg"
+  ],
   "lap_distance_m": 4279.5,
   "pit_loss_s": 21.0,
   "pit_loss_provenance": "calibrated",

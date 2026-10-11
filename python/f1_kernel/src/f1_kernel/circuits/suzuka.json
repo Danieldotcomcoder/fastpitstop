@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Suzuka"
   ],
+  "schedule_locations": [
+    "Suzuka"
+  ],
   "lap_distance_m": 5758.6,
   "pit_loss_s": 22.38,
   "pit_loss_provenance": "calibrated",

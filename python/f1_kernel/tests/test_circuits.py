@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from f1_kernel import Circuit, circuit_for_event, circuit_for_session, list_circuits, load_circuit
-from f1_kernel.circuit import CIRCUITS_DIR
+from f1_kernel.circuit import CIRCUITS_DIR, circuit_for_schedule
 
 
 def test_ships_circuits() -> None:
@@ -296,3 +296,32 @@ def test_a_live_session_finds_its_circuit_from_its_own_stream() -> None:
 
     assert frames.circuit is not None and frames.circuit.circuit_id == "baku"
     assert frames.event_name == "Azerbaijan Grand Prix"
+
+
+def _scheduled(event_name: str, location: str | None) -> str | None:
+    circuit = circuit_for_schedule(event_name, location)
+    return circuit.circuit_id if circuit is not None else None
+
+
+@pytest.mark.parametrize(
+    ("event_name", "location", "circuit_id"),
+    [
+        # Moved races resolve by venue, never by the Grand Prix name.
+        ("Bahrain Grand Prix", "Kuala Lumpur", "sepang"),
+        ("Bahrain Grand Prix", "Sakhir", "bahrain"),
+        ("Spanish Grand Prix", "Madrid", "madring"),
+        ("Spanish Grand Prix", "Barcelona", "barcelona"),
+        # Respellings across seasons, and accents.
+        ("Abu Dhabi Grand Prix", "Yas Marina", "yas_marina"),
+        ("Abu Dhabi Grand Prix", "Yas Island", "yas_marina"),
+        ("Canadian Grand Prix", "Montreal", "montreal"),
+        ("Miami Grand Prix", "Miami Gardens", "miami"),
+        # An unknown venue is never another track; no location uses the name.
+        ("Bahrain Grand Prix", "Somewhere New", None),
+        ("Singapore Grand Prix", None, "marina_bay"),
+    ],
+)
+def test_circuit_for_schedule(
+    event_name: str, location: str | None, circuit_id: str | None
+) -> None:
+    assert _scheduled(event_name, location) == circuit_id

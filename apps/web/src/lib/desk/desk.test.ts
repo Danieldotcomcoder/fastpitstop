@@ -264,3 +264,29 @@ describe('placeCars', () => {
 		expect(at.has('44')).toBe(false);
 	});
 });
+
+describe('weather', () => {
+	it('reads the newest released sample and dashes what is unknown', async () => {
+		const { latestWeather, weatherReadings } = await import('./weather');
+		expect(latestWeather([])).toBeNull();
+		expect(weatherReadings(null).map((r) => r.value)).toEqual(['—', '—', '—', '—', '—']);
+		const weather = latestWeather([
+			envelope('weather_sample', { air_temp: 27.5, track_temp: 39.9, rainfall: false }),
+			envelope('lap_completed', { driver: '1' }),
+			envelope('weather_sample', {
+				air_temp: 28.04,
+				track_temp: 40.5,
+				humidity: 62.4,
+				wind_speed: 3.1,
+				rainfall: true
+			})
+		]);
+		expect(weatherReadings(weather)).toEqual([
+			{ label: 'Air', value: '28.0°' },
+			{ label: 'Track', value: '40.5°' },
+			{ label: 'Humidity', value: '62%' },
+			{ label: 'Wind', value: '3.1 m/s' },
+			{ label: 'Rain', value: 'Yes' }
+		]);
+	});
+});

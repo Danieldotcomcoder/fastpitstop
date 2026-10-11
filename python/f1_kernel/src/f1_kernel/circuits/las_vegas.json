@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Las Vegas"
   ],
+  "schedule_locations": [
+    "Las Vegas"
+  ],
   "lap_distance_m": 6120.9,
   "pit_loss_s": 22.54,
   "pit_loss_provenance": "calibrated",

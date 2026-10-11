@@ -28,6 +28,7 @@ assume every venue is present.
 
 from __future__ import annotations
 
+import unicodedata
 from functools import cache
 from pathlib import Path
 
@@ -108,6 +109,12 @@ class Circuit(BaseModel):
     session carries it, because a Grand Prix name is not an identity: the
     "Spanish Grand Prix" ran at Barcelona through 2025 and at Madrid from
     2026, and a lookup by name alone would draw the wrong circuit."""
+    schedule_locations: list[str] = Field(default_factory=list[str])
+    """FastF1's event-schedule `Location` for rounds held here ("Marina
+    Bay", "Budapest", "Miami Gardens"): how a calendar entry, which has no
+    session yet, finds its circuit (`circuit_for_schedule`). Recorded by
+    `tools/build_circuit_locations.py` from this circuit's own reference
+    event and the 2023-2025 rounds held here."""
     lap_distance_m: float = Field(gt=0)
     """Lap distance from telemetry: the median over the same sampled racing
     laps the DRS zones were derived from, so both are on one scale.
@@ -202,6 +209,39 @@ def circuit_for_session(
                 return circuit
         by_name = circuit_for_event(event_name)
         if by_name is not None and by_name.feed_circuit_names:
+            return None
+        return by_name
+    return circuit_for_event(event_name)
+
+
+def _fold(text: str) -> str:
+    """Case-, space- and accent-insensitive form ("Montréal" == "Montreal")."""
+    decomposed = unicodedata.normalize("NFKD", text.strip().casefold())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def circuit_for_schedule(event_name: str | None, location: str | None) -> Circuit | None:
+    """The circuit a calendar entry will run at, by FastF1's schedule
+    `Location` first (an identity across seasons, as the feed's venue name
+    is), then by Grand Prix name. A location no file knows is never another
+    track by the race's name: that would be `circuit_for_session`'s
+    Sakhir-for-Sepang mistake again."""
+    if location:
+        wanted = _fold(location)
+        circuits = [load_circuit(circuit_id) for circuit_id in list_circuits()]
+        for circuit in circuits:
+            names = [*circuit.schedule_locations, *circuit.feed_circuit_names]
+            if any(_fold(name) == wanted for name in names):
+                return circuit
+        # Schedules respell a venue over the years ("Yas Island" in 2024,
+        # "Yas Marina" in 2026, the feed's "Yas Marina Circuit"): a location
+        # inside a known name still identifies it.
+        for circuit in circuits:
+            names = [*circuit.feed_circuit_names, circuit.name]
+            if any(wanted in _fold(name) for name in names):
+                return circuit
+        by_name = circuit_for_event(event_name)
+        if by_name is not None and (by_name.schedule_locations or by_name.feed_circuit_names):
             return None
         return by_name
     return circuit_for_event(event_name)

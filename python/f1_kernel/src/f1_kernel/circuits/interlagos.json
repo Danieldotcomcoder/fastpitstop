@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Interlagos"
   ],
+  "schedule_locations": [
+    "S\u00e3o Paulo"
+  ],
   "lap_distance_m": 4234.1,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "provisional",

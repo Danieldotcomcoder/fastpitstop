@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Hungaroring"
   ],
+  "schedule_locations": [
+    "Budapest"
+  ],
   "lap_distance_m": 4323.5,
   "pit_loss_s": 21.33,
   "pit_loss_provenance": "calibrated",

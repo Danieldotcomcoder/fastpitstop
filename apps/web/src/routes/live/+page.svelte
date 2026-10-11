@@ -23,6 +23,8 @@
 	import { seoFor, toSeoSession } from '$lib/seo';
 	import { api, type components } from '$lib/api/client';
 	import { pickLiveSession } from '$lib/live-session-picker';
+	import NextRace from '$lib/home/NextRace.svelte';
+	import { loadNextRace, type NextRaceView } from '$lib/home/load';
 	import RaceWorkspace from '$lib/session-detail/RaceWorkspace.svelte';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
@@ -40,6 +42,19 @@
 
 	let liveSession = $state<SessionSummary | null>(null);
 	let status = $state<Status>('checking');
+	let sessions = $state<SessionSummary[]>([]);
+	let next = $state<NextRaceView | null>(null);
+
+	/** The latest finished race, for "watch from the start" between sessions. */
+	let lastRace = $derived.by(() => {
+		const latest = sessions
+			.filter((s) => s.session_key.session_type === 'race' && !s.live)
+			.sort(
+				(a, b) =>
+					b.session_key.year - a.session_key.year || b.session_key.round - a.session_key.round
+			)[0];
+		return latest ? toSeoSession(latest) : null;
+	});
 	let pollHandle: ReturnType<typeof setInterval> | null = null;
 
 	async function poll(): Promise<void> {
@@ -48,7 +63,8 @@
 				signal: AbortSignal.timeout(POLL_TIMEOUT_MS)
 			});
 			if (error !== undefined) throw new Error('sessions request failed');
-			const found = pickLiveSession(data ?? []);
+			sessions = data ?? [];
+			const found = pickLiveSession(sessions);
 			status = 'ready';
 			// Only ever switch to ANOTHER running session, never back to
 			// nothing: a session stops counting as live once the feed says it
@@ -66,6 +82,9 @@
 
 	onMount(() => {
 		void poll();
+		void loadNextRace(AbortSignal.timeout(POLL_TIMEOUT_MS))
+			.then((view) => (next = view))
+			.catch(() => (next = null));
 		pollHandle = setInterval(() => void poll(), POLL_INTERVAL_MS);
 	});
 
@@ -83,16 +102,15 @@
 		<RaceWorkspace session={liveSession} showBackLink={false} />
 	{/key}
 {:else}
-	<section class="idle">
-		<h1>Live</h1>
-		<p>
-			During a session this page shows the running order, pit window, degradation, race control, and
-			radio — all held back to your Delay Sync offset so nothing spoils.
-		</p>
+	<section class="idle wide-dashboard">
+		<h1 class="visually-hidden">Live</h1>
+		{#if next}
+			<NextRace event={next.event} outline={next.outline} live={null} {lastRace} />
+		{/if}
 		<p class="note" class:error={status === 'unreachable'}>
 			{#if status === 'ready'}
-				No session is running right now. Browse a completed race while you wait — a replay shows
-				exactly the same dashboard.
+				No session is running right now. This page becomes the race desk the moment one starts, held
+				back to your TV's delay so nothing spoils.
 			{:else if status === 'unreachable'}
 				Couldn't reach the API. Retrying every {POLL_INTERVAL_MS / 1000} seconds.
 			{:else}
@@ -100,14 +118,19 @@
 			{/if}
 		</p>
 		<p class="actions">
-			<a href={resolve('/sessions')}>Browse sessions</a>
+			<a href={resolve('/sessions')}>Browse race replays</a>
 		</p>
 	</section>
 {/if}
 
 <style>
-	.idle h1 {
-		margin-bottom: var(--space-2);
+	.idle {
+		width: 100%;
+		max-width: 1180px;
+		margin: 0 auto;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
 	}
 
 	.note {

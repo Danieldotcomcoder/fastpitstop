@@ -31,6 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from f1_api.config import Settings, get_settings
 from f1_api.routes.feedback import router as feedback_router
 from f1_api.routes.radio import router as radio_router
+from f1_api.routes.schedule import router as schedule_router
 from f1_api.routes.sessions import router as sessions_router
 from f1_api.routes.why import router as why_router
 from f1_api.schemas import HealthOut, ReadyOut, ServerTimeOut, VersionOut
@@ -147,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(sessions_router)
+    app.include_router(schedule_router)
     app.include_router(radio_router)
     app.include_router(why_router)
     # Dropped entirely rather than served-and-failing when disabled: a

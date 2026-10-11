@@ -357,6 +357,32 @@ team logos, driver headshots.
 **Done when** no route ever shows a bare "nothing here" message, checked
 by a Playwright pass over every state with a stubbed schedule.
 
+Status (2026-10-11), built:
+- **Schedule API:** `GET /schedule?season=` and `GET /schedule/next`
+  (`f1_api.schedule`). FastF1's calendar, cached a day; a failed refresh
+  serves the last good copy, and production fetches it in the background at
+  start. The next event is this weekend's round until three hours after
+  the race start (the regulations' cap on a race), then the next one.
+- **Circuits for calendar rounds:** `GET /circuits/{id}`. Each round finds
+  its circuit through `circuit_for_schedule`, using FastF1's schedule
+  location (`schedule_locations` in each circuit file,
+  `tools/build_circuit_locations.py`). Every 2024 to 2026 round resolves,
+  including 2026's moved races (Madrid, Sepang).
+- **Home:** the next-race block is rendered on the server, so search
+  engines read it. It shows a countdown to the next session, the weekend's
+  sessions at the track and in your time, the circuit drawn from its
+  outline, and the last race behind the spoiler shield.
+- **`/live` between sessions:** the same block in place of a paragraph.
+- **Weather strip:** in the race desk masthead (air, track, humidity, wind,
+  rain), from released samples only, at a fixed width so its arrival never
+  moves the page.
+- **Proof:** `e2e/weekend.spec.ts` in `just verify-phase3`, on a stubbed
+  calendar whose times are relative to now, so a weekend is always in
+  progress.
+- **Not built:** pre-session weather, since the feed sends none before a
+  session starts.
+
+
 ### W4. Timing and race-state completeness
 
 - **Timing tower:**

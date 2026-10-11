@@ -11,7 +11,6 @@
 	<title>{brand.name}</title>
 	<!-- Description, canonical and link-preview tags come from the server
 	     hook ($lib/seo), per page. -->
-	<meta name="theme-color" content="#EEEFEA" />
 </svelte:head>
 
 <div class="app-shell">

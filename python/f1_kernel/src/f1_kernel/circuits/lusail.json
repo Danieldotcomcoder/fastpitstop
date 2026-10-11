@@ -8,6 +8,9 @@
   "feed_circuit_names": [
     "Lusail"
   ],
+  "schedule_locations": [
+    "Lusail"
+  ],
   "lap_distance_m": 5368.1,
   "pit_loss_s": 27.69,
   "pit_loss_provenance": "provisional",
