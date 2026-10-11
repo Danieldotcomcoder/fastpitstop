@@ -1,25 +1,28 @@
 /** Phase 5.5's E2E suite (`just verify-phase5`): a real browser against a
  * real running `f1_api` + frontend pair pointed at the checked-in kernel
- * fixture with `F1_API_WHY_FIXTURE` set (see `../playwright.config.ts`) —
- * no live session, no database, no network, no Anthropic key.
+ * fixture, narrated by the production template narrator (see
+ * `../playwright.config.ts`) — no live session, no database, no network, no
+ * API key.
  *
  * Asserts, per CLAUDE.md's Phase 5 deliverable:
- *   (a) a known anomaly gets a grounded, cited explanation;
+ *   (a) the race's moments get grounded explanations with their evidence;
  *   (b) explanations appear at the right synced moment;
  *   (c) no explanation leaks ahead of the clock;
- *   (d) an ungrounded/weak case shows the safe fallback.
+ *   (d) a moment with no supported cause is never a card: no guess, and no
+ *       "no clear cause" filler either (Story 2.0).
  */
 import { expect, test } from '@playwright/test';
 import {
 	WHY_E2E_DELAY_SECONDS,
 	WHY_FALLBACK_TEXT,
-	WHY_GROUNDED_TEXT,
+	WHY_FINISH_TEXT,
+	WHY_SAFETY_CAR_TEXT,
 	whyRaceUrl,
 	whyStoryUrl
 } from './why-fixtures';
 
 test.describe('why-engine timeline lane', () => {
-	test('explanations stay gated until the delay elapses, then show grounded + fallback', async ({
+	test('explanations stay gated until the delay elapses, then show the race', async ({
 		page
 	}) => {
 		test.setTimeout(60_000);
@@ -38,25 +41,25 @@ test.describe('why-engine timeline lane', () => {
 		await expect(cards.first()).toBeVisible({ timeout: 30_000 });
 		expect(await cards.count()).toBeGreaterThan(1);
 
-		// (a) At least one grounded, cited explanation from the fixture's
-		// race-control-backed position_change anomalies.
+		// (a) The fixture race's safety car and finish, in the exact words the
+		// template narrator writes from their numbers.
 		const grounded = page.locator('[data-testid="explanation-card"][data-grounded="true"]');
-		await expect(grounded.first()).toBeVisible();
-		await expect(grounded.first()).toContainText(WHY_GROUNDED_TEXT);
-		await expect(grounded.first().getByTestId('evidence-toggle')).toBeVisible();
+		await expect(grounded.filter({ hasText: WHY_SAFETY_CAR_TEXT })).toHaveCount(1);
+		await expect(grounded.filter({ hasText: WHY_FINISH_TEXT })).toHaveCount(1);
 
 		// Expanding cited evidence lazy-fetches full sources from
 		// GET /anomalies/{id}/explanation — grounding as a UX feature.
-		await grounded.first().getByTestId('evidence-toggle').click();
-		const evidence = grounded.first().getByTestId('cited-evidence');
+		const finish = grounded.filter({ hasText: WHY_FINISH_TEXT });
+		await finish.getByTestId('evidence-toggle').click();
+		const evidence = finish.getByTestId('cited-evidence');
 		await expect(evidence).toBeVisible({ timeout: 10_000 });
 		await expect(evidence.locator('[data-evidence-kind]').first()).toBeVisible();
 
-		// (d) Weak / low-evidence anomalies keep the honest fallback.
-		const fallback = page.locator('[data-testid="explanation-card"][data-grounded="false"]');
-		await expect(fallback.first()).toBeVisible();
-		await expect(fallback.first()).toContainText(WHY_FALLBACK_TEXT);
-		await expect(fallback.first()).toContainText('No clear cause', { exact: false });
+		// (d) Every card explains its moment; none is filler.
+		await expect(
+			page.locator('[data-testid="explanation-card"][data-grounded="false"]')
+		).toHaveCount(0);
+		await expect(page.getByText(WHY_FALLBACK_TEXT)).toHaveCount(0);
 	});
 
 	test('usable at a mobile (390px) viewport', async ({ page }) => {
@@ -68,9 +71,7 @@ test.describe('why-engine timeline lane', () => {
 });
 
 test.describe('race story view', () => {
-	test('salience-ranked narrative shows grounded moments and expandable evidence', async ({
-		page
-	}) => {
+	test('tells the race in order with expandable evidence', async ({ page }) => {
 		test.setTimeout(60_000);
 		await page.goto(whyStoryUrl());
 
@@ -80,11 +81,14 @@ test.describe('race story view', () => {
 		await expect(cards.first()).toBeVisible();
 		expect(await cards.count()).toBeGreaterThan(1);
 
-		await expect(page.getByText(WHY_GROUNDED_TEXT).first()).toBeVisible();
-		await expect(page.getByText(WHY_FALLBACK_TEXT).first()).toBeVisible();
+		await expect(story.getByText(WHY_SAFETY_CAR_TEXT)).toBeVisible();
+		await expect(story.getByText(WHY_FINISH_TEXT)).toBeVisible();
+		await expect(story.getByText(WHY_FALLBACK_TEXT)).toHaveCount(0);
 
-		const grounded = story.locator('[data-testid="explanation-card"][data-grounded="true"]');
-		await grounded.first().getByTestId('evidence-toggle').click();
-		await expect(grounded.first().getByTestId('cited-evidence')).toBeVisible({ timeout: 10_000 });
+		const finish = story.locator('[data-testid="explanation-card"]', {
+			hasText: WHY_FINISH_TEXT
+		});
+		await finish.getByTestId('evidence-toggle').click();
+		await expect(finish.getByTestId('cited-evidence')).toBeVisible({ timeout: 10_000 });
 	});
 });

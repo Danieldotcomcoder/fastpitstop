@@ -1110,6 +1110,19 @@ Phase 5 packages (under python/f1_why, in dependency order):
   paid for once ever (the free tier also caps at 50 requests/day), and
   outages are never cached. `f1_api.why.story_moments` caps any one
   anomaly kind at a third of a narrated story.
+- Story 2.0 (2026-10-11, docs/ROADMAP.md W1; docs/PHASE5.md "Story 2.0"):
+  the story was 39% true on ten raw-judged races (pit-cycle reshuffles
+  reported as overtakes, duels that changed nothing, modelled tyre cliffs)
+  and missed 33 of 35 headline moments. Overtakes now count only cars
+  passed on track; tyre cliffs are measured; new `RACE_START` (grid via
+  `f1_why.starting_grid`, emitted by the historical adapter at session
+  start), `NEUTRALIZATION`, `RETIREMENT`, `RACE_FINISH`;
+  `f1_why.select_story` merges incidents, keys one card per event and
+  judges each moment alone (live = replay); `TemplateNarrationModel` is the
+  default narrator (no model call; `F1_WHY_NARRATOR=llm` for the chain);
+  moments carry `reveal_driver`/`reveal_lap`, which the story panel gates
+  on. Now 109/109 cards true and 35/35 headlines found
+  (`python/f1_why/tools/story_eval.py`, report under `f1_why/reports/`).
 - (next) Phase 5's own exit criteria are now all met. Remaining gaps are
   depth, not product surface: telemetry-derived evidence kinds, and `AnomalyParams`/`EvidenceParams`/
   `NarrationParams` calibration against a measured corpus. Phase 6

@@ -19,7 +19,6 @@ wiring by hand — the same "one place owns the chain" discipline
 from __future__ import annotations
 
 import logging
-import math
 import os
 from collections.abc import Callable, Generator, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -41,7 +40,6 @@ from f1_kernel import EventSource, KernelParams, KernelReport, analyze_session
 from f1_radio.search import SearchIndex
 from f1_why import (
     Anomaly,
-    AnomalyKind,
     AnomalyParams,
     ClaudeHaikuModel,
     EvidenceBundle,
@@ -56,11 +54,16 @@ from f1_why import (
     ModelNarration,
     NarrationModel,
     NarrationParams,
+    Narrator,
     OpenRouterModel,
     PostgresExplanationStore,
+    StoryParams,
+    TemplateNarrationModel,
     assemble_evidence,
     detect_anomalies,
     explain_cached,
+    select_story,
+    starting_grid,
 )
 from f1_why import (
     anomaly_id as why_anomaly_id,
@@ -69,7 +72,7 @@ from f1_why.openrouter import API_KEY_ENV_VAR as OPENROUTER_API_KEY_ENV_VAR
 
 _log = logging.getLogger(__name__)
 
-_narration_model: NarrationModel | None = None
+_narration_model: Narrator | None = None
 _narration_model_lock = Lock()
 _explanation_store: ExplanationStore | None = None
 _explanation_store_lock = Lock()
@@ -150,6 +153,11 @@ def cited_evidence_refs(
     )
 
 
+NARRATOR_ENV_VAR = "F1_WHY_NARRATOR"
+"""`llm` to narrate with a language model (OpenRouter, else Anthropic) instead
+of the default `TemplateNarrationModel`."""
+
+
 def _try_backend(factory: Callable[[], NarrationModel], label: str) -> NarrationModel | None:
     """Construct a real backend, or log and return `None` so the caller
     falls through to the declining mock. Constructing one reaches for an
@@ -164,19 +172,23 @@ def _try_backend(factory: Callable[[], NarrationModel], label: str) -> Narration
         return None
 
 
-def get_narration_model() -> NarrationModel:
+def get_narration_model() -> Narrator:
     """Process-level lazy singleton. Resolution order:
 
     1. `F1_API_WHY_FIXTURE` set → `CitingNarrationModel` (`f1_api.why_fixture`)
        so `just verify-phase5`'s real Playwright process can assert grounded,
        cited explanations without a live API key;
-    2. `OPENROUTER_API_KEY` set → `OpenRouterModel`, walking
+    2. unless `F1_WHY_NARRATOR=llm`, `TemplateNarrationModel`: sentences built
+       from each bundle's own numbers, free and instant, and the default.
+       The free models it replaced wrote the same sentence for every
+       overtake and ran out of their daily allowance mid-race;
+    3. `OPENROUTER_API_KEY` set → `OpenRouterModel`, walking
        `f1_why.openrouter.DEFAULT_OPENROUTER_MODEL_CHAIN` (or
        `OPENROUTER_MODELS`). Checked BEFORE Anthropic
        because it is the deployment this project actually runs on; a box
        with both keys set can pick explicitly by unsetting one.
-    3. `ANTHROPIC_API_KEY` set → real `ClaudeHaikuModel`;
-    4. otherwise a declining `MockNarrationModel` so CI / a developer with no
+    4. `ANTHROPIC_API_KEY` set → real `ClaudeHaikuModel`;
+    5. otherwise a declining `MockNarrationModel` so CI / a developer with no
        key still get explanation envelopes (as the canonical fallback text)
        rather than a hard failure mid-stream.
 
@@ -193,6 +205,8 @@ def get_narration_model() -> NarrationModel:
             if _narration_model is None:
                 if os.environ.get(WHY_FIXTURE_ENV_VAR):
                     _narration_model = CitingNarrationModel()
+                elif os.environ.get(NARRATOR_ENV_VAR, "").strip().lower() != "llm":
+                    _narration_model = TemplateNarrationModel()
                 elif os.environ.get(OPENROUTER_API_KEY_ENV_VAR):
                     _narration_model = _try_backend(OpenRouterModel, "OpenRouter")
                 elif os.environ.get("ANTHROPIC_API_KEY"):
@@ -240,14 +254,14 @@ def reset_narration_model() -> None:
         _narration_model = None
 
 
-NarrationModelDep = Annotated[NarrationModel, Depends(get_narration_model)]
+NarrationModelDep = Annotated[Narrator, Depends(get_narration_model)]
 ExplanationStoreDep = Annotated[ExplanationStore, Depends(get_explanation_store)]
 
 
 @contextmanager
 def why_stream_deps_cm(
     settings: Settings,
-) -> Generator[tuple[NarrationModel, ExplanationStore, SearchIndex | None], None, None]:
+) -> Generator[tuple[Narrator, ExplanationStore, SearchIndex | None], None, None]:
     """The plain-function form the `/stream/{key}` WebSocket uses — same
     shape as `f1_api.radio.radio_store_cm`. Yields `(model, store, radio_index)`
     so historical replay can precompute explanations and live mode can
@@ -284,10 +298,13 @@ def detect_session_anomalies(
 ) -> tuple[KernelReport, list[Anomaly]]:
     """`analyze_session` (unless a report is already in hand) then
     `detect_anomalies` — the shared front half of both REST list and the
-    explanation/timeline paths."""
+    explanation/timeline paths. The starting grid comes from the session's
+    own position stream (`f1_why.starting_grid`), the same way the live hub
+    derives it."""
     if report is None:
         report = analyze_session(source, session_key, KernelParams(), event_name=event_name)
-    anomalies = detect_anomalies(report.frames, report, AnomalyParams())
+    grid = starting_grid(source.events(session_key, kinds=["position_changed"]), report.frames.laps)
+    anomalies = detect_anomalies(report.frames, report, AnomalyParams(), grid=grid)
     return report, anomalies
 
 
@@ -295,7 +312,7 @@ def explain_session_anomaly(
     source: EventSource,
     session_key: SessionKey,
     anomaly: Anomaly,
-    model: NarrationModel,
+    model: Narrator,
     store: ExplanationStore,
     *,
     report: KernelReport | None = None,
@@ -355,55 +372,47 @@ def most_salient(anomalies: Sequence[Anomaly], limit: int | None) -> list[Anomal
     return list(anomalies[: max(0, limit)])
 
 
-STORY_KIND_SHARE = 1 / 3
-"""The most of a story any one kind of moment may fill before the next most
-salient moment of another kind gets a turn."""
-
-
 def story_moments(anomalies: Sequence[Anomaly], limit: int | None) -> list[Anomaly]:
-    """The moments worth narrating: the most salient, but not all of one kind.
+    """The moments a viewer sees, in race order: `f1_why.select_story`, with
+    `limit` (the server's `F1_WHY_MAX_EXPLANATIONS` budget) as its ceiling.
 
-    Pure salience made a poor story. In the 2025 Spanish GP ten of the top
-    twelve were "undercut resolved" verdicts, eight of them on laps 47-50,
-    so a replay's explanation lane sat empty for 46 laps and then filled
-    with near-identical cards. Each kind is capped at a third of the story
-    (never fewer than two); when the race genuinely offers too little
-    variety the remaining places go back to salience order rather than the
-    story coming up short. Returned in `detect_anomalies`' own salience
-    order, like `most_salient`, which the `/anomalies` listing keeps using
-    unchanged."""
-    if limit is None:
-        return list(anomalies)
-    cap = max(2, math.ceil(limit * STORY_KIND_SHARE))
-    counts: dict[AnomalyKind, int] = {}
-    picked: list[int] = []
-    held: list[int] = []
-    for index, anomaly in enumerate(anomalies):
-        if len(picked) >= limit:
-            break
-        if counts.get(anomaly.kind, 0) < cap:
-            picked.append(index)
-            counts[anomaly.kind] = counts.get(anomaly.kind, 0) + 1
-        else:
-            held.append(index)
-    picked.extend(held[: max(0, limit - len(picked))])
-    return [anomalies[index] for index in sorted(picked)]
+    It used to be the most salient anomalies with each kind capped at a
+    third. Ranking a whole race by salience cannot work live (the race is
+    not over), and the anomalies it ranked were mostly pit-cycle reshuffles
+    reported as overtakes; `select_story`'s rules look at each moment
+    alone, so live and replay show the same cards."""
+    params = StoryParams() if limit is None else StoryParams(max_moments=max(1, limit))
+    return select_story(anomalies, params)
+
+
+SHOWN_FALLBACKS = frozenset({"provider_unavailable"})
+"""The fallback reasons still worth a card: an outage is news about the
+service, said honestly. A narrator that found nothing to say about a moment
+("model_declined", "low_evidence") means the moment has no story; showing
+"no clear cause found" for it was most of what made the old story read as
+noise."""
+
+
+def worth_showing(explanation: Explanation) -> bool:
+    """Whether an explanation earns a card (see `SHOWN_FALLBACKS`)."""
+    return explanation.grounded or explanation.fallback_reason in SHOWN_FALLBACKS
 
 
 def precompute_session_explanations(
     source: EventSource,
     session_key: SessionKey,
-    model: NarrationModel,
+    model: Narrator,
     store: ExplanationStore,
     *,
     radio_index: SearchIndex | None = None,
     event_name: str | None = None,
     max_explanations: int | None = None,
 ) -> list[ScheduledExplanation]:
-    """Historical-session batch: detect anomalies, explain_cached the
-    `max_explanations` most salient, return them sorted by `anomaly_time`
-    for Delay Sync pacing. Live sessions call `explain_session_anomaly` per
-    newly-seen anomaly instead — same cache either way."""
+    """Historical-session batch: detect anomalies, explain_cached the story
+    (`story_moments`), return the moments worth a card (`worth_showing`)
+    sorted by `anomaly_time` for Delay Sync pacing. Live sessions call
+    `explain_session_anomaly` per newly-seen moment instead — same cache
+    either way."""
     report, anomalies = detect_session_anomalies(source, session_key, event_name=event_name)
     sources = EvidenceSources(
         session_frames=report.frames,
@@ -431,6 +440,7 @@ def precompute_session_explanations(
             bundle=bundle,
         )
         for anomaly, bundle, explanation in zip(picked, bundles, explanations, strict=True)
+        if worth_showing(explanation)
     ]
     scheduled.sort(key=lambda item: (item.anomaly.anomaly_time, why_anomaly_id(item.anomaly)))
     return scheduled
@@ -515,4 +525,5 @@ __all__ = [
     "reset_narration_model",
     "story_moments",
     "why_stream_deps_cm",
+    "worth_showing",
 ]

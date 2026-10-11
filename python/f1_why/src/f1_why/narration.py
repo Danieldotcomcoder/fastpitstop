@@ -56,7 +56,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -143,6 +143,23 @@ class NarrationModel(Protocol):
     already use in this project."""
 
     def complete(self, prompt: str) -> ModelNarration: ...
+
+
+@runtime_checkable
+class BundleNarrationModel(Protocol):
+    """A narrator that reads the evidence bundle itself rather than a prompt
+    rendered from it: `f1_why.templates.TemplateNarrationModel`, which
+    builds each sentence from the bundle's own numbers with no model call.
+    `explain` asks it about every bundle, low evidence or not: it states the
+    moment's own measured facts, and only adds a cause when an item it
+    cites supports one. Its citations go through the same grounding check
+    as a model's."""
+
+    def narrate(self, bundle: EvidenceBundle) -> ModelNarration: ...
+
+
+Narrator = NarrationModel | BundleNarrationModel
+"""Anything `explain` can narrate with."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,17 +317,20 @@ def _fallback_explanation(anomaly_id: str, reason: str) -> Explanation:
     )
 
 
-def explain(bundle: EvidenceBundle, model: NarrationModel, params: NarrationParams) -> Explanation:
+def explain(bundle: EvidenceBundle, model: Narrator, params: NarrationParams) -> Explanation:
     """One explanation for `bundle`. Calls `model.complete` AT MOST once —
     never at all when `bundle.low_evidence` already guarantees the answer
     is "no clear cause" — and the grounding validator sits between every
     model response and the value this returns, on every path, so an
-    ungrounded claim can never reach a caller.
+    ungrounded claim can never reach a caller. A `BundleNarrationModel`
+    is asked about every bundle (see its docstring).
     """
-    if bundle.low_evidence:
+    if isinstance(model, BundleNarrationModel):
+        narration = model.narrate(bundle)
+    elif bundle.low_evidence:
         return _fallback_explanation(bundle.anomaly_id, "low_evidence")
-
-    narration = model.complete(build_prompt(bundle))
+    else:
+        narration = model.complete(build_prompt(bundle))
 
     if narration.provider_failed:
         # Checked BEFORE no_clear_cause: a failed backend sets both (it has
@@ -364,7 +384,7 @@ class MemoryExplanationStore:
 
 def explain_cached(
     bundle: EvidenceBundle,
-    model: NarrationModel,
+    model: Narrator,
     store: ExplanationStore,
     params: NarrationParams,
 ) -> Explanation:
@@ -463,6 +483,7 @@ __all__ = [
     "FALLBACK_TEXT",
     "PROVIDER_UNAVAILABLE_TEXT",
     "SYSTEM_PROMPT",
+    "BundleNarrationModel",
     "ClaudeHaikuModel",
     "Explanation",
     "ExplanationConfidence",
@@ -472,6 +493,7 @@ __all__ = [
     "ModelNarration",
     "NarrationModel",
     "NarrationParams",
+    "Narrator",
     "build_prompt",
     "explain",
     "explain_cached",

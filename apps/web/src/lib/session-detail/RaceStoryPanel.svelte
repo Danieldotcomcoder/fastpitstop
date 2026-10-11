@@ -25,6 +25,7 @@
 		anomalyKindLabel,
 		buildStoryMoments,
 		explanationViewFromApi,
+		storyMomentRevealed,
 		type ExplanationView,
 		type StoryMoment
 	} from '$lib/why';
@@ -90,10 +91,13 @@
 
 	let revealed = $derived.by(() => {
 		reveal.update(visible.events);
-		return moments.filter((moment) => {
-			if (moment.lapNumber === null) return reveal.state.sessionFinished;
-			return moment.drivers.some((driver) => reveal.isLapRevealed(driver, moment.lapNumber!));
-		});
+		return moments.filter((moment) =>
+			storyMomentRevealed(
+				moment,
+				(driver, lap) => reveal.isLapRevealed(driver, lap),
+				reveal.state.sessionFinished
+			)
+		);
 	});
 	let pending = $derived(moments.length - revealed.length);
 

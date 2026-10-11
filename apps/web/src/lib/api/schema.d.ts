@@ -342,8 +342,9 @@ export interface paths {
         };
         /**
          * Get Session Story
-         * @description The race story: the most salient moments with their grounded
-         *     explanations, resolved in ONE pass over the session.
+         * @description The race story: the moments worth a card (`f1_why.select_story`) with
+         *     their grounded explanations, in race order, resolved in ONE pass over
+         *     the session.
          *
          *     The whole point of this route is that it detects once. Building the
          *     same list from `/anomalies` + one `/anomalies/{id}/explanation` per row

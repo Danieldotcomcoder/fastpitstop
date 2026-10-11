@@ -182,11 +182,13 @@ def build_events(
         if positions is not None:
             _emit_positions(positions, env, collector)
 
-    # Identities first (at session start), final classification last (at
-    # session end), so a fold of the stream ends on the results positions.
+    # Identities and the starting grid first (at session start), final
+    # classification last (at session end), so a fold of the stream ends on
+    # the results positions.
     results = tables.get("results")
     if results is not None:
         _emit_driver_list(results, start, env, collector)
+        _emit_grid(results, start, env, collector)
         _emit_final_positions(results, collector.latest(), env, collector)
 
     return collector.ordered()
@@ -434,6 +436,35 @@ def _emit_driver_list(
         )
     if identities:
         collector.add(start, DriverListUpdated(**env(start), drivers=identities))
+
+
+def _emit_grid(
+    results: pd.DataFrame, start: datetime | None, env: EnvFactory, collector: _Collector
+) -> None:
+    """The starting grid as `PositionChanged` at session start: what the live
+    feed reports before lights out, so `f1_why.starting_grid` reads a
+    backfilled race exactly as it reads a live one. Only sessions with a
+    grid (a race or sprint) carry `GridPosition`. A car that did not start
+    is left out; a pit-lane starter (grid 0) goes behind the grid."""
+    if start is None:
+        return
+    slots: list[tuple[int, str]] = []
+    pit_lane: list[str] = []
+    for rec in results.to_dict("records"):
+        number = driver_number(rec.get("DriverNumber"))
+        grid = opt_int(rec.get("GridPosition"))
+        status = (opt_str(rec.get("Status")) or "").lower()
+        if number is None or grid is None or "did not start" in status:
+            continue
+        if grid > 0:
+            slots.append((grid, number))
+        else:
+            pit_lane.append(number)
+    if not slots:
+        return
+    ordered = [number for _, number in sorted(slots)] + sorted(pit_lane, key=lambda n: (len(n), n))
+    for position, number in enumerate(ordered, start=1):
+        collector.add(start, PositionChanged(**env(start), driver=number, position=position))
 
 
 def _emit_final_positions(

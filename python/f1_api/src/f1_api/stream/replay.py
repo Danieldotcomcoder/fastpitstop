@@ -151,7 +151,7 @@ from f1_kernel import (
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptRecord, TranscriptStore
 from f1_replay import pacing_offset_s, sleep_until
-from f1_why import Anomaly, Explanation, ExplanationStore, NarrationModel
+from f1_why import Anomaly, Explanation, ExplanationStore, Narrator
 
 _log = logging.getLogger(__name__)
 
@@ -433,6 +433,12 @@ class LapSnapshotFeed:
         self._highest_flushed_lap = lap_number
         return report
 
+    @property
+    def events(self) -> tuple[DomainEvent, ...]:
+        """Everything flushed into the kernel so far (car positions aside) —
+        what `f1_why.starting_grid` reads the grid from."""
+        return self._live.events
+
 
 class _SnapshotWorker:
     """Runs a `LapSnapshotFeed` on its own thread, so a replay keeps its
@@ -580,7 +586,7 @@ def replay_envelopes(
     kinds: Collection[str] | None = DEFAULT_STREAM_KINDS,
     anchor_to_first_lap: bool = True,
     radio_store: TranscriptStore | None = None,
-    narration_model: NarrationModel | None = None,
+    narration_model: Narrator | None = None,
     explanation_store: ExplanationStore | None = None,
     explanation_schedule: ExplanationSchedule | None = None,
     max_explanations: int | None = None,

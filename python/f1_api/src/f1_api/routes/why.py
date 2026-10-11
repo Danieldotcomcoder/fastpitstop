@@ -33,6 +33,7 @@ from f1_api.why import (
     most_salient,
     parse_anomaly_id,
     precompute_session_explanations,
+    story_moments,
 )
 from f1_domain import SessionKey
 
@@ -109,8 +110,9 @@ def get_session_story(
         ),
     ] = None,
 ) -> list[StoryMomentOut]:
-    """The race story: the most salient moments with their grounded
-    explanations, resolved in ONE pass over the session.
+    """The race story: the moments worth a card (`f1_why.select_story`) with
+    their grounded explanations, in race order, resolved in ONE pass over
+    the session.
 
     The whole point of this route is that it detects once. Building the
     same list from `/anomalies` + one `/anomalies/{id}/explanation` per row
@@ -131,9 +133,8 @@ def get_session_story(
             event_name=resolved.entry.event_name,
             max_explanations=budget,
         )
-        # `precompute_session_explanations` orders by anomaly_time (the WS
-        # needs that for pacing); a story reads most-important-first.
-        scheduled.sort(key=lambda item: item.anomaly.salience, reverse=True)
+        # Race order, as `precompute_session_explanations` returns it: the
+        # story follows the race (start, battles, neutralizations, finish).
         return [
             StoryMomentOut(
                 anomaly=anomaly_out(session_key, item.anomaly),
@@ -166,7 +167,12 @@ def get_anomaly_explanation(
             session_key,
             event_name=resolved.entry.event_name,
         )
-        anomaly = find_anomaly_by_why_id(anomalies, why_id)
+        # The story merges incidents (a sector loss into its lap's pace loss,
+        # a rival's lost lap into the overtake it caused) without changing
+        # ids, so look there first: the explanation then matches the card.
+        anomaly = find_anomaly_by_why_id(story_moments(anomalies, None), why_id)
+        if anomaly is None:
+            anomaly = find_anomaly_by_why_id(anomalies, why_id)
         if anomaly is None:
             raise HTTPException(status_code=404, detail="no anomaly with this id in the session")
         explanation, bundle = explain_session_anomaly(

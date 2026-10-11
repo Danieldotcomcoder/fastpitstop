@@ -41,7 +41,7 @@ from f1_kernel import EventSource
 from f1_kernel.circuit import circuit_for_session
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptStore
-from f1_why import ExplanationStore, NarrationModel
+from f1_why import ExplanationStore, Narrator
 
 _log = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ def _build_explanation_schedule(
     session_key: SessionKey,
     *,
     event_name: str | None,
-    narration_model: NarrationModel,
+    narration_model: Narrator,
     explanation_store: ExplanationStore,
     radio_index: SearchIndex | None,
 ) -> None:
@@ -255,7 +255,7 @@ async def _stream_replay(
     kinds: Collection[str] | None,
     anchor_to_first_lap: bool,
     radio_store: TranscriptStore | None,
-    narration_model: NarrationModel,
+    narration_model: Narrator,
     explanation_store: ExplanationStore,
     radio_index: SearchIndex | None,
     circuit_name: str | None = None,

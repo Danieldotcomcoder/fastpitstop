@@ -97,3 +97,35 @@ def test_end_to_end_reads_partitioned_parquet(tmp_path: Path) -> None:
 def test_missing_session_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         list(events_from_parquet(tmp_path, KEY))
+
+
+def test_the_grid_is_emitted_at_the_session_start(synthetic_tables: SessionTables) -> None:
+    """What the live feed reports before lights out, so `f1_why.starting_grid`
+    reads a backfilled race like a live one. A car that did not start is left
+    out; a pit-lane starter (grid 0) goes behind the grid."""
+    import pandas as pd
+
+    from f1_domain import PositionChanged
+
+    results = pd.DataFrame(
+        [
+            {"DriverNumber": "1", "GridPosition": 2.0, "Status": "Finished"},
+            {"DriverNumber": "44", "GridPosition": 1.0, "Status": "Finished"},
+            {"DriverNumber": "23", "GridPosition": 3.0, "Status": "Did not start"},
+            {"DriverNumber": "18", "GridPosition": 0.0, "Status": "Finished"},
+        ]
+    )
+    tables = SessionTables(
+        session_key=synthetic_tables.session_key,
+        directory=synthetic_tables.directory,
+        tables={"results": results},
+        session_start_utc=synthetic_tables.session_start_utc,
+    )
+
+    grid = [
+        (event.driver, event.position)
+        for event in _events(tables)
+        if isinstance(event, PositionChanged) and event.ts_utc == tables.session_start_utc
+    ]
+
+    assert grid == [("44", 1), ("1", 2), ("18", 3)]

@@ -76,8 +76,10 @@ describe('explanationViewFromApi', () => {
 
 describe('labels', () => {
 	it('maps known anomaly and evidence kinds', () => {
-		expect(anomalyKindLabel('position_change')).toBe('Position change');
+		expect(anomalyKindLabel('position_change')).toBe('Overtake');
+		expect(anomalyKindLabel('neutralization')).toBe('Track neutralized');
 		expect(evidenceKindLabel('radio_clip')).toBe('Team radio');
+		expect(evidenceKindLabel('gap_trend')).toBe('Gap trend');
 	});
 
 	it('title-cases unknown kinds rather than hiding them', () => {

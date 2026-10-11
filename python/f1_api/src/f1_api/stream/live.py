@@ -52,13 +52,25 @@ from f1_api.stream.replay import (
     kernel_snapshot_envelope,
     live_position_frames,
 )
-from f1_api.why import cited_evidence_refs, explain_session_anomaly, most_salient
+from f1_api.why import cited_evidence_refs, explain_session_anomaly, worth_showing
 from f1_domain import DomainEvent, SessionKey
 from f1_kernel import EventSource, KernelReport, PositionFrame
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptStore
-from f1_why import AnomalyParams, ExplanationStore, NarrationModel, detect_anomalies
-from f1_why import anomaly_id as why_anomaly_id
+from f1_why import (
+    AnomalyParams,
+    ExplanationStore,
+    Narrator,
+    StoryParams,
+    detect_anomalies,
+    select_story,
+    starting_grid,
+    story_key,
+)
+
+LIVE_STORY_PARAMS = StoryParams(max_moments=10_000)
+"""No salience trim live: which moments are the least salient is only known
+once the race is over. `Settings.max_explanations` caps the cards instead."""
 
 _log = logging.getLogger(__name__)
 
@@ -103,7 +115,7 @@ class _Published:
     event_time: datetime
 
 
-LiveDeps = tuple[TranscriptStore | None, NarrationModel, ExplanationStore, SearchIndex | None]
+LiveDeps = tuple[TranscriptStore | None, Narrator, ExplanationStore, SearchIndex | None]
 """What a hub needs beyond the event source: the radio store (to enrich
 radio clips), the narration model, the explanation cache, the radio index."""
 
@@ -428,7 +440,7 @@ class _LiveAnalysis:
         session_key: SessionKey,
         *,
         event_name: str | None,
-        narration_model: NarrationModel,
+        narration_model: Narrator,
         explanation_store: ExplanationStore,
         radio_index: SearchIndex | None,
     ) -> None:
@@ -439,7 +451,8 @@ class _LiveAnalysis:
         self._store = explanation_store
         self._radio_index = radio_index
         self._feed = LapSnapshotFeed(session_key, event_name=event_name)
-        self._emitted: set[str] = set()
+        self._considered: set[str] = set()
+        self._shown = 0
         self._closed = threading.Event()
         self._inbox: queue.SimpleQueue[DomainEvent | None] = queue.SimpleQueue()
         self._ready: deque[StreamEnvelope] = deque()
@@ -474,44 +487,50 @@ class _LiveAnalysis:
                 )
 
     def _explain(self, report: KernelReport) -> None:
-        # Budgeted exactly like the replay path (`Settings.max_explanations`):
-        # a live race detects anomalies at the same rate a replayed one does.
-        # Once it is spent, timing and snapshots keep streaming.
-        budget = self._settings.max_explanations - len(self._emitted)
-        if budget <= 0:
+        # The replay's story rules, applied to the race so far: each moment
+        # is judged on its own, so the live story and the replay's are the
+        # same cards. One card per real event (`story_key`): a live race
+        # re-detects every lap, and a tyre cliff found on lap 30 is found
+        # again on lap 31, anchored to lap 31. A moment the narrator has
+        # nothing to say about is considered once and skipped, never shown
+        # as "no clear cause". `Settings.max_explanations` caps the cards.
+        if self._shown >= self._settings.max_explanations:
             return
+        grid = starting_grid(self._feed.events, report.frames.laps)
+        anomalies = detect_anomalies(report.frames, report, AnomalyParams(), grid=grid)
         fresh = [
-            anomaly
-            for anomaly in most_salient(
-                detect_anomalies(report.frames, report, AnomalyParams()), budget
-            )
-            if why_anomaly_id(anomaly) not in self._emitted
+            moment
+            for moment in select_story(anomalies, LIVE_STORY_PARAMS)
+            if story_key(moment) not in self._considered
         ]
         if not fresh:
             return
         with resolve_session(self._settings, self._session_key) as resolved:
             if resolved is None:
                 return
-            for anomaly in fresh:
-                if self._closed.is_set() or len(self._emitted) >= self._settings.max_explanations:
+            for moment in fresh:
+                if self._closed.is_set() or self._shown >= self._settings.max_explanations:
                     return
                 explanation, bundle = explain_session_anomaly(
                     resolved.source,
                     self._session_key,
-                    anomaly,
+                    moment,
                     self._model,
                     self._store,
                     report=report,
                     radio_index=self._radio_index,
                     event_name=self._event_name,
                 )
+                self._considered.add(story_key(moment))
+                if not worth_showing(explanation):
+                    continue
                 cited = cited_evidence_refs(self._session_key, bundle, explanation)
                 self._ready.append(
                     explanation_envelope(
-                        anomaly.anomaly_time, self._session_key, anomaly, explanation, cited
+                        moment.anomaly_time, self._session_key, moment, explanation, cited
                     )
                 )
-                self._emitted.add(why_anomaly_id(anomaly))
+                self._shown += 1
 
 
 __all__ = ["FOLLOW_OVERLAP", "LIVE_HUBS", "FollowSource", "LiveDeps", "LiveHub", "LiveHubs"]

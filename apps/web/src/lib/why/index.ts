@@ -1,5 +1,5 @@
 export { ExplanationLaneReducer } from './lane';
-export { buildStoryMoments } from './story';
+export { buildStoryMoments, storyMomentRevealed } from './story';
 export type { AnomalySummaryLike, StoryMoment } from './story';
 export {
 	FALLBACK_TEXT,

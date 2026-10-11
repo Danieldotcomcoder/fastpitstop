@@ -132,26 +132,112 @@ class AnomalyParams(BaseModel):
             "more worth explaining than a routine confirmation."
         ),
     )
-
-    # -- degradation cliff --------------------------------------------------
-    deg_cliff_min_quadratic_term_s_per_lap2: float = Field(
-        default=0.01,
+    undercut_order_change_seconds: float = Field(
+        default=6.0,
         gt=0,
         description=(
-            "Minimum positive `DegradationFit.quadratic_term_s_per_lap2` "
-            "before a stint counts as a cliff at all. `fit_degradation` "
-            "only attempts the quadratic term with "
-            "`KernelParams.degradation_quadratic_min_laps`+ laps, so this "
-            "floor is the only extra gate needed here."
+            "Seconds-of-significance of a pit-stop duel that CHANGED the "
+            "order (the attacker came out ahead), before the confidence, "
+            "upset and front-of-field weights. It replaces the realized "
+            "margin as the base: ranking by margin put duels the attacker "
+            "lost by over a minute (a slow stop, cars never close) above "
+            "real undercuts."
         ),
     )
-    deg_cliff_min_extra_time_s: float = Field(
-        default=1.5,
-        ge=0,
+    undercut_order_held_seconds: float = Field(
+        default=1.0,
+        gt=0,
         description=(
-            "Minimum implied extra time, in seconds, the quadratic term "
-            "must cost at the last lap the fit used (versus the pure linear "
-            "extrapolation) before it is worth surfacing."
+            "Ditto for a duel that resolved with the order unchanged — a "
+            "non-event unless the call was a confident one that failed."
+        ),
+    )
+
+    # -- race start / neutralization / retirement / finish -------------------
+    race_start_seconds: float = Field(
+        default=6.0,
+        gt=0,
+        description="Seconds-of-significance of the lap-1 summary.",
+    )
+    neutralization_seconds: dict[str, float] = Field(
+        default_factory=lambda: {"vsc": 4.0, "sc": 8.0, "red": 12.0},
+        description=(
+            "Seconds-of-significance per neutralization type: a red flag "
+            "reshapes a race more than a safety car, a safety car more than "
+            "a virtual one."
+        ),
+    )
+    retirement_seconds: float = Field(
+        default=4.0,
+        gt=0,
+        description=(
+            "Seconds-of-significance of a retirement, before the "
+            "front-of-field weight for the position the car was running in."
+        ),
+    )
+    race_finish_seconds: float = Field(
+        default=6.0,
+        gt=0,
+        description="Seconds-of-significance of the finish.",
+    )
+    start_min_places: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "Fewest places gained or lost on lap 1 for a driver to be named in the start summary."
+        ),
+    )
+    multi_place_loss_min_places: int = Field(
+        default=3,
+        ge=2,
+        description=(
+            "When one car loses at least this many places on track in a "
+            "single lap (a spin, a mistake, a failure), it is reported once "
+            "from the loser's side instead of once per car that passed it."
+        ),
+    )
+
+    # -- degradation cliff --------------------------------------------------
+    deg_cliff_min_laps: int = Field(
+        default=8,
+        ge=4,
+        description=(
+            "Fewest clean laps a stint needs before its tail can be compared "
+            "with its own earlier trend."
+        ),
+    )
+    deg_cliff_tail_laps: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "How many of the stint's most recent clean laps form the tail "
+            "that is compared with the line through the laps before it."
+        ),
+    )
+    deg_cliff_reference_laps: int = Field(
+        default=5,
+        ge=2,
+        description="How many clean laps just before the tail it is compared with.",
+    )
+    deg_cliff_min_extra_time_s: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "How much slower, on average and fuel-corrected, the tail must "
+            "MEASURABLY run than the laps just before it, in seconds a lap. "
+            "Measured, not modelled: it used to be the fit's quadratic term "
+            "times tyre age squared, which claimed 7.4s a lap for a 2024 "
+            "Miami stint whose laps never fell away, and then a line "
+            "extrapolated from the earlier laps, which on a stint that had "
+            "been getting quicker predicted laps no car could do."
+        ),
+    )
+    deg_cliff_min_earlier_rate_s_per_lap: float = Field(
+        default=-0.05,
+        description=(
+            "A stint whose earlier laps were getting quicker than this (s/lap, "
+            "fuel-corrected) is following the track, not its tyres, and is "
+            "never a cliff."
         ),
     )
 

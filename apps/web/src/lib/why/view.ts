@@ -148,17 +148,22 @@ export function explanationViewFromApi(explanation: ExplanationOutLike): Explana
 }
 
 const KIND_LABELS: Record<string, string> = {
-	pace_loss: 'Pace loss',
-	off_track: 'Off track',
-	position_change: 'Position change',
-	pit_anomaly: 'Pit anomaly',
-	deg_cliff: 'Degradation cliff',
-	undercut_resolved: 'Undercut resolved'
+	race_start: 'Start',
+	position_change: 'Overtake',
+	undercut_resolved: 'Pit-stop battle',
+	neutralization: 'Track neutralized',
+	retirement: 'Retirement',
+	pace_loss: 'Lost time',
+	off_track: 'Lost time',
+	pit_anomaly: 'Pit stop',
+	deg_cliff: 'Tyres fading',
+	race_finish: 'Finish'
 };
 
 const EVIDENCE_KIND_LABELS: Record<string, string> = {
-	anomaly_fact: 'Anomaly facts',
+	anomaly_fact: 'Timing data',
 	lap_context: 'Lap context',
+	gap_trend: 'Gap trend',
 	degradation_fit: 'Degradation fit',
 	race_control: 'Race control',
 	radio_clip: 'Team radio'

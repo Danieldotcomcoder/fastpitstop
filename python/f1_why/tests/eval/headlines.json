@@ -1,0 +1,57 @@
+{
+  "2024-1": [
+    {"kind": "race_start", "lap": 1, "drivers": ["1"], "note": "Verstappen kept the lead from pole"},
+    {"kind": "race_finish", "lap": 57, "drivers": ["1", "11", "55"], "note": "Verstappen won from Perez and Sainz"}
+  ],
+  "2024-3": [
+    {"kind": "position_change", "lap": 2, "drivers": ["55", "1"], "note": "Sainz passed Verstappen for the lead"},
+    {"kind": "retirement", "lap": 4, "drivers": ["1"], "note": "Verstappen retired with a brake failure"},
+    {"kind": "neutralization", "lap": 17, "drivers": ["44"], "note": "VSC after Hamilton's engine failure"},
+    {"kind": "retirement", "lap": 58, "drivers": ["63"], "note": "Russell crashed on the last lap"},
+    {"kind": "race_finish", "lap": 58, "drivers": ["55", "16", "4"], "note": "Sainz won from Leclerc and Norris"}
+  ],
+  "2024-6": [
+    {"kind": "neutralization", "lap": 28, "drivers": ["4", "2"], "note": "Safety car after the Sargeant/Magnussen crash; Norris pitted and kept the lead"},
+    {"kind": "position_change", "lap": 39, "drivers": ["55", "81"], "note": "Sainz passed Piastri"},
+    {"kind": "race_finish", "lap": 57, "drivers": ["4", "1", "16"], "note": "Norris's first win, from P5 on the grid"}
+  ],
+  "2024-8": [
+    {"kind": "neutralization", "lap": 1, "drivers": ["11", "20", "27"], "note": "Red flag on lap 1 for the Perez/Magnussen/Hulkenberg crash"},
+    {"kind": "race_finish", "lap": 78, "drivers": ["16", "81", "55"], "note": "Leclerc won his home race"}
+  ],
+  "2024-9": [
+    {"kind": "race_start", "lap": 1, "drivers": ["63"], "note": "Russell kept the lead from pole"},
+    {"kind": "neutralization", "lap": 25, "drivers": ["2"], "note": "Safety car after Sargeant crashed"},
+    {"kind": "neutralization", "lap": 54, "drivers": ["55"], "note": "Safety car after Sainz spun into Albon"},
+    {"kind": "race_finish", "lap": 70, "drivers": ["1", "4", "63"], "note": "Verstappen won from Norris and Russell"}
+  ],
+  "2024-11": [
+    {"kind": "race_start", "lap": 1, "drivers": ["1"], "note": "Verstappen kept the lead from pole"},
+    {"kind": "retirement", "lap": 65, "drivers": ["4"], "note": "Norris retired after colliding with Verstappen"},
+    {"kind": "race_finish", "lap": 71, "drivers": ["63", "81", "55"], "note": "Russell won from Piastri and Sainz"}
+  ],
+  "2024-13": [
+    {"kind": "race_start", "lap": 1, "drivers": ["81", "4"], "note": "Piastri took the lead from pole-sitter Norris"},
+    {"kind": "position_change", "lap": 68, "drivers": ["81", "4"], "note": "Norris let Piastri back into the lead on team orders"},
+    {"kind": "race_finish", "lap": 70, "drivers": ["81", "4", "44"], "note": "Piastri's first win"}
+  ],
+  "2024-14": [
+    {"kind": "race_start", "lap": 1, "drivers": ["16"], "note": "Leclerc kept the lead from pole"},
+    {"kind": "position_change", "lap": 2, "drivers": ["44", "16"], "note": "Hamilton passed Leclerc for the lead"},
+    {"kind": "race_finish", "lap": 44, "drivers": ["63", "44", "81"], "note": "Russell crossed the line first on a one-stop (later disqualified)"}
+  ],
+  "2024-21": [
+    {"kind": "race_start", "lap": 1, "drivers": ["63", "4"], "note": "Russell took the lead from pole-sitter Norris"},
+    {"kind": "neutralization", "lap": 31, "drivers": ["43"], "note": "Red flag after Colapinto crashed"},
+    {"kind": "neutralization", "lap": 39, "drivers": ["55"], "note": "Safety car after Sainz crashed"},
+    {"kind": "position_change", "lap": 43, "drivers": ["1", "31"], "note": "Verstappen passed Ocon for the lead at the restart"},
+    {"kind": "race_finish", "lap": 69, "drivers": ["1", "31", "10"], "note": "Verstappen won from P17 on the grid"}
+  ],
+  "2025-9": [
+    {"kind": "race_start", "lap": 1, "drivers": ["81"], "note": "Piastri kept the lead from pole"},
+    {"kind": "neutralization", "lap": 55, "drivers": ["12"], "note": "Safety car after Antonelli stopped"},
+    {"kind": "position_change", "lap": 61, "drivers": ["16", "1"], "note": "Leclerc passed Verstappen at the restart"},
+    {"kind": "position_change", "lap": 64, "drivers": ["63", "1"], "note": "Russell passed Verstappen after contact"},
+    {"kind": "race_finish", "lap": 66, "drivers": ["81", "4", "16"], "note": "Piastri won from Norris and Leclerc"}
+  ]
+}

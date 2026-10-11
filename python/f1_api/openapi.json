@@ -3343,7 +3343,7 @@
     },
     "/sessions/{key}/story": {
       "get": {
-        "description": "The race story: the most salient moments with their grounded\nexplanations, resolved in ONE pass over the session.\n\nThe whole point of this route is that it detects once. Building the\nsame list from `/anomalies` + one `/anomalies/{id}/explanation` per row\nre-ran `analyze_session` and `detect_anomalies` for every single row \u2014\nseconds of duplicated work each, hundreds of times over. Detection is a\nper-session computation, so this is a per-session read; the per-anomaly\nroute stays for a client that wants exactly one moment's citations.",
+        "description": "The race story: the moments worth a card (`f1_why.select_story`) with\ntheir grounded explanations, in race order, resolved in ONE pass over\nthe session.\n\nThe whole point of this route is that it detects once. Building the\nsame list from `/anomalies` + one `/anomalies/{id}/explanation` per row\nre-ran `analyze_session` and `detect_anomalies` for every single row \u2014\nseconds of duplicated work each, hundreds of times over. Detection is a\nper-session computation, so this is a per-session read; the per-anomaly\nroute stays for a client that wants exactly one moment's citations.",
         "operationId": "get_session_story_sessions__key__story_get",
         "parameters": [
           {

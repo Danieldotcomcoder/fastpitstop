@@ -665,15 +665,64 @@ Anthropic key. Low-evidence anomalies still short-circuit inside
 
 `apps/web/e2e/why.spec.ts` asserts:
 
-- (a) a known anomaly gets a grounded, cited explanation (fixture
-  race-control-backed `position_change`);
+- (a) the fixture race's moments get grounded explanations in the exact
+  words the template narrator writes (its safety car and its finish), with
+  expandable cited evidence;
 - (b) explanations appear at the right synced moment (`speed=0` + delay
   boundary, same sharp before/after as Phase 3/4);
 - (c) no explanation leaks ahead of the clock (waiting state before the
   delay elapses);
-- (d) an ungrounded/weak case shows the safe fallback;
-- the race story view ranks moments and expands cited evidence;
+- (d) a moment with no supported cause is never a card (Story 2.0): no
+  guess, and no "no clear cause" filler. `GET /anomalies/{id}/explanation`
+  still returns the canonical fallback for such a moment;
+- the race story view tells the race in order and expands cited evidence;
 - usable at a 390px mobile viewport.
+
+Since Story 2.0 the suite runs the production template narrator, not
+`F1_API_WHY_FIXTURE`'s `CitingNarrationModel` (still available for tests
+that need a scripted model).
+
+## Story 2.0 (2026-10-11)
+
+The story read as redundant and inaccurate. Measured against the raw FastF1
+tables on ten races (`python/f1_why/tools/story_eval.py`), only 39% of its
+cards were true: 29 "overtakes" were the pit lane reshuffling the order, 24
+pit-stop "duels" changed nothing, tyre "cliffs" were a curvature term
+squared (7.4s a lap claimed for a stint that never fell away), and only 2
+of 35 headline moments (starts, safety cars, retirements, finishes) were in
+it at all. What changed:
+
+- **Detection** (`f1_why.detect`). An overtake counts only cars passed ON
+  TRACK (not pitting, not retiring, lap not neutralized). Pit-stop duels
+  rank by whether the order changed. Tyre cliffs are measured: the last
+  three clean laps against the five before them, slicks only, never on a
+  stint that was getting quicker. New kinds: `RACE_START` (needs the grid,
+  `f1_why.starting_grid`, read from the position stream; the historical
+  adapter now emits the grid at session start), `NEUTRALIZATION` (safety
+  car / VSC / red flag, reported when it ends, with who pitted and which
+  cars' retirements it was called for), `RETIREMENT`, `RACE_FINISH`. Every
+  moment carries `reveal_driver`/`reveal_lap`, the lap whose completion
+  made it knowable, which the race story panel now gates on (gating on
+  `lap_number` showed a safety car's outcome five laps early).
+- **The story** (`f1_why.story.select_story`). One card per incident
+  (merges), one card per real event (`story_key`), and each kind's own rule
+  (`StoryParams`), judged on the moment alone so live and replay show the
+  same cards. A moment the narrator cannot explain is left out
+  (`f1_api.why.worth_showing`).
+- **Narration** (`f1_why.templates.TemplateNarrationModel`, the default).
+  Sentences built from the evidence bundle's own numbers, every item used
+  cited, through the same grounding check. No model call, no quota. Set
+  `F1_WHY_NARRATOR=llm` for the OpenRouter / Anthropic chain.
+  `NARRATION_VERSION` is `2026-10-11-story2`.
+- **Evidence.** Race control names cars in its text (`CARS 20 (MAG) AND 2
+  (SAR)`): those count as named; noise (DRS, blue flags, track clear) is
+  dropped; incidents, penalties and stopped cars come first. Overtakes get
+  a gap trend.
+
+Result on the same ten races: 109 cards, every one borne out by the raw
+data, all 35 headline moments found, no number in any sentence that is not
+in its evidence. Re-run with `uv run python python/f1_why/tools/story_eval.py`
+(needs the backfill); it rewrites `python/f1_why/reports/story_eval.md`.
 
 `just verify-phase5` is wired into `just check`.
 

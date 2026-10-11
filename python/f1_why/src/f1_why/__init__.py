@@ -9,11 +9,15 @@ Three packages, in the order data flows through them:
   relevant AT OR BEFORE its own `anomaly_time` (kernel state, radio clips,
   race control) into one token-budgeted, self-contained `EvidenceBundle`.
   Still no LLM.
-- `f1_why.narration` (5.3) — the ONLY place an LLM is used: turns an
-  `EvidenceBundle` into one grounded, cited sentence via a swappable
-  `NarrationModel` (a real Claude Haiku backend, or a deterministic mock
-  every test in this package uses), behind a structural grounding
-  validator that never lets an ungrounded claim through.
+- `f1_why.story` — which detected moments a viewer sees: one card per
+  incident, chosen by rules that work the same live and in a replay.
+- `f1_why.narration` (5.3) — turns an `EvidenceBundle` into one grounded,
+  cited sentence behind a structural grounding validator that never lets
+  an ungrounded claim through. The default narrator is
+  `f1_why.templates.TemplateNarrationModel`, which writes from the bundle's
+  own numbers with no model call; a language model (Claude Haiku or the
+  OpenRouter chain) is the optional alternative and the ONLY place one is
+  used.
 
 See each module's own docstring for the full reasoning, and CLAUDE.md's
 Phase 5 invariants for why detection/evidence/narration are kept strictly
@@ -48,7 +52,7 @@ Typical use:
 """
 
 from f1_why.anomaly import ANOMALY_SCHEMA, Anomaly, AnomalyKind, DetailValue, anomalies_to_frame
-from f1_why.detect import detect_anomalies
+from f1_why.detect import detect_anomalies, starting_grid
 from f1_why.evidence import (
     EvidenceBundle,
     EvidenceItem,
@@ -63,6 +67,7 @@ from f1_why.narration import (
     DEFAULT_MODEL,
     FALLBACK_TEXT,
     SYSTEM_PROMPT,
+    BundleNarrationModel,
     ClaudeHaikuModel,
     Explanation,
     ExplanationConfidence,
@@ -72,6 +77,7 @@ from f1_why.narration import (
     ModelNarration,
     NarrationModel,
     NarrationParams,
+    Narrator,
     build_prompt,
     explain,
     explain_cached,
@@ -84,6 +90,8 @@ from f1_why.openrouter import (
 )
 from f1_why.params import AnomalyParams
 from f1_why.store import NARRATION_VERSION, PostgresExplanationStore
+from f1_why.story import StoryParams, is_story_moment, merge_incidents, select_story, story_key
+from f1_why.templates import TemplateNarrationModel
 
 __all__ = [
     "ANOMALY_SCHEMA",
@@ -96,6 +104,7 @@ __all__ = [
     "Anomaly",
     "AnomalyKind",
     "AnomalyParams",
+    "BundleNarrationModel",
     "ClaudeHaikuModel",
     "DetailValue",
     "EvidenceBundle",
@@ -111,8 +120,11 @@ __all__ = [
     "ModelNarration",
     "NarrationModel",
     "NarrationParams",
+    "Narrator",
     "OpenRouterModel",
     "PostgresExplanationStore",
+    "StoryParams",
+    "TemplateNarrationModel",
     "anomalies_to_frame",
     "anomaly_id",
     "assemble_evidence",
@@ -120,8 +132,13 @@ __all__ = [
     "detect_anomalies",
     "explain",
     "explain_cached",
+    "is_story_moment",
+    "merge_incidents",
     "openrouter_model_name",
     "parse_narration_json",
+    "select_story",
+    "starting_grid",
+    "story_key",
 ]
 
 __version__ = "0.0.1"

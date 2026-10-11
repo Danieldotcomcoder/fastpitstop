@@ -23,7 +23,10 @@ DEFAULT_CORS_ORIGINS: tuple[str, ...] = ("*",)
 RADIO_FIXTURE_ENV_VAR = "F1_API_RADIO_FIXTURE"
 WHY_FIXTURE_ENV_VAR = "F1_API_WHY_FIXTURE"
 MAX_EXPLANATIONS_ENV_VAR = "F1_WHY_MAX_EXPLANATIONS"
-DEFAULT_MAX_EXPLANATIONS = 12
+DEFAULT_MAX_EXPLANATIONS = 20
+"""Ceiling on story cards per session. Template narration costs nothing, so
+this bounds a story's length, not a model budget; `f1_why.StoryParams`'s
+rules keep most races well under it."""
 FEEDBACK_ENABLED_ENV_VAR = "F1_FEEDBACK_ENABLED"
 DEFAULT_LOCAL_FEEDBACK_SALT = "dev-feedback-salt"
 """Never valid in production — `f1_api.env_check.RequiredProdEnv` rejects a

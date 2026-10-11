@@ -36,14 +36,16 @@ _log = logging.getLogger(__name__)
 CONNECT_TIMEOUT_S = 5
 """A dead database must cost a narration thread seconds, not a TCP timeout."""
 
-NARRATION_VERSION = "2026-09-23"
+NARRATION_VERSION = "2026-10-11-story2"
 """Names the prompt and evidence rules an explanation was written under.
 
 Bump it whenever either changes in a way that should produce different
 sentences: stored explanations are keyed by it, so a bump re-narrates every
 moment on its next request instead of serving text written under old rules.
 2026-09-23: reasoning off, id=/roster prompt, relevant race control only,
-measured lap context counts as support."""
+measured lap context counts as support.
+2026-10-11-story2: template narration by default, overtakes counted on track
+only, measured tyre cliffs, start/neutralization/retirement/finish moments."""
 
 
 def explanation_to_json(explanation: Explanation) -> dict[str, Any]:

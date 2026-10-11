@@ -1,20 +1,13 @@
-"""DB-free why-engine narration for Phase 5.5's `just verify-phase5`.
-
-Playwright boots a REAL `f1_api` process against the checked-in kernel
-fixture — the same "no data, no database, no network" discipline every
-other `verify-phaseN` harness already follows. Without a live
-`ANTHROPIC_API_KEY`, `get_narration_model` would otherwise resolve to a
-declining mock that always emits the canonical fallback, so an E2E suite
-could never assert a grounded, cited explanation.
+"""A scripted, DB-free narrator reachable by an external process.
 
 `F1_API_WHY_FIXTURE` (any non-empty value) makes `get_narration_model`
-resolve to `CitingNarrationModel` instead: a deterministic scripted stand-in
-that cites explanatory evidence ids (`race_control:` / `radio_clip:`) from
-the prompt it is given — the same behaviour `test_why.py`'s own
-`_CitingMock` already uses under `app.dependency_overrides`, just reachable
-by an external process through an env var. Low-evidence bundles still
-short-circuit inside `explain` before the model is called, so the harness
-also keeps a real fallback case to assert against.
+resolve to `CitingNarrationModel`: a deterministic stand-in for a language
+model that cites explanatory evidence ids (`race_control:` / `radio_clip:`)
+from the prompt it is given and declines otherwise. It was how
+`just verify-phase5` got grounded explanations without an API key; since
+Story 2.0 that suite runs the production `TemplateNarrationModel`, which
+needs no key at all, and this stays for tests that want a scripted model
+behind the prompt-based `NarrationModel` path.
 """
 
 from __future__ import annotations

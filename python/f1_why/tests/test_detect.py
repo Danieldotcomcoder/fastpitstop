@@ -118,7 +118,11 @@ def test_deg_cliff_detected_for_the_hero_s_stint(anomalies: list[Anomaly]) -> No
     anomaly = _one(anomalies, AnomalyKind.DEG_CLIFF)
     assert anomaly.drivers == (HERO,)
     assert anomaly.lap_number == TOTAL_LAPS  # the stint's last lap
-    assert anomaly.magnitude >= 5.0  # planted cliff implies ~11.5s; a generous floor
+    # MEASURED: the planted 0.02*n^2 curvature puts the last three laps ~2s a
+    # lap above the straight line through the stint's earlier clean laps.
+    # (The old quadratic-term formula claimed ~11.5s for the same stint.)
+    assert anomaly.magnitude >= 1.5
+    assert anomaly.summary["extra_time_s"] == pytest.approx(anomaly.magnitude)
     quadratic_term = anomaly.summary["quadratic_term_s_per_lap2"]
     assert isinstance(quadratic_term, int | float) and quadratic_term > 0
 
@@ -142,13 +146,30 @@ def test_anomalies_are_returned_sorted_by_salience_descending(anomalies: list[An
 
 
 def test_salience_ordering_is_sane(anomalies: list[Anomaly]) -> None:
-    """The ~42s decisive undercut resolution is the race-defining moment
-    here; the single-place late-race swap is the minor wobble. The former
-    must rank above the latter, and first overall."""
+    """A pit-stop duel ranks by whether it changed the order, not by its
+    margin. The fixture's overcut was called correctly and left the order as
+    it was, so despite its ~42s margin it ranks below the ~17s blown pit
+    stop. Being a fight for the lead, it still outranks the minor P3/P4
+    swap."""
     undercut = _one(anomalies, AnomalyKind.UNDERCUT_RESOLVED)
     position_change = _one(anomalies, AnomalyKind.POSITION_CHANGE)
-    assert undercut.salience > position_change.salience
-    assert undercut is anomalies[0]
+    pit_anomaly = _one(anomalies, AnomalyKind.PIT_ANOMALY)
+    assert undercut.summary["order_changed"] is False
+    assert pit_anomaly.salience > undercut.salience > position_change.salience
+    assert pit_anomaly is anomalies[0]
+
+
+def test_an_order_changing_duel_outranks_one_that_held(
+    race_frames: SessionFrames, race_report: KernelReport
+) -> None:
+    """Same duel, same margin: only the weight for an unchanged order moves
+    its salience, the margin never does."""
+    held = AnomalyParams()
+    quieter = held.with_overrides(undercut_order_held_seconds=0.1)
+    loud = _one(detect_anomalies(race_frames, race_report, held), AnomalyKind.UNDERCUT_RESOLVED)
+    quiet = _one(detect_anomalies(race_frames, race_report, quieter), AnomalyKind.UNDERCUT_RESOLVED)
+    assert loud.magnitude == quiet.magnitude
+    assert quiet.salience < loud.salience
 
 
 def test_salience_is_always_in_the_zero_one_range(anomalies: list[Anomaly]) -> None:

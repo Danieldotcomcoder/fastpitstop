@@ -56,14 +56,11 @@ export default defineConfig({
 			url: `${API_BASE_URL}/health`,
 			env: {
 				F1_API_HISTORICAL_ROOT: 'python/f1_kernel/tests/fixtures/historical',
-				F1_API_CORS_ORIGINS: '*',
-				// Phase 5.5 (`just verify-phase5`) reuses this same pair —
-				// the kernel fixture already emits anomalies with race-
-				// control evidence; `F1_API_WHY_FIXTURE` swaps in
-				// `CitingNarrationModel` so grounded explanations exist
-				// without a live Anthropic key. Harmless for verify-phase3
-				// (that suite never asserts on explanation prose).
-				F1_API_WHY_FIXTURE: '1'
+				F1_API_CORS_ORIGINS: '*'
+				// Phase 5.5 (`just verify-phase5`) reuses this same pair with
+				// the PRODUCTION narrator: `f1_why.TemplateNarrationModel`
+				// needs no key and no network, so the suite asserts the
+				// exact sentences a viewer reads.
 			},
 			reuseExistingServer: REUSE_EXISTING,
 			timeout: 60_000,

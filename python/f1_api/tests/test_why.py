@@ -173,10 +173,11 @@ def test_explanation_is_cached_and_not_regenerated(settings: Settings) -> None:
     store = MemoryExplanationStore()
     client = _client(settings, model=model, store=store)
     anomalies = client.get(f"/sessions/{SESSION_KEY}/anomalies").json()
-    # Pick a race-control-backed anomaly so the model is actually called.
-    target = next(
-        row for row in anomalies if row["kind"] == "position_change" and row["lap_number"] == 17
-    )
+    # The fixture's safety car: race control backs it, so the model is
+    # actually called. (Its lap-17 "position change" is gone: that was two
+    # cars dropping back on their in- and out-laps under the safety car,
+    # which the detector no longer reports as an overtake.)
+    target = next(row for row in anomalies if row["kind"] == "neutralization")
 
     first = client.get(f"/anomalies/{target['anomaly_id']}/explanation")
     calls_after_first = len(model.calls)
@@ -349,64 +350,80 @@ def test_an_uncited_model_answer_never_reaches_the_user(
 # -- story_moments ---------------------------------------------------------------
 
 
-def _moment(kind: AnomalyKind, salience: float, lap: int) -> Anomaly:
+def _duel(lap: int, *, gap_s: float, stop_offset: int, changed: bool) -> Anomaly:
+    return Anomaly(
+        kind=AnomalyKind.UNDERCUT_RESOLVED,
+        lap_number=lap,
+        anomaly_time=datetime(2025, 6, 1, 13, 0, tzinfo=UTC) + timedelta(minutes=lap),
+        drivers=("63", "12"),
+        magnitude=2.0,
+        salience=0.6,
+        summary={
+            "order_changed": changed,
+            "confidence": "medium",
+            "hit": True,
+            "gap_at_decision_s": gap_s,
+            "attacker_stop_lap": lap - 5,
+            "defender_stop_lap": lap - 5 + stop_offset,
+            "attacker_position": 4,
+            "defender_position": 3,
+        },
+        reasons=(),
+    )
+
+
+def _landmark(kind: AnomalyKind, lap: int) -> Anomaly:
     return Anomaly(
         kind=kind,
         lap_number=lap,
         anomaly_time=datetime(2025, 6, 1, 13, 0, tzinfo=UTC) + timedelta(minutes=lap),
         drivers=("1",),
         magnitude=1.0,
-        salience=salience,
-        summary={},
+        salience=0.1,
+        summary={"start_lap": lap},
         reasons=(),
     )
 
 
-def test_a_story_is_not_all_one_kind_of_moment() -> None:
-    """The 2025 Spanish GP regression: ten of twelve narrated moments were
-    undercut verdicts from the last four laps. Salience still orders the
-    story, but no kind may take more than a third of it."""
-    undercuts = [
-        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.99 - i / 100, 47 + i % 4) for i in range(10)
+def test_a_story_has_no_duels_between_cars_on_other_strategies() -> None:
+    """The 2025 Spanish GP regression: ten of its narrated moments were
+    "undercut" verdicts between cars 20 seconds or 20 laps apart. Only a real
+    duel (close on track, stops a few laps apart) that changed the order is
+    a card."""
+    real = _duel(30, gap_s=1.4, stop_offset=2, changed=True)
+    strategy_split = _duel(40, gap_s=1.2, stop_offset=20, changed=True)
+    far_apart = _duel(45, gap_s=25.0, stop_offset=1, changed=True)
+    held = _duel(50, gap_s=1.0, stop_offset=1, changed=False)
+
+    story = story_moments([held, far_apart, strategy_split, real], None)
+
+    assert story == [real]
+
+
+def test_the_cap_never_cuts_the_race_s_landmarks() -> None:
+    """Over the ceiling, the least salient non-landmarks go; the start,
+    neutralizations, retirements and the finish always stay."""
+    landmarks = [
+        _landmark(AnomalyKind.RACE_START, 1),
+        _landmark(AnomalyKind.NEUTRALIZATION, 20),
+        _landmark(AnomalyKind.RACE_FINISH, 57),
     ]
-    others = [
-        _moment(AnomalyKind.PACE_LOSS, 0.5, 20),
-        _moment(AnomalyKind.PIT_ANOMALY, 0.4, 31),
-        _moment(AnomalyKind.POSITION_CHANGE, 0.3, 15),
-    ]
-    ranked = sorted(undercuts + others, key=lambda a: -a.salience)
+    duels = [_duel(lap, gap_s=1.0, stop_offset=1, changed=True) for lap in (25, 35, 45)]
 
-    story = story_moments(ranked, 12)
+    story = story_moments([*duels, *landmarks], 4)
 
-    kinds = [a.kind for a in story]
-    assert kinds.count(AnomalyKind.UNDERCUT_RESOLVED) == 9, "4 by the cap, 5 back-filled"
-    assert {AnomalyKind.PACE_LOSS, AnomalyKind.PIT_ANOMALY, AnomalyKind.POSITION_CHANGE} <= set(
-        kinds
-    )
-    assert [a.salience for a in story] == sorted((a.salience for a in story), reverse=True)
+    assert all(landmark in story for landmark in landmarks)
+    assert len(story) == 4
 
 
-def test_the_cap_bites_before_back_filling() -> None:
-    """With a small story the variety actually shows: four places, a cap of
-    two, and the lower-salience kinds get in ahead of a third undercut."""
-    ranked = [
-        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.9, 50),
-        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.8, 49),
-        _moment(AnomalyKind.UNDERCUT_RESOLVED, 0.7, 48),
-        _moment(AnomalyKind.PACE_LOSS, 0.2, 20),
-        _moment(AnomalyKind.PIT_ANOMALY, 0.1, 31),
-    ]
-
-    story = story_moments(ranked, 4)
-
-    assert [a.kind for a in story] == [
-        AnomalyKind.UNDERCUT_RESOLVED,
-        AnomalyKind.UNDERCUT_RESOLVED,
-        AnomalyKind.PACE_LOSS,
-        AnomalyKind.PIT_ANOMALY,
+def test_story_moments_follow_the_race() -> None:
+    """Race order, not salience order: the story reads start to finish."""
+    moments = [
+        _landmark(AnomalyKind.RACE_FINISH, 57),
+        _duel(30, gap_s=1.0, stop_offset=1, changed=True),
+        _landmark(AnomalyKind.RACE_START, 1),
     ]
 
+    story = story_moments(moments, None)
 
-def test_story_moments_with_no_limit_is_everything() -> None:
-    ranked = [_moment(AnomalyKind.PACE_LOSS, 0.5, 3)]
-    assert story_moments(ranked, None) == ranked
+    assert [m.lap_number for m in story] == [1, 30, 57]

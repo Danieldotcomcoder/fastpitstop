@@ -91,6 +91,7 @@ also filtered for relevance (`_race_control_items`).
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -174,6 +175,11 @@ class EvidenceKind(StrEnum):
     """A transcribed team-radio clip for one of `Anomaly.drivers`, in the
     lookback window."""
 
+    GAP_TREND = "gap_trend"
+    """For an overtake: the gap between the two cars at the timing line over
+    the laps leading up to it, from the lap frame's own lap end times. How a
+    pass was set up (closing in over several laps, or out of nowhere)."""
+
 
 _SUPPORTING_KINDS: frozenset[EvidenceKind] = frozenset(
     {
@@ -181,6 +187,7 @@ _SUPPORTING_KINDS: frozenset[EvidenceKind] = frozenset(
         EvidenceKind.RACE_CONTROL,
         EvidenceKind.LAP_CONTEXT,
         EvidenceKind.DEGRADATION_FIT,
+        EvidenceKind.GAP_TREND,
     }
 )
 """Every kind except the anomaly's own fact: what counts towards
@@ -323,6 +330,23 @@ class EvidenceParams(BaseModel):
             " narrator is asked at all. Below this, `low_evidence=True`."
         ),
     )
+    gap_trend_laps: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "How many laps before an overtake its gap trend covers. Enough to "
+            "show a car closing in; STRUCTURAL."
+        ),
+    )
+    race_control_lead_s: float = Field(
+        default=60.0,
+        ge=0,
+        description=(
+            "For a moment that spans a period (a safety car, a retirement), "
+            "how far before the period began race control is searched: the "
+            "incident that caused it is usually reported just before or after."
+        ),
+    )
 
     def with_overrides(self, **overrides: object) -> EvidenceParams:
         """A copy with `overrides` applied, re-validated. Raises on an
@@ -388,8 +412,13 @@ def assemble_evidence(
 
     candidates: list[EvidenceItem] = [_anomaly_fact_item(anomaly)]
     candidates.extend(_lap_context_items(anomaly, sources.session_frames))
+    candidates.extend(_gap_trend_items(anomaly, sources.session_frames, params))
     candidates.extend(_degradation_items(anomaly, sources.session_frames, sources.kernel_report))
-    candidates.extend(_race_control_items(anomaly, sources.events, window_start, params))
+    candidates.extend(
+        _race_control_items(
+            anomaly, sources.events, _race_control_window(anomaly, window_start, params), params
+        )
+    )
     if sources.radio_index is not None:
         candidates.extend(_radio_items(anomaly, sources.radio_index, window_start, params))
     else:
@@ -408,7 +437,11 @@ def assemble_evidence(
     supporting = sum(1 for item in items if item.kind in _SUPPORTING_KINDS)
     low_evidence = supporting < params.low_evidence_min_supporting_items
 
-    mentioned = {*anomaly.drivers, *(driver for item in items for driver in item.drivers)}
+    mentioned = {
+        *anomaly.drivers,
+        *_summary_drivers(anomaly),
+        *(driver for item in items for driver in item.drivers),
+    }
     return EvidenceBundle(
         anomaly=anomaly,
         anomaly_id=anomaly_id(anomaly),
@@ -419,6 +452,42 @@ def assemble_evidence(
         notes=tuple(notes),
         roster=_roster(sources.events, anomaly.anomaly_time, mentioned),
     )
+
+
+_SUMMARY_DRIVER_KEYS: tuple[str, ...] = (
+    "rival",
+    "passed",
+    "passed_by",
+    "pitted",
+    "retired",
+    "leader",
+    "pole",
+    "leader_before",
+    "leader_after",
+    "best_gainer",
+    "winner",
+    "second",
+    "third",
+    "gainers",
+    "losers",
+)
+"""`Anomaly.summary` keys whose values name drivers: a single number, a
+comma-joined list, or `driver:places` pairs."""
+
+
+def _summary_drivers(anomaly: Anomaly) -> set[str]:
+    """Every driver an anomaly's summary names, so a narrator can name them
+    too (a pass of three cars names all three, not only the first)."""
+    named: set[str] = set()
+    for key in _SUMMARY_DRIVER_KEYS:
+        value = anomaly.summary.get(key)
+        if not isinstance(value, str):
+            continue
+        for part in value.split(","):
+            driver = part.partition(":")[0].strip()
+            if driver:
+                named.add(driver)
+    return named
 
 
 def _roster(
@@ -572,6 +641,65 @@ def _lap_context_items(anomaly: Anomaly, frames: SessionFrames) -> list[Evidence
     return items
 
 
+def _gap_trend_items(
+    anomaly: Anomaly, frames: SessionFrames, params: EvidenceParams
+) -> list[EvidenceItem]:
+    """An overtake's run-up: the passing car's gap to the car it passed at
+    the timing line, for each of the `gap_trend_laps` laps before the pass
+    (the difference of their own lap end times on the same lap). Only laps
+    both cars completed before the pass count, so nothing here is later
+    than the moment."""
+    if (
+        anomaly.kind is not AnomalyKind.POSITION_CHANGE
+        or anomaly.summary.get("gained") is not True
+        or len(anomaly.drivers) < 2
+        or anomaly.lap_number is None
+    ):
+        return []
+    passer, rival = anomaly.drivers[0], anomaly.drivers[1]
+    first = max(1, anomaly.lap_number - params.gap_trend_laps)
+    rows = frames.laps.filter(
+        pl.col("driver").is_in([passer, rival])
+        & (pl.col("lap_number") >= first)
+        & (pl.col("lap_number") < anomaly.lap_number)
+    ).select("driver", "lap_number", "lap_end_utc")
+    ends: dict[tuple[str, int], datetime] = {
+        (str(row["driver"]), int(row["lap_number"])): row["lap_end_utc"]
+        for row in rows.to_dicts()
+        if isinstance(row["lap_end_utc"], datetime)
+    }
+    gaps: list[tuple[int, float]] = []
+    for lap_number in range(first, anomaly.lap_number):
+        passer_end, rival_end = ends.get((passer, lap_number)), ends.get((rival, lap_number))
+        if passer_end is None or rival_end is None:
+            continue
+        gaps.append((lap_number, (passer_end - rival_end).total_seconds()))
+    if not gaps:
+        return []
+    last_end = max(ends[(passer, gaps[-1][0])], ends[(rival, gaps[-1][0])])
+    if last_end > anomaly.anomaly_time:
+        return []
+    described = ", ".join(f"{gap:.1f}s after lap {lap}" for lap, gap in gaps)
+    data: dict[str, DetailValue] = {"from_lap": gaps[0][0], "to_lap": gaps[-1][0]}
+    data.update({f"gap_lap_{lap}_s": round(gap, 3) for lap, gap in gaps})
+    data["first_gap_s"] = round(gaps[0][1], 3)
+    data["last_gap_s"] = round(gaps[-1][1], 3)
+    return [
+        EvidenceItem(
+            evidence_id=f"gap_trend:{passer}:{rival}",
+            kind=EvidenceKind.GAP_TREND,
+            event_time=last_end,
+            drivers=(passer, rival),
+            summary=f"driver {passer} ran behind driver {rival} by {described}.",
+            data=data,
+            confidence=1.0,
+            confidence_label="measured",
+            salience=0.55,
+            source="f1_kernel.lap_frame",
+        )
+    ]
+
+
 def _fit_for(
     fits: Sequence[DegradationFit], driver: str, stint_number: int
 ) -> DegradationFit | None:
@@ -643,6 +771,59 @@ def _degradation_items(
 # ---------------------------------------------------------------------------
 
 
+_TRACK_WIDE_KINDS: frozenset[AnomalyKind] = frozenset(
+    {AnomalyKind.NEUTRALIZATION, AnomalyKind.RACE_START}
+)
+"""Moments about the whole field: any car race control names may be part of
+the story (the incident that caused a safety car), not only `drivers`."""
+
+_NAMED_CAR = re.compile(r"\b(\d{1,2}) \([A-Z]{3}\)")
+"""How race control names a car in its text: `CAR 20 (MAG)`, `CARS 20 (MAG)
+AND 2 (SAR)`. Incident messages carry no driver field of their own."""
+
+_RACE_CONTROL_NOISE: tuple[str, ...] = (
+    "DRS ENABLED",
+    "DRS DISABLED",
+    "CLEAR IN TRACK SECTOR",
+    "TRACK CLEAR",
+    "AWNINGS",
+    "PUSH CARS",
+    "RISK OF RAIN",
+    "BLUE FLAG",
+)
+"""Message text that never explains a moment by itself. Blue flags are here
+too: a car being lapped is real, but it is the lap frame, not a flag, that
+says it lost time."""
+
+
+def _named_cars(message: RaceControlMessage) -> tuple[str, ...]:
+    if message.driver is not None:
+        return (message.driver,)
+    text = message.message or ""
+    named: list[str] = []
+    for number in _NAMED_CAR.findall(text):
+        if number not in named:
+            named.append(number)
+    return tuple(named)
+
+
+def _race_control_window(
+    anomaly: Anomaly, default_start: datetime, params: EvidenceParams
+) -> datetime:
+    """A moment that spans a period carries its start as `window_start_utc`
+    (a safety car from its first lap, a retirement from the car's last lap);
+    race control is searched from just before then, not only the last
+    `lookback_s` before the moment was reported."""
+    raw = anomaly.summary.get("window_start_utc")
+    if not isinstance(raw, str):
+        return default_start
+    try:
+        began = datetime.fromisoformat(raw)
+    except ValueError:
+        return default_start
+    return min(default_start, began - timedelta(seconds=params.race_control_lead_s))
+
+
 def _race_control_items(
     anomaly: Anomaly,
     events: Sequence[DomainEvent],
@@ -650,23 +831,45 @@ def _race_control_items(
     params: EvidenceParams,
 ) -> list[EvidenceItem]:
     # Relevant means it names one of this anomaly's drivers or names nobody
-    # (a safety car, a red flag, DRS, a sector yellow). A message about some
+    # (a safety car, a red flag, a sector yellow). A message about some
     # other car is not evidence about this moment: in the 2025 Spanish GP
     # the five most recent messages before a Russell/Antonelli undercut
     # verdict were blue flags for three uninvolved backmarkers, and they
-    # were the whole race-control contribution to its bundle.
+    # were the whole race-control contribution to its bundle. Cars named
+    # only in the text count as named. A track-wide moment keeps every car
+    # named and reads EARLIEST first: what caused a safety car is reported
+    # as it starts, while the last messages before the restart are about
+    # the restart.
     involved = set(anomaly.drivers)
-    messages = sorted(
-        (
-            event
-            for event in events
-            if isinstance(event, RaceControlMessage)
-            and window_start <= event.ts_utc <= anomaly.anomaly_time
-            and (event.driver is None or event.driver in involved)
-        ),
-        key=lambda event: event.ts_utc,
-        reverse=True,
-    )[: params.max_race_control_messages]
+    track_wide = anomaly.kind in _TRACK_WIDE_KINDS
+    relevant: list[RaceControlMessage] = []
+    for event in events:
+        if not isinstance(event, RaceControlMessage):
+            continue
+        if not window_start <= event.ts_utc <= anomaly.anomaly_time:
+            continue
+        text = (event.message or "").upper()
+        if any(noise in text for noise in _RACE_CONTROL_NOISE):
+            continue
+        if track_wide and "TRACK LIMITS" in text:
+            continue  # one car's deleted lap time, never what neutralized a race
+        named = _named_cars(event)
+        if track_wide or not named or involved.intersection(named):
+            relevant.append(event)
+
+    # Incidents, penalties and stopped cars first, whatever the moment: in
+    # the 2024 Austrian GP the note of the Norris/Verstappen collision was
+    # pushed out of Norris's retirement by five newer messages naming
+    # nobody (pit lane closed, a VSC deployed and ended). Within each group,
+    # a track-wide moment reads earliest first (what started it), any other
+    # most recent first (what led into it).
+    def substantive(event: RaceControlMessage) -> bool:
+        text = (event.message or "").upper()
+        return any(word in text for word in ("INCIDENT", "PENALTY", "STOPPED"))
+
+    by_time = sorted(relevant, key=lambda event: event.ts_utc, reverse=not track_wide)
+    messages = [e for e in by_time if substantive(e)] + [e for e in by_time if not substantive(e)]
+    messages = messages[: params.max_race_control_messages]
 
     items: list[EvidenceItem] = []
     for message in messages:
@@ -676,7 +879,7 @@ def _race_control_items(
             if part
         ]
         summary = " — ".join(parts) if parts else "race control message"
-        drivers = (message.driver,) if message.driver is not None else ()
+        drivers = _named_cars(message)
         items.append(
             EvidenceItem(
                 evidence_id=f"race_control:{message.ts_utc.isoformat()}:{message.source_seq}",

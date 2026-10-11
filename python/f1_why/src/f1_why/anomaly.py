@@ -36,10 +36,13 @@ class AnomalyKind(StrEnum):
     `magnitude` is seconds slower than the trend. `drivers` is one driver."""
 
     POSITION_CHANGE = "position_change"
-    """An on-track overtake, not a pit-cycle reshuffle. `magnitude` is
-    places changed (usually 1). `drivers` is `(gainer, loser)` when a clean
-    one-for-one swap was identified, else the single driver whose
-    classification moved with no isolable rival (a multi-car shuffle)."""
+    """An on-track overtake, not a pit-cycle reshuffle: a car only counts as
+    passed when it was itself on track that lap (not on an in- or out-lap,
+    not retiring) and the lap was not neutralized. `magnitude` is the number
+    of on-track places changed. `drivers` is `(gainer, rival)`, the rival
+    being the highest-placed car passed on track. When one car loses several
+    places on track in a single lap it is reported once, from the loser's
+    side: `drivers` is `(loser,)` and `summary["gained"]` is False."""
 
     PIT_ANOMALY = "pit_anomaly"
     """A green-flag pit stop's measured cost was well outside the
@@ -67,6 +70,29 @@ class AnomalyKind(StrEnum):
     view. `magnitude` is seconds slower than the sector trend. `drivers` is
     one driver."""
 
+    RACE_START = "race_start"
+    """What lap 1 did to the grid: who led, who gained and lost. Needs the
+    starting grid, so it is only detected when one is supplied. `magnitude`
+    is the largest number of places any driver gained or lost. `drivers` is
+    the driver leading after lap 1, then everyone else `summary` names."""
+
+    NEUTRALIZATION = "neutralization"
+    """A safety car, virtual safety car or red-flag period, reported once it
+    is over (so who pitted under it and what it did to the order are known).
+    `summary["status"]` is `sc`, `vsc` or `red`. `magnitude` is the number of
+    laps it lasted. `drivers` is everyone `summary` names: the leader before
+    and after, the biggest gainer and every driver who pitted under it."""
+
+    RETIREMENT = "retirement"
+    """A car stopped racing: it never completed a lap that the cars behind it
+    went on to complete. `magnitude` is the position it was running in.
+    `drivers` is that one driver."""
+
+    RACE_FINISH = "race_finish"
+    """The chequered flag: winner, margin and podium. `magnitude` is the
+    winning margin in seconds (0 when unknown). `drivers` is the podium in
+    finishing order."""
+
 
 @dataclass(frozen=True, slots=True)
 class Anomaly:
@@ -86,9 +112,9 @@ class Anomaly:
     """One or two racing numbers. See `AnomalyKind` for the meaning and
     order per kind."""
     magnitude: float
-    """How big this was, in the kind's own unit (seconds for every kind
-    except `POSITION_CHANGE`, which is places) — see `AnomalyKind`. Always
-    non-negative."""
+    """How big this was, in the kind's own unit (seconds, except places for
+    `POSITION_CHANGE`/`RACE_START`, laps for `NEUTRALIZATION` and a position
+    for `RETIREMENT`) — see `AnomalyKind`. Always non-negative."""
     salience: float
     """A cross-kind, bounded-in-`[0, 1)` ranking score so a consumer can
     sort/limit without knowing each kind's own unit — see
