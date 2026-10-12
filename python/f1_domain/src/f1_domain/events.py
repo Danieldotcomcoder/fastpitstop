@@ -222,6 +222,58 @@ class SessionStatusChanged(EventBase):
     """e.g. "Inactive", "Started", "Aborted", "Finished", "Finalised", "Ends" - verbatim."""
 
 
+class SessionClockUpdated(EventBase):
+    """The session clock started, stopped or was restated (the feed's
+    `ExtrapolatedClock`): the time left at `ts_utc`, and whether it is
+    counting down. A consumer extrapolates between updates; the feed sends
+    one only when the clock starts, stops or jumps, never every second.
+
+    In qualifying it is the current part's clock (Q1 18:00, Q2 15:00, ...),
+    stopped by a red flag; in a race, the time limit."""
+
+    kind: Literal["session_clock_updated"] = "session_clock_updated"
+    remaining: timedelta | None = None
+    running: bool | None = None
+    """True while the clock counts down from `remaining` (the feed's
+    `Extrapolating`)."""
+
+
+class QualifyingPartChanged(EventBase):
+    """Qualifying moved into a new part: Q1, Q2 or Q3 (SQ1 to SQ3 in sprint
+    qualifying). The feed announces the part a minute or so before its
+    clock starts (`SessionPart`)."""
+
+    kind: Literal["qualifying_part_changed"] = "qualifying_part_changed"
+    part: int | None = None
+    """1, 2 or 3."""
+    entries: list[int] | None = None
+    """How many cars take part in each part, e.g. [22, 16, 10]: the cut at
+    the end of part N is `entries[N]` (the feed's `NoEntries`)."""
+
+
+class QualifyingBestLap(EventBase):
+    """A driver's best lap in one part of qualifying changed: a quicker lap,
+    or the best deleted (track limits) and the next best standing again.
+    Per part, because each part ranks only its own laps."""
+
+    kind: Literal["qualifying_best_lap"] = "qualifying_best_lap"
+    driver: str | None = None
+    part: int | None = None
+    lap_time: timedelta | None = None
+    """None when no lap in this part stands any more."""
+    lap_number: int | None = None
+
+
+class QualifyingKnockout(EventBase):
+    """A driver was knocked out of qualifying at the end of `part` (the
+    feed's `KnockedOut`), or, rarely, reinstated (`knocked_out=False`)."""
+
+    kind: Literal["qualifying_knockout"] = "qualifying_knockout"
+    driver: str | None = None
+    part: int | None = None
+    knocked_out: bool = True
+
+
 class SessionInfoUpdated(EventBase):
     """The feed named the meeting and its venue.
 
@@ -276,6 +328,10 @@ DomainEvent = Annotated[
     | DriverListUpdated
     | SessionInfoUpdated
     | LapCounterUpdated
+    | SessionClockUpdated
+    | QualifyingPartChanged
+    | QualifyingBestLap
+    | QualifyingKnockout
     | UnknownEvent,
     Field(discriminator="kind"),
 ]

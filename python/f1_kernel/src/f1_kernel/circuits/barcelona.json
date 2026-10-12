@@ -12,6 +12,31 @@
   "schedule_locations": [
     "Barcelona"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.1051,
+      "good_fits": 13,
+      "sessions": [
+        "2024-10"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0864,
+      "good_fits": 37,
+      "sessions": [
+        "2024-10",
+        "2025-9"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1314,
+      "good_fits": 40,
+      "sessions": [
+        "2024-10",
+        "2025-9"
+      ]
+    }
+  },
   "lap_distance_m": 4609.8,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "calibrated",

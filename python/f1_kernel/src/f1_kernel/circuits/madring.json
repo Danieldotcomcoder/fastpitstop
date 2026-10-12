@@ -9,6 +9,7 @@
   "schedule_locations": [
     "Madrid"
   ],
+  "tyre_wear": {},
   "lap_distance_m": 5323.0,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "provisional",

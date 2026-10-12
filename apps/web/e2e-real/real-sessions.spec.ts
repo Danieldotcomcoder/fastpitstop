@@ -31,9 +31,8 @@ import { expect, test, type Page } from '@playwright/test';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const BACKFILL = path.join(REPO_ROOT, 'data', 'historical', 'manifest.json');
 
-/** One of each shape a race takes. Qualifying and sprint sessions join this
- * list once the session page can open them (docs/ROADMAP.md W4): today
- * `/sessions/{year}/{round}` always opens the race. */
+/** One of each shape a race takes. Qualifying has its own spec
+ * (`qualifying.spec.ts`): a different board, judged on its knockouts. */
 export const REAL_SESSIONS = [
 	{ year: 2024, round: 1, shape: 'measured car positions (Bahrain)' },
 	{ year: 2024, round: 6, shape: 'safety car decides the race (Miami)' },

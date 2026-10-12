@@ -11,6 +11,32 @@
   "schedule_locations": [
     "Zandvoort"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0638,
+      "good_fits": 32,
+      "sessions": [
+        "2024-15",
+        "2025-15"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0756,
+      "good_fits": 25,
+      "sessions": [
+        "2024-15",
+        "2025-15"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.0886,
+      "good_fits": 12,
+      "sessions": [
+        "2024-15",
+        "2025-15"
+      ]
+    }
+  },
   "lap_distance_m": 4216.9,
   "pit_loss_s": 23.54,
   "pit_loss_provenance": "calibrated",

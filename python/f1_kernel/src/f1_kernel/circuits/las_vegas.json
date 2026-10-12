@@ -11,6 +11,24 @@
   "schedule_locations": [
     "Las Vegas"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0663,
+      "good_fits": 49,
+      "sessions": [
+        "2024-22",
+        "2025-22"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0484,
+      "good_fits": 15,
+      "sessions": [
+        "2024-22",
+        "2025-22"
+      ]
+    }
+  },
   "lap_distance_m": 6120.9,
   "pit_loss_s": 22.54,
   "pit_loss_provenance": "calibrated",

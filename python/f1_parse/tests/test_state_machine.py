@@ -23,8 +23,12 @@ from f1_domain import (
     PitEntry,
     PitExit,
     PositionChanged,
+    QualifyingBestLap,
+    QualifyingKnockout,
+    QualifyingPartChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionClockUpdated,
     SessionInfoUpdated,
     SessionKey,
     SessionStatusChanged,
@@ -892,3 +896,150 @@ class TestRaceLapOne:
         sm.apply(self._started(feed))
         sm.apply(timing(feed, "1", {"NumberOfLaps": 1}))
         assert only(sm.apply(timing(feed, "1", {"NumberOfLaps": 1})), LapCompleted) == []
+
+
+_QUALI = SessionKey(year=2026, round=17, session_type=SessionType.QUALIFYING)
+
+
+def quali_machine() -> SessionStateMachine:
+    return SessionStateMachine(session_key=_QUALI)
+
+
+def best(feed: Feed, number: str, part: int, value: str, lap: int) -> RawRecord:
+    return timing(feed, number, {"BestLapTimes": {str(part - 1): {"Value": value, "Lap": lap}}})
+
+
+class TestQualifying:
+    """Q parts, per-part best laps and knockouts, in the shapes the 2026
+    Singapore qualifying stream used: `SessionPart` and `NoEntries` (a list,
+    or a digit-keyed dict) at the top of TimingData, `BestLapTimes` per part
+    as sparse index deltas, and `KnockedOut` flipping in the same message
+    that opens the next part."""
+
+    @staticmethod
+    def _open_q1(feed: Feed) -> RawRecord:
+        return feed.record(
+            "TimingData",
+            {
+                "NoEntries": {"0": 22, "1": 16, "2": 10},
+                "SessionPart": 1,
+                "Lines": {
+                    "63": {"KnockedOut": False, "BestLapTimes": [{"Value": ""}, {}, {}]},
+                    "77": {"KnockedOut": False, "BestLapTimes": [{"Value": ""}, {}, {}]},
+                },
+            },
+        )
+
+    def test_a_part_opening_is_announced_with_the_cut_sizes(self):
+        sm, feed = quali_machine(), Feed()
+        sm.apply(feed.record("TimingData", {"SessionPart": 0, "NoEntries": [0, 0, 0]}))
+        (part,) = only(sm.apply(self._open_q1(feed)), QualifyingPartChanged)
+        assert (part.part, part.entries) == (1, [22, 16, 10])
+        restated = sm.apply(feed.record("TimingData", {"SessionPart": 1}))
+        assert only(restated, QualifyingPartChanged) == []
+
+    def test_each_part_keeps_its_own_best_lap(self):
+        sm, feed = quali_machine(), Feed()
+        sm.apply(self._open_q1(feed))
+        (first,) = only(sm.apply(best(feed, "63", 1, "1:34.643", 3)), QualifyingBestLap)
+        assert (first.driver, first.part, first.lap_number) == ("63", 1, 3)
+        assert first.lap_time == timedelta(minutes=1, seconds=34.643)
+        # A quicker lap replaces it; a lap deleted for track limits brings
+        # the previous best back, and that is a change too.
+        (quicker,) = only(sm.apply(best(feed, "63", 1, "1:33.617", 8)), QualifyingBestLap)
+        assert quicker.lap_time == timedelta(minutes=1, seconds=33.617)
+        (restored,) = only(sm.apply(best(feed, "63", 1, "1:34.643", 3)), QualifyingBestLap)
+        assert restored.lap_number == 3
+        # Q2 opens with its slot emptied: nothing to announce.
+        opening = feed.record(
+            "TimingData",
+            {"SessionPart": 2, "Lines": {"63": {"BestLapTimes": {"1": {"Value": ""}}}}},
+        )
+        assert only(sm.apply(opening), QualifyingBestLap) == []
+        (q2,) = only(sm.apply(best(feed, "63", 2, "1:32.323", 11)), QualifyingBestLap)
+        assert q2.part == 2
+
+    def test_a_knockout_belongs_to_the_part_that_just_ended(self):
+        sm, feed = quali_machine(), Feed()
+        sm.apply(self._open_q1(feed))
+        events = sm.apply(
+            feed.record("TimingData", {"SessionPart": 2, "Lines": {"77": {"KnockedOut": True}}})
+        )
+        assert isinstance(events[0], QualifyingPartChanged)
+        (out,) = only(events, QualifyingKnockout)
+        assert (out.driver, out.part, out.knocked_out) == ("77", 1, True)
+        assert only(sm.apply(timing(feed, "77", {"KnockedOut": True})), QualifyingKnockout) == []
+        (back,) = only(sm.apply(timing(feed, "77", {"KnockedOut": False})), QualifyingKnockout)
+        assert (back.part, back.knocked_out) == (2, False)
+
+    def test_joining_mid_qualifying_learns_the_part_bests_and_knockouts(self):
+        sm, feed = quali_machine(), Feed()
+        snapshot: JsonValue = {
+            "TimingData": {
+                "SessionPart": 3,
+                "NoEntries": [22, 16, 10],
+                "Lines": {
+                    "63": {
+                        "KnockedOut": False,
+                        "BestLapTimes": [
+                            {"Value": "1:33.617", "Lap": 8},
+                            {"Value": "1:32.212", "Lap": 15},
+                            {"Value": ""},
+                        ],
+                    },
+                    "77": {
+                        "KnockedOut": True,
+                        "BestLapTimes": [{"Value": "1:35.001", "Lap": 4}, {"Value": ""}, {}],
+                    },
+                },
+            },
+        }
+        assert sm.apply(feed.record("_meta.subscribe_snapshot", snapshot)) == []
+        events = sm.apply(feed.record("Heartbeat", {}))
+        (part,) = only(events, QualifyingPartChanged)
+        assert (part.part, part.entries) == (3, [22, 16, 10])
+        bests = {(e.driver, e.part) for e in only(events, QualifyingBestLap)}
+        assert bests == {("63", 1), ("63", 2), ("77", 1)}
+        (out,) = only(events, QualifyingKnockout)
+        assert (out.driver, out.part) == ("77", 1)
+
+
+class TestSessionClock:
+    def test_the_clock_is_emitted_when_it_starts_stops_or_jumps(self):
+        sm, feed = quali_machine(), Feed()
+        utc = datetime.fromtimestamp(_T0, tz=UTC).isoformat()
+        (stated,) = only(
+            sm.apply(feed.record("ExtrapolatedClock", {"Utc": utc, "Remaining": "00:18:00"})),
+            SessionClockUpdated,
+        )
+        assert (stated.remaining, stated.running) == (timedelta(minutes=18), False)
+        # Started, and received a second after the feed's own `Utc`: it
+        # already reads a second less.
+        started_record = feed.record(
+            "ExtrapolatedClock", {"Utc": utc, "Remaining": "00:17:59", "Extrapolating": True}
+        )
+        (started,) = only(sm.apply(started_record), SessionClockUpdated)
+        assert started.running is True
+        assert started.remaining == timedelta(minutes=17, seconds=58)
+        assert sm.apply(feed.record("ExtrapolatedClock", {"Extrapolating": True})) == []
+        stopped_record = feed.record(
+            "ExtrapolatedClock", {"Utc": utc, "Remaining": "00:12:34", "Extrapolating": False}
+        )
+        (stopped,) = only(sm.apply(stopped_record), SessionClockUpdated)
+        assert (stopped.remaining, stopped.running) == (timedelta(minutes=12, seconds=34), False)
+
+    def test_a_snapshot_clock_reads_the_time_left_when_joined(self):
+        sm, feed = quali_machine(), Feed()
+        ten_minutes_before = datetime.fromtimestamp(_T0 - 600, tz=UTC).isoformat()
+        snapshot: JsonValue = {
+            "ExtrapolatedClock": {
+                "Utc": ten_minutes_before,
+                "Remaining": "00:15:00",
+                "Extrapolating": True,
+            }
+        }
+        sm.apply(feed.record("_meta.subscribe_snapshot", snapshot))
+        (clock,) = only(sm.apply(feed.record("Heartbeat", {})), SessionClockUpdated)
+        # Joined one second after the snapshot: 15:00 less 10:01.
+        assert clock.remaining == timedelta(minutes=4, seconds=59)
+        assert clock.running is True

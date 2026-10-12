@@ -106,6 +106,8 @@ class _CatalogEntry(BaseModel):
     round: int
     session_type: str = ""
     event_name: str = ""
+    location: str = ""
+    """FastF1's schedule location ("Marina Bay"), recorded by `f1-backfill`."""
     tables: dict[str, int] = Field(default_factory=dict[str, int])
 
 
@@ -127,6 +129,9 @@ class SessionRef:
     circuit_name: str | None = None
     """The feed's venue short name ("Madring"), when the source knows it:
     the unambiguous way to a circuit file (see `circuit_for_session`)."""
+    location: str | None = None
+    """FastF1's schedule location, for a backfilled session: its venue when
+    the feed's name is not known (a Grand Prix name can move venues)."""
 
     @property
     def label(self) -> str:
@@ -457,6 +462,7 @@ def list_historical_sessions(
                 session_key=key,
                 event_name=entry.event_name or None,
                 tables=tuple(sorted(entry.tables)),
+                location=entry.location or None,
             )
         )
     return sorted(refs, key=_sort_key)

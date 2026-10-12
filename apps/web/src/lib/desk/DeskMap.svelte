@@ -57,9 +57,22 @@
 		codes: Record<string, string>;
 		/** Race seconds per stream second: 1 live, the replay speed otherwise. */
 		timeScale: number;
+		/** Place cars from lap timing when the feed has no measured positions.
+		 * Off in qualifying, where the timing screen's order and gaps say
+		 * nothing about where a car is on track. */
+		estimate?: boolean;
 	}
 
-	let { controller, circuit, circuitStatus, rows, pair, codes, timeScale }: Props = $props();
+	let {
+		controller,
+		circuit,
+		circuitStatus,
+		rows,
+		pair,
+		codes,
+		timeScale,
+		estimate = true
+	}: Props = $props();
 
 	const N = 720;
 	/** How often `RaceWorkspace` asks Delay Sync to release: the map draws
@@ -307,17 +320,18 @@
 		const pb = pair?.b ?? null;
 		// Leader from its own lap timing, everyone else behind it by their
 		// gap on the timing screen (see placement.ts for why).
-		const fractions = measured
-			? null
-			: placeCars(rows, {
-					lapsSinceLine: (d) => progress.lapsSinceLine(d, clockMs, timeScale),
-					lapTimeS: (d) => progress.lapTimeS(d)
-				});
+		const fractions =
+			measured || !estimate
+				? null
+				: placeCars(rows, {
+						lapsSinceLine: (d) => progress.lapsSinceLine(d, clockMs, timeScale),
+						lapTimeS: (d) => progress.lapTimeS(d)
+					});
 		// Measured, a car is drawn wherever the feed put it, classified or
 		// not (practice, the formation lap); estimated, only a classified car
 		// has anywhere to be.
 		const placed = rows
-			.filter((r) => measured || r.position !== null)
+			.filter((r) => measured || (estimate && r.position !== null))
 			.sort(
 				(x, y) =>
 					Number(x.driver === pa || x.driver === pb) - Number(y.driver === pa || y.driver === pb) ||
@@ -428,11 +442,13 @@
 			<canvas bind:this={canvas} aria-hidden="true"></canvas>
 		</div>
 		<div class="map-summary">
-			{#if leader}{codes[leader.driver] ?? leader.driver} leads{#if pitCodes.length}
+			{#if leader && (estimate || !estimated)}{codes[leader.driver] ?? leader.driver} leads{#if pitCodes.length}
 					· In the pit lane: {pitCodes.join(', ')}{/if}.{/if}
-			{#if estimated}Positions are estimated from the leader’s lap timing and each car’s gap on the
-				timing screen; the feed does not carry measured positions for this session.{:else}Measured
-				positions from F1’s position data, about four a second per car.{/if}
+			{#if estimated && !estimate}No measured positions for this session yet, and qualifying’s
+				timing screen cannot place the cars, so none are drawn.{:else if estimated}Positions are
+				estimated from the leader’s lap timing and each car’s gap on the timing screen; the feed
+				does not carry measured positions for this session.{:else}Measured positions from F1’s
+				position data, about four a second per car.{/if}
 		</div>
 		<div class="map-legend">
 			<span><i class="dot" style="background:var(--ink-2)"></i>Car, in team colour</span>

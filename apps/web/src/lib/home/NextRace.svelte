@@ -12,15 +12,10 @@
 	import { serverNowMs } from '$lib/delay-sync';
 	import type { SeoSession } from '$lib/seo';
 	import type { Point } from '$lib/track-map/types';
-	import { Countdown, TrackThumbnail, sessionTime } from '$lib/ui';
-	import {
-		countdownLabel,
-		nextSession,
-		sessionPhase,
-		trackTime,
-		weekendDates,
-		type ScheduleEvent
-	} from './next-race';
+	import { raceSlug } from '$lib/races/view';
+	import { Countdown, TrackThumbnail } from '$lib/ui';
+	import { countdownLabel, nextSession, weekendDates, type ScheduleEvent } from './next-race';
+	import WeekendSessions from './WeekendSessions.svelte';
 
 	interface Props {
 		event: ScheduleEvent;
@@ -55,7 +50,14 @@
 		<p class="kicker" class:live={live !== null}>
 			{#if live}<span class="dot" aria-hidden="true"></span>{/if}{kicker}
 		</p>
-		<h2 id="next-race-title">{event.event_name}</h2>
+		<h2 id="next-race-title">
+			<a
+				href={resolve('/races/[year]/[slug]', {
+					year: String(event.season),
+					slug: raceSlug(event.event_name)
+				})}>{event.event_name}</a
+			>
+		</h2>
 		<p class="where">{venue} · {weekendDates(event)}</p>
 
 		{#if live}
@@ -66,19 +68,9 @@
 			</div>
 		{/if}
 
-		<ol class="sessions" aria-label="Sessions this weekend">
-			{#each event.sessions as session (session.start_utc)}
-				{@const phase = sessionPhase(session, event, nowMs)}
-				<li class={phase}>
-					<span class="name">{session.name}</span>
-					<span class="at num">{trackTime(session)} <span class="muted">at the track</span></span>
-					<span class="yours num"
-						>{#if inBrowser}{sessionTime(session.start_utc)}
-							<span class="muted">your time</span>{:else}&nbsp;{/if}</span
-					>
-				</li>
-			{/each}
-		</ol>
+		<div class="sessions">
+			<WeekendSessions {event} {nowMs} {inBrowser} />
+		</div>
 
 		{#if !live}
 			<p class="actions">
@@ -145,6 +137,15 @@
 		border-radius: 50%;
 		background: var(--flag-red);
 	}
+	h2 a {
+		color: inherit;
+		text-decoration: none;
+	}
+	h2 a:hover {
+		text-decoration: underline;
+		text-decoration-thickness: 2px;
+		text-underline-offset: 0.12em;
+	}
 	h2 {
 		margin: var(--space-2) 0 0;
 		font: 500 clamp(2.25rem, 1.6rem + 2.6vw, 3.75rem) / 1.04 var(--font-display);
@@ -164,45 +165,7 @@
 		display: inline-block;
 	}
 	.sessions {
-		list-style: none;
-		margin: var(--space-5) 0 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-	}
-	.sessions li {
-		display: grid;
-		grid-template-columns: minmax(8.5rem, 1fr) auto;
-		gap: 2px var(--space-4);
-		padding: var(--space-2) 0;
-		border-top: 1px solid var(--rule);
-	}
-	@media (min-width: 640px) {
-		.sessions li {
-			grid-template-columns: minmax(9rem, 1fr) auto minmax(11rem, auto);
-		}
-	}
-	.sessions li.done {
-		color: var(--muted);
-	}
-	.sessions li.next .name {
-		color: var(--accent);
-		font-weight: 600;
-	}
-	.at,
-	.yours {
-		font-family: var(--font-mono);
-		font-size: var(--font-size-sm);
-		text-align: right;
-		white-space: nowrap;
-	}
-	.yours {
-		grid-column: 2;
-	}
-	@media (min-width: 640px) {
-		.yours {
-			grid-column: 3;
-		}
+		margin-top: var(--space-5);
 	}
 	.muted {
 		color: var(--muted);

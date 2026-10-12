@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Spielberg"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0988,
+      "good_fits": 41,
+      "sessions": [
+        "2024-11",
+        "2025-11"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.1209,
+      "good_fits": 47,
+      "sessions": [
+        "2024-11",
+        "2025-11"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1128,
+      "good_fits": 1,
+      "sessions": [
+        "2025-11"
+      ]
+    }
+  },
   "lap_distance_m": 4279.5,
   "pit_loss_s": 21.0,
   "pit_loss_provenance": "calibrated",

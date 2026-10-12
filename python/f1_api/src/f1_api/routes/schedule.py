@@ -11,7 +11,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from f1_api.config import Settings, get_settings
-from f1_api.convert import circuit_out
 from f1_api.schedule import (
     ScheduleCache,
     ScheduledEvent,
@@ -20,8 +19,7 @@ from f1_api.schedule import (
     fixture_schedule,
     next_event,
 )
-from f1_api.schemas import CircuitOut, ScheduleEventOut, ScheduleSessionOut
-from f1_kernel import load_circuit
+from f1_api.schemas import ScheduleEventOut, ScheduleSessionOut
 from f1_kernel.circuit import circuit_for_schedule
 
 router = APIRouter(tags=["schedule"])
@@ -108,13 +106,3 @@ def get_next_event(cache: ScheduleCacheDep) -> ScheduleEventOut | None:
         if upcoming is not None:
             return _event_out(upcoming)
     return None
-
-
-@router.get("/circuits/{circuit_id}", response_model=CircuitOut)
-def get_circuit_by_id(circuit_id: str) -> CircuitOut:
-    """A shipped circuit's geometry by id, for a calendar entry that has no
-    session yet (the home page's track drawing)."""
-    try:
-        return circuit_out(load_circuit(circuit_id))
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail=f"unknown circuit {circuit_id!r}") from error

@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Yas Island"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0765,
+      "good_fits": 42,
+      "sessions": [
+        "2024-24",
+        "2025-24"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.1151,
+      "good_fits": 22,
+      "sessions": [
+        "2024-24",
+        "2025-24"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.19,
+      "good_fits": 1,
+      "sessions": [
+        "2024-24"
+      ]
+    }
+  },
   "lap_distance_m": 5208.3,
   "pit_loss_s": 22.87,
   "pit_loss_provenance": "calibrated",

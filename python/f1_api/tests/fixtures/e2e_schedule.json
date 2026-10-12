@@ -14,5 +14,21 @@
         {"name": "Race", "start_in_h": 25}
       ]
     }
+  ],
+  "2025": [
+    {
+      "round": 4,
+      "event_name": "Bahrain Grand Prix",
+      "location": "Sakhir",
+      "country": "Bahrain",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Practice 1", "start_utc": "2025-04-11T11:30:00+00:00", "start_local": "2025-04-11T14:30:00+03:00"},
+        {"name": "Practice 2", "start_utc": "2025-04-11T15:00:00+00:00", "start_local": "2025-04-11T18:00:00+03:00"},
+        {"name": "Practice 3", "start_utc": "2025-04-12T12:30:00+00:00", "start_local": "2025-04-12T15:30:00+03:00"},
+        {"name": "Qualifying", "start_utc": "2025-04-12T16:00:00+00:00", "start_local": "2025-04-12T19:00:00+03:00"},
+        {"name": "Race", "start_utc": "2025-04-13T15:00:00+00:00", "start_local": "2025-04-13T18:00:00+03:00"}
+      ]
+    }
   ]
 }

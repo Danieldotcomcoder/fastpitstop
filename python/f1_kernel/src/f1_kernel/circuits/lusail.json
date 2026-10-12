@@ -11,6 +11,32 @@
   "schedule_locations": [
     "Lusail"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0478,
+      "good_fits": 20,
+      "sessions": [
+        "2024-23",
+        "2025-23"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0251,
+      "good_fits": 34,
+      "sessions": [
+        "2024-23",
+        "2025-23"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1354,
+      "good_fits": 2,
+      "sessions": [
+        "2024-23",
+        "2025-23"
+      ]
+    }
+  },
   "lap_distance_m": 5368.1,
   "pit_loss_s": 27.69,
   "pit_loss_provenance": "provisional",

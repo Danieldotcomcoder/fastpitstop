@@ -1,6 +1,6 @@
 <!--
   The site header, in the design's brand: the italic wordmark, the
-  "Unofficial" tag, and the three places to go.
+  "Unofficial" tag, and the places to go.
 
   It used to carry a Delay Sync pill too (pinned to the bottom of the screen
   on phones). The race desk's own sticky spoiler-shield strip is now that
@@ -18,6 +18,8 @@
 	const links = [
 		{ href: '/live', label: 'Live' },
 		{ href: '/sessions', label: 'Sessions' },
+		{ href: '/standings', label: 'Standings' },
+		{ href: '/circuits', label: 'Circuits' },
 		{ href: '/about', label: 'About' }
 	] as const;
 
@@ -123,17 +125,25 @@
 		min-width: 0;
 	}
 
-	/* A phone has no room for the wordmark, the tag, three links and the
-	   theme switch in one row: the tag goes under the wordmark. */
-	@media (max-width: 479px) {
+	/* A phone has no room for the wordmark, the tag, every link and the
+	   theme switch in one row: the links and the switch take a row of their
+	   own under the wordmark, scrolling sideways if they ever outgrow it. */
+	@media (max-width: 599px) {
 		.app-header {
-			align-items: center;
+			flex-wrap: wrap;
+			row-gap: 10px;
 		}
 
-		.brand-block {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 4px;
+		.end {
+			width: 100%;
+			justify-content: space-between;
+		}
+
+		.app-nav {
+			gap: 14px;
+			overflow-x: auto;
+			scrollbar-width: none;
+			padding-block: 4px;
 		}
 	}
 

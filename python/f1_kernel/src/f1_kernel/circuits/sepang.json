@@ -11,6 +11,7 @@
   "schedule_locations": [
     "Kuala Lumpur"
   ],
+  "tyre_wear": {},
   "lap_distance_m": 5455.7,
   "pit_loss_s": 23.03,
   "pit_loss_provenance": "provisional",

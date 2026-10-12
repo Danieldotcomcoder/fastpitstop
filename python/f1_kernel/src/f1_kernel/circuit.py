@@ -91,6 +91,19 @@ class DrsZone(BaseModel):
         return max(0.0, lap_distance_m - self.start_m) + max(0.0, self.end_m)
 
 
+class TyreWear(BaseModel):
+    """How fast one compound loses time here, measured (`tools/build_circuit_wear.py`)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    median_s_per_lap: float
+    """Median fuel-corrected degradation rate over the reliable fits."""
+    good_fits: int = Field(ge=0)
+    """Stints whose fit was rated `good`: the evidence behind the median."""
+    sessions: list[str] = Field(default_factory=list[str])
+    """The races measured, as "<season>-<round>"."""
+
+
 class Circuit(BaseModel):
     """One circuit's metadata, as stored in `circuits/<circuit_id>.json`."""
 
@@ -115,6 +128,9 @@ class Circuit(BaseModel):
     session yet, finds its circuit (`circuit_for_schedule`). Recorded by
     `tools/build_circuit_locations.py` from this circuit's own reference
     event and the 2023-2025 rounds held here."""
+    tyre_wear: dict[str, TyreWear] = Field(default_factory=dict[str, TyreWear])
+    """Per compound ("soft", "medium", ...): the measured degradation rate
+    here. Empty until `tools/build_circuit_wear.py` has a race to measure."""
     lap_distance_m: float = Field(gt=0)
     """Lap distance from telemetry: the median over the same sampled racing
     laps the DRS zones were derived from, so both are on one scale.
@@ -202,10 +218,14 @@ def circuit_for_session(
     the wrong one is not. The name still decides when the matched file has
     no venue names of its own to contradict the feed."""
     if feed_circuit_name:
-        wanted = feed_circuit_name.strip().casefold()
+        wanted = _fold(feed_circuit_name)
         for circuit_id in list_circuits():
             circuit = load_circuit(circuit_id)
-            if any(name.strip().casefold() == wanted for name in circuit.feed_circuit_names):
+            # The feed's venue name, or FastF1's schedule location, which is
+            # what a backfilled session records ("Marina Bay" where the feed
+            # says "Singapore").
+            names = [*circuit.feed_circuit_names, *circuit.schedule_locations]
+            if any(_fold(name) == wanted for name in names):
                 return circuit
         by_name = circuit_for_event(event_name)
         if by_name is not None and by_name.feed_circuit_names:

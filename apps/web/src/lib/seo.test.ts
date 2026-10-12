@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	renderSeoHead,
 	renderSitemap,
+	type SeoCircuit,
 	type SeoSession,
+	serverRendered,
 	seoFor,
 	sessionForRound,
 	SITE_URL,
@@ -140,6 +142,8 @@ describe('sitemap', () => {
 			'/',
 			'/live',
 			'/sessions',
+			'/standings',
+			'/circuits',
 			'/about',
 			'/sessions/2026/16',
 			'/sessions/2026/15'
@@ -147,5 +151,98 @@ describe('sitemap', () => {
 		const xml = renderSitemap(paths);
 		expect(xml).toContain(`<loc>${SITE_URL}/sessions/2026/16</loc>`);
 		expect(xml.startsWith('<?xml')).toBe(true);
+	});
+});
+
+describe('circuit pages', () => {
+	const circuits: SeoCircuit[] = [
+		{
+			id: 'marina_bay',
+			name: 'Marina Bay Street Circuit',
+			country: 'Singapore',
+			pitLossS: 30.13,
+			pitLossProvenance: 'calibrated'
+		},
+		{
+			id: 'monaco',
+			name: 'Circuit de Monaco',
+			country: 'Monaco',
+			pitLossS: 19,
+			pitLossProvenance: 'provisional'
+		}
+	];
+
+	it('puts the measured pit loss in the title, and a place in the data', () => {
+		const seo = seoFor('/circuits/marina-bay', [], circuits);
+		expect(seo.title).toMatch(/^Marina Bay Street Circuit: Pit Stop Time Loss \(30\.1 s\)/);
+		expect(seo.description).toContain('measured from real stops');
+		expect(seo.noindex).toBe(false);
+		expect(JSON.stringify(seo.jsonLd)).toContain('SportsActivityLocation');
+	});
+
+	it('never calls a default a measurement', () => {
+		expect(seoFor('/circuits/monaco', [], circuits).description).toContain('provisional');
+	});
+
+	it('lists every circuit in the sitemap, and renders them on the server', () => {
+		const paths = sitemapPaths([], circuits);
+		expect(paths).toContain('/circuits/marina-bay');
+		expect(paths).toContain('/circuits/monaco');
+		expect(serverRendered('/circuits')).toBe(true);
+		expect(serverRendered('/circuits/marina-bay')).toBe(true);
+		expect(serverRendered('/live')).toBe(false);
+	});
+});
+
+describe('Grand Prix pages', () => {
+	const race = {
+		year: 2026,
+		round: 18,
+		slug: 'united-states',
+		eventName: 'United States Grand Prix',
+		venue: 'Circuit of the Americas',
+		location: 'Austin',
+		country: 'United States',
+		dates: '23–25 Oct',
+		sessions: [
+			{
+				name: 'Practice 1',
+				startUtc: '2026-10-23T17:30:00.000Z',
+				endUtc: '2026-10-23T18:30:00.000Z'
+			},
+			{ name: 'Race', startUtc: '2026-10-25T20:00:00.000Z', endUtc: '2026-10-25T22:00:00.000Z' }
+		]
+	};
+
+	it('is titled for "<race> start time" searches, with event data', () => {
+		const seo = seoFor('/races/2026/united-states', [], [], [race]);
+		expect(seo.title).toBe(
+			'2026 United States Grand Prix: Schedule, Start Times & Countdown | FastPitStop'
+		);
+		expect(seo.description).toContain('Circuit of the Americas (23–25 Oct)');
+		const [event] = seo.jsonLd as [Record<string, unknown>];
+		expect(event['@type']).toBe('SportsEvent');
+		expect(event.startDate).toBe('2026-10-23T17:30:00.000Z');
+		expect(event.endDate).toBe('2026-10-25T22:00:00.000Z');
+		expect(event.subEvent).toHaveLength(2);
+	});
+
+	it('names no result, and is in the sitemap', () => {
+		const seo = seoFor('/races/2026/united-states', [], [], [race]);
+		expect(`${seo.title} ${seo.description}`).not.toMatch(/won|winner|victory|podium/i);
+		expect(sitemapPaths([], [], [race])).toContain('/races/2026/united-states');
+		expect(serverRendered('/races/2026/united-states')).toBe(true);
+	});
+});
+
+describe('standings', () => {
+	it('is titled for the season, spoiler-free, and rendered on the server', () => {
+		const seo = seoFor('/standings/2024');
+		expect(seo.title).toBe(
+			'F1 2024 Standings — Drivers & Constructors, Spoiler-Free | FastPitStop'
+		);
+		expect(seo.description).not.toMatch(/won|winner|leads|champion\b/i);
+		expect(serverRendered('/standings')).toBe(true);
+		expect(serverRendered('/standings/2024')).toBe(true);
 	});
 });

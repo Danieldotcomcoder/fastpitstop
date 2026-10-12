@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Jeddah"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0586,
+      "good_fits": 33,
+      "sessions": [
+        "2024-2",
+        "2025-5"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.1191,
+      "good_fits": 14,
+      "sessions": [
+        "2024-2",
+        "2025-5"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1133,
+      "good_fits": 2,
+      "sessions": [
+        "2024-2"
+      ]
+    }
+  },
   "lap_distance_m": 6085.1,
   "pit_loss_s": 19.5,
   "pit_loss_provenance": "provisional",

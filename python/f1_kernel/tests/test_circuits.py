@@ -3,6 +3,8 @@ numbers came from."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from f1_kernel import Circuit, circuit_for_event, circuit_for_session, list_circuits, load_circuit
@@ -325,3 +327,50 @@ def test_circuit_for_schedule(
     event_name: str, location: str | None, circuit_id: str | None
 ) -> None:
     assert _scheduled(event_name, location) == circuit_id
+
+
+@pytest.mark.parametrize(
+    ("event_name", "venue", "circuit_id"),
+    [
+        # A backfilled session's venue is FastF1's schedule location, which
+        # is not always the feed's name for it.
+        ("Singapore Grand Prix", "Marina Bay", "marina_bay"),
+        ("Spanish Grand Prix", "Madrid", "madring"),
+        ("Bahrain Grand Prix", "Kuala Lumpur", "sepang"),
+        ("Spanish Grand Prix", "Barcelona", "barcelona"),
+    ],
+)
+def test_a_session_finds_its_circuit_by_schedule_location(
+    event_name: str, venue: str, circuit_id: str
+) -> None:
+    circuit = circuit_for_session(event_name, venue)
+    assert circuit is not None and circuit.circuit_id == circuit_id
+
+
+def test_the_catalog_location_reaches_the_session_ref(tmp_path: Path) -> None:
+    import json
+
+    from f1_kernel.sources import list_historical_sessions
+
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "sessions": {
+                    "2026_14_Race": {
+                        "season": 2026,
+                        "round": 14,
+                        "session_type": "Race",
+                        "event_name": "Spanish Grand Prix",
+                        "location": "Madrid",
+                        "tables": {"laps": 1},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (ref,) = list_historical_sessions(tmp_path)
+    assert ref.location == "Madrid"
+    circuit = circuit_for_session(ref.event_name, ref.location)
+    assert circuit is not None and circuit.circuit_id == "madring"

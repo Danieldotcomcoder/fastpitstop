@@ -49,3 +49,28 @@ def test_has_is_false_for_a_different_session(tmp_path: Path) -> None:
     )
     assert not catalog.has(other)
     assert catalog.has(_KEY)
+
+
+def test_records_the_venue_and_fills_it_in_later(tmp_path: Path) -> None:
+    """The schedule location is the venue (the 2026 "Spanish Grand Prix" ran
+    in Madrid); a session catalogued before it was kept gets it afterwards."""
+    path = tmp_path / "manifest.json"
+    catalog = Catalog.load(path)
+    catalog.record(
+        _KEY, sources=["fastf1"], tables={}, acquired_at=datetime(2024, 3, 1, tzinfo=UTC)
+    )
+    assert catalog.sessions[_KEY.catalog_key].location == "Sakhir"
+
+    older = Catalog.model_validate(
+        {
+            "sessions": {
+                _KEY.catalog_key: {
+                    **catalog.sessions[_KEY.catalog_key].model_dump(),
+                    "location": None,
+                }
+            }
+        }
+    )
+    assert older.record_location(_KEY) is True
+    assert older.sessions[_KEY.catalog_key].location == "Sakhir"
+    assert older.record_location(_KEY) is False  # already there

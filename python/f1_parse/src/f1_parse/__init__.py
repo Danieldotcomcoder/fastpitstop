@@ -16,6 +16,7 @@ Two layers live here, matching the pipeline's layering (CLAUDE.md):
 """
 
 from f1_parse.car_data import CarDataSample, decode_car_data
+from f1_parse.clock import ClockDecoded, decode_clock
 from f1_parse.decode import DecodedData, DecodedMessage, Family, decode
 from f1_parse.driver_list import DriverEntryDelta, decode_driver_list
 from f1_parse.lap_count import LapCountDecoded, decode_lap_count
@@ -33,6 +34,7 @@ from f1_parse.weather import WeatherDecoded, decode_weather
 
 __all__ = [
     "CarDataSample",
+    "ClockDecoded",
     "DecodedData",
     "DecodedMessage",
     "DriverEntryDelta",
@@ -51,6 +53,7 @@ __all__ = [
     "WeatherDecoded",
     "decode",
     "decode_car_data",
+    "decode_clock",
     "decode_driver_list",
     "decode_lap_count",
     "decode_position",

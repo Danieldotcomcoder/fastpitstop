@@ -5,8 +5,8 @@
  * browser, so on their own they hand a crawler an empty page. The server
  * hook (`hooks.server.ts`) writes this module's tags into every page's HTML
  * instead, and the content pages that are rendered on the server (`/`,
- * `/about`, `/sessions`) take their `<title>` from here too, so there is
- * one source for both.
+ * `/about`, `/sessions`, the circuit pages) take their `<title>` from here
+ * too, so there is one source for both.
  *
  * Nothing here may spoil a race: descriptions name the event and what can
  * be explored, never a result. And nothing may read as official: the
@@ -19,7 +19,15 @@ export const SITE_URL = 'https://fastpitstop.online';
 export const OG_IMAGE = { path: '/og-image.png', width: 1200, height: 630 } as const;
 
 /** The routes rendered on the server, which output their own `<title>`. */
-export const SERVER_RENDERED = new Set(['/', '/about', '/sessions']);
+export const SERVER_RENDERED = new Set(['/', '/about', '/sessions', '/circuits']);
+
+export function serverRendered(path: string): boolean {
+	return (
+		SERVER_RENDERED.has(path) ||
+		path === '/standings' ||
+		['/circuits/', '/races/', '/standings/'].some((prefix) => path.startsWith(prefix))
+	);
+}
 
 /** Developer harnesses and utility pages: reachable, never indexed. */
 const NOINDEX_PREFIXES = [
@@ -40,6 +48,46 @@ export interface SeoSession {
 	eventName: string | null;
 	circuitName: string | null;
 	live: boolean;
+}
+
+/** A Grand Prix weekend, as this module needs it (`GET /schedule`). */
+export interface SeoRace {
+	year: number;
+	round: number;
+	slug: string;
+	eventName: string;
+	/** The circuit, or the town when no circuit file knows the venue. */
+	venue: string;
+	location: string;
+	country: string;
+	/** "23–25 Oct", at the track. */
+	dates: string;
+	sessions: { name: string; startUtc: string; endUtc: string }[];
+}
+
+/** A circuit, as this module needs it (`GET /circuits`). */
+export interface SeoCircuit {
+	id: string;
+	name: string;
+	country: string;
+	pitLossS: number;
+	pitLossProvenance: string;
+}
+
+export function toSeoCircuit(row: {
+	circuit_id: string;
+	name: string;
+	country: string;
+	pit_loss_s: number;
+	pit_loss_provenance: string;
+}): SeoCircuit {
+	return {
+		id: row.circuit_id,
+		name: row.name,
+		country: row.country,
+		pitLossS: row.pit_loss_s,
+		pitLossProvenance: row.pit_loss_provenance
+	};
 }
 
 /** A row of `GET /sessions`, as this module needs it. */
@@ -110,7 +158,12 @@ export function sessionForRound(
 	return matches.find((s) => s.sessionType === 'race') ?? matches[0] ?? null;
 }
 
-export function seoFor(pathname: string, sessions: readonly SeoSession[] = []): PageSeo {
+export function seoFor(
+	pathname: string,
+	sessions: readonly SeoSession[] = [],
+	circuits: readonly SeoCircuit[] = [],
+	races: readonly SeoRace[] = []
+): PageSeo {
 	const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
 	const page = (title: string, description: string, jsonLd: Record<string, unknown>[] = []) => ({
 		title,
@@ -152,6 +205,52 @@ export function seoFor(pathname: string, sessions: readonly SeoSession[] = []): 
 			`About ${brand.name} — Unofficial F1 Analytics Dashboard`,
 			`What ${brand.name} is, how its tyre, pit-stop and undercut analysis works, and how it keeps a delayed broadcast spoiler-free. An unofficial fan project.`
 		);
+	}
+	const standings = /^\/standings(?:\/(\d{4}))?$/.exec(path);
+	if (standings) {
+		const year = standings[1] ?? String(new Date().getUTCFullYear());
+		return page(
+			`F1 ${year} Standings — Drivers & Constructors, Spoiler-Free | ${brand.name}`,
+			`The ${year} Formula 1 drivers' and constructors' championships after the last race you watched, with each driver's points race by race and the points still available. Later races stay hidden.`
+		);
+	}
+	if (path === '/circuits') {
+		return page(
+			`F1 Circuits — Pit Stop Time Loss, Tyre Wear & Track Maps | ${brand.name}`,
+			'Every Formula 1 circuit measured from real races: what a pit stop costs, how fast each tyre compound wears, the corners and the DRS zones.'
+		);
+	}
+	const circuitPath = /^\/circuits\/([a-z0-9-]+)$/.exec(path);
+	if (circuitPath) {
+		const circuit = circuits.find((c) => c.id === circuitPath[1]!.replace(/-/g, '_'));
+		if (circuit) {
+			const loss = `${circuit.pitLossS.toFixed(1)} s`;
+			return page(
+				`${circuit.name}: Pit Stop Time Loss (${loss}), Tyre Wear & Map | ${brand.name}`,
+				`What a pit stop costs at the ${circuit.name} (${loss}, ${circuit.pitLossProvenance === 'calibrated' ? 'measured from real stops' : 'provisional'}), how fast each tyre compound wears there, its corners and DRS zones.`,
+				[
+					{
+						'@context': 'https://schema.org',
+						'@type': 'SportsActivityLocation',
+						name: circuit.name,
+						address: { '@type': 'PostalAddress', addressCountry: circuit.country },
+						url: `${SITE_URL}${path}`
+					}
+				]
+			);
+		}
+	}
+	const racePath = /^\/races\/(\d{4})\/([a-z0-9-]+)$/.exec(path);
+	if (racePath) {
+		const race = races.find((r) => r.year === Number(racePath[1]) && r.slug === racePath[2]);
+		if (race) {
+			const name = `${race.year} ${race.eventName}`;
+			return page(
+				`${name}: Schedule, Start Times & Countdown | ${brand.name}`,
+				`Every session of the ${name} at ${race.venue} (${race.dates}) in your own time zone, with a countdown, what a pit stop costs there and how the last race was run. Spoiler-free.`,
+				[raceJsonLd(race, path)]
+			);
+		}
 	}
 	const round = /^\/sessions\/(\d{4})\/(\d{1,2})$/.exec(path);
 	if (round) {
@@ -199,6 +298,42 @@ function homeJsonLd(): Record<string, unknown>[] {
 			}))
 		}
 	];
+}
+
+/** A Grand Prix weekend as a schema.org event, its sessions as sub-events:
+ * the start dates are what makes it eligible for event rich results. */
+function raceJsonLd(race: SeoRace, path: string): Record<string, unknown> {
+	const place = {
+		'@type': 'Place',
+		name: race.venue,
+		address: {
+			'@type': 'PostalAddress',
+			addressLocality: race.location,
+			addressCountry: race.country
+		}
+	};
+	const first = race.sessions[0];
+	const last = race.sessions.at(-1);
+	return {
+		'@context': 'https://schema.org',
+		'@type': 'SportsEvent',
+		name: `${race.year} ${race.eventName}`,
+		sport: 'Motor racing',
+		url: `${SITE_URL}${path}`,
+		image: `${SITE_URL}${OG_IMAGE.path}`,
+		eventStatus: 'https://schema.org/EventScheduled',
+		eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+		...(first ? { startDate: first.startUtc } : {}),
+		...(last ? { endDate: last.endUtc } : {}),
+		location: place,
+		subEvent: race.sessions.map((s) => ({
+			'@type': 'SportsEvent',
+			name: `${race.year} ${race.eventName}: ${s.name}`,
+			startDate: s.startUtc,
+			endDate: s.endUtc,
+			location: place
+		}))
+	};
 }
 
 function eventJsonLd(session: SeoSession, path: string): Record<string, unknown> {
@@ -261,13 +396,29 @@ export function renderSeoHead(seo: PageSeo, { withTitle }: { withTitle: boolean 
 }
 
 /** Every URL worth indexing, for `sitemap.xml`. */
-export function sitemapPaths(sessions: readonly SeoSession[]): string[] {
+export function sitemapPaths(
+	sessions: readonly SeoSession[],
+	circuits: readonly SeoCircuit[] = [],
+	races: readonly SeoRace[] = []
+): string[] {
 	const rounds = new Map<string, SeoSession>();
 	for (const s of sessions) rounds.set(`${s.year}/${s.round}`, s);
 	const sessionPaths = [...rounds.values()]
 		.sort((a, b) => b.year - a.year || b.round - a.round)
 		.map((s) => `/sessions/${s.year}/${s.round}`);
-	return ['/', '/live', '/sessions', '/about', ...sessionPaths];
+	const circuitPaths = circuits.map((c) => `/circuits/${c.id.replace(/_/g, '-')}`);
+	const racePaths = races.map((r) => `/races/${r.year}/${r.slug}`);
+	return [
+		'/',
+		'/live',
+		'/sessions',
+		'/standings',
+		'/circuits',
+		'/about',
+		...racePaths,
+		...sessionPaths,
+		...circuitPaths
+	];
 }
 
 export function renderSitemap(paths: readonly string[]): string {

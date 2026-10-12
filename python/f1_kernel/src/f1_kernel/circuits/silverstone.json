@@ -11,6 +11,29 @@
   "schedule_locations": [
     "Silverstone"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0444,
+      "good_fits": 2,
+      "sessions": [
+        "2024-12"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0846,
+      "good_fits": 17,
+      "sessions": [
+        "2024-12"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1555,
+      "good_fits": 9,
+      "sessions": [
+        "2024-12"
+      ]
+    }
+  },
   "lap_distance_m": 5812.8,
   "pit_loss_s": 26.42,
   "pit_loss_provenance": "calibrated",

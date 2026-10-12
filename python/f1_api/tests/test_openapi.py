@@ -33,6 +33,8 @@ EXPECTED_PATHS = {
     "/sessions/{key}/story",
     "/schedule",
     "/schedule/next",
+    "/standings",
+    "/circuits",
     "/circuits/{circuit_id}",
     "/anomalies/{anomaly_id}/explanation",
     "/radio/search",

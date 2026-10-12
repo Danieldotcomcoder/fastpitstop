@@ -62,8 +62,9 @@
 	});
 
 	function sessionHref(session: SessionSummary): string {
-		const { year, round } = session.session_key;
-		return resolve(`/sessions/${year}/${round}`);
+		const { year, round, session_type } = session.session_key;
+		const path = resolve(`/sessions/${year}/${round}`);
+		return session_type === 'race' ? path : `${path}?session=${session_type}`;
 	}
 
 	onMount(() => {

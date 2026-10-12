@@ -668,6 +668,25 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   the next race: countdown, sessions at the track and in the viewer's time,
   the outline, and the last race with no result. The desk masthead shows
   released weather.
+- M2 screens (2026-10-11, docs/ROADMAP.md): circuit pages
+  (`/circuits`, `/circuits/{slug}`: measured pit loss, tyre wear per
+  compound from `tools/build_circuit_wear.py`, map with corners and DRS),
+  Grand Prix pages (`/races/{year}/{slug}` from `GET /schedule`, with a
+  `calendar.ics`), standings (`GET /standings?after_round=`, official
+  points, countback; the page only asks up to the round the viewer says
+  they watched) and qualifying. Qualifying added four domain events
+  (`QualifyingPartChanged`, `QualifyingBestLap`, `QualifyingKnockout`,
+  `SessionClockUpdated`), parsed live from `TimingData`/`ExtrapolatedClock`
+  and rebuilt for backfilled sessions by `f1_historical_adapter.qualifying`;
+  `$lib/qualifying` draws the board in place of the race tower. Replays
+  open a weekend's other sessions with `?session=`. Backfilled sessions
+  carry their schedule `location`, so a moved race (2026 "Bahrain" at
+  Sepang) finds its real circuit. Two serving rules came with it: a
+  finished qualifying the store holds without Q parts (ingested before
+  2026-10-12) is served from the backfill
+  (`f1_api.sessions._store_lacks_qualifying`), and standings and circuit
+  strategy read the backfill's own catalog and tables, whichever source
+  serves the session (a race ingested live is backfilled too).
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.

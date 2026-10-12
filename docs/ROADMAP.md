@@ -94,8 +94,9 @@ friend watching the race with you.
   - the frame check is a main-thread budget (headless Chromium composites
     the map canvas in software, so frame intervals measure the test
     machine, not the app);
-  - qualifying and sprint sessions are not in the set yet, because
-    `/sessions/{year}/{round}` always opens the race (W4).
+  - qualifying joined the set on 2026-10-12 (`e2e-real/qualifying.spec.ts`,
+    2024 Miami, checked break by break); a sprint session is still not in
+    it.
 - The watchdog is the `watchdog` service (`f1_api.watchdog`), tested
   against a real stalled stream. The post-session check is the existing
   `f1-historical-compare`, documented in DEPLOY.md; automating it is open.
@@ -432,22 +433,50 @@ Status (2026-10-11):
   tinted for yellow, SC, VSC and red. It occupies the same space on green,
   so a flag never moves the page.
 - **Still open:** pit count beyond stints, the race control feed on every
-  layout, qualifying, sprint, standings, mini-sectors, and the check
-  against official timing.
+  layout, sprint, mini-sectors, and the check against official timing.
+  Qualifying and standings are built (see the M2 screens below).
 
 **Done when** every tower field is checked against the official timing for
 the W0 sessions, and qualifying shows the right drivers eliminated at each
 Q break in a real qualifying replay.
 
 Mockups for M2's new screens (2026-10-11, direction A, on the design canvas,
-waiting for your approval):
+approved the same day):
 - **Qualifying:** 2024 Miami, Q2 with 1:15 to go. Who makes Q3, with the cut
   line; what each car in the drop zone needs to beat (1:28.323); a strip of
   every time against the cut; who is on a flying lap now; the Q1 knockouts
   greyed out.
+  *Built 2026-10-11:* four new domain events (`QualifyingPartChanged`,
+  `QualifyingBestLap`, `QualifyingKnockout`, `SessionClockUpdated`), parsed
+  live from `TimingData` and `ExtrapolatedClock` and rebuilt for backfilled
+  sessions from race control, laps and results; `$lib/qualifying` folds
+  them into the board, which replaces the race tower, pit board and race
+  analytics for qualifying and sprint qualifying. Replays open with
+  `?session=qualifying`, and the masthead links a weekend's sessions. One
+  departure from the mockup, for honesty: "On a flying lap now" is "On
+  track now", with out laps marked, because nothing in the feed tells a
+  push lap from a cool-down lap. The map draws only measured positions in
+  qualifying (the timing screen cannot place the cars). Checked: the 2024
+  Miami rebuild matches every official Q1/Q2/Q3 time and knockout
+  (opt-in test); the recorded 2026 Singapore sprint qualifying (red flag
+  included) and qualifying give the same knockouts as F1 on both paths;
+  `e2e-real/qualifying.spec.ts` replays 2024 Miami in the browser and
+  checks each break. Deployed 2026-10-12: the four 2026 qualifyings the
+  store took in before the parser read Q parts (Azerbaijan, Bahrain at
+  Sepang, Singapore and its sprint qualifying) are served from the
+  backfill, which rebuilds them.
 - **Standings:** 2024 after Miami, behind their own spoiler shield ("as of
   the last race you watched"). A points sparkline per driver, how the top
   six got here, constructors, and the points still available.
+  *Built 2026-10-11:* `/standings` and `/standings/{year}` over
+  `GET /standings?season=&after_round=` (`f1_api.standings`): the official
+  `Points` of every backfilled Grand Prix and sprint, ties split by
+  countback, constructors credited per race to the team each car raced
+  for. It reproduces the 2024 championship exactly (opt-in test). The
+  page asks only for points up to the viewer's chosen round (kept on the
+  device); until they choose, a race from the last 7 days, or an undated
+  latest round, stays out. A round counts once its Grand Prix is
+  backfilled. Checked by `e2e/standings.spec.ts` in `verify-phase3`.
 - **Circuit page (S2):** Marina Bay. Its outline with numbered corners and
   DRS zones, the measured pit loss with its uncertainty, and tyre wear by
   compound, with thin fits marked.
@@ -525,6 +554,15 @@ resume and catch-up on a recorded race played as live.
 **Done when** `/sessions` lists every completed 2025 and 2026 session and
 each one opens and passes W0's smoke check.
 
+Status (2026-10-12): the data is done. Production lists all 120 sessions
+of 2025 and every 2026 round through Singapore (round 17), qualifying and
+sprints included; the 2025 standings rebuilt from them match the official
+championship exactly. Each backfilled session also carries its venue
+(`f1-backfill --locations-only`). The VM's retry loop is gone: running a
+season that still has rounds to come always "fails" on those rounds, which
+had stopped 2025 from ever retrying. Still open: archive cards with track
+thumbnails, and the smoke check over every session.
+
 ### W9. SEO
 
 - **S1. Search Console** (you, about 15 minutes):
@@ -539,10 +577,31 @@ each one opens and passes W0's smoke check.
   provisional), DRS zones, corners, outline, typical degradation by
   compound and braking points. These are server-rendered and in the
   sitemap. Search target: "Singapore GP pit stop time loss".
+  *Built 2026-10-11:* `/circuits` and `/circuits/{slug}` (`GET /circuits`,
+  `GET /circuits/{id}`), server-rendered with the map drawn on the server,
+  in the sitemap with `SportsActivityLocation` data. Tyre wear per compound
+  is measured by `f1_kernel/tools/build_circuit_wear.py` (dry races,
+  `good` fits only; 3-7 fits shown thin, under 3 as an outline). Since
+  2026-10-12 it rests on every race of 2024 and 2025 (no backfill holds
+  2023): 2025 measured on the VM with `--fits-out`, merged here with
+  `--fits-in`. 53 compound figures rest on 8 or more stints.
+  A provisional pit loss is labelled "not measured" and never ranked.
+  Braking points are not on the page yet: there is no per-circuit
+  aggregate of them. Checked by `e2e/circuits.spec.ts` in `verify-phase3`.
 - **S3. Grand Prix pages,** for example `/races/2026/singapore`: the
   schedule in the viewer's time zone, a countdown, the live link, then the
   replay and analysis after the race. Every race week brings a burst of
   "<GP> schedule / start time" searches.
+  *Built 2026-10-11:* `/races/{year}/{slug}` (slug from the event name:
+  `singapore`, `united-states`, `sao-paulo`), server-rendered from
+  `GET /schedule`: the countdown, each session at the track and in the
+  viewer's time, what a stop costs at the circuit, and how the previous
+  race there was run (stop counts and tyre plans, no results). "Add to
+  calendar" is a `calendar.ics` beside the page (UTC times, nominal
+  session lengths). `SportsEvent` data with every session as a sub-event;
+  this season's and last season's pages are in the sitemap. The home
+  page's next race links to it. Checked by `e2e/races.spec.ts` in
+  `verify-phase3`.
 - **S4. Guides:** "How to watch F1 without spoilers", "What is an
   undercut" (with a live example from our data), "Pit stop time loss at
   every circuit".

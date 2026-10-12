@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Shanghai"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.1007,
+      "good_fits": 39,
+      "sessions": [
+        "2024-5",
+        "2025-2"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.125,
+      "good_fits": 24,
+      "sessions": [
+        "2024-5",
+        "2025-2"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.2078,
+      "good_fits": 2,
+      "sessions": [
+        "2024-5"
+      ]
+    }
+  },
   "lap_distance_m": 5372.3,
   "pit_loss_s": 23.33,
   "pit_loss_provenance": "calibrated",

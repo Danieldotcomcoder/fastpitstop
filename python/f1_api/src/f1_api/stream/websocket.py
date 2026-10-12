@@ -144,7 +144,7 @@ async def stream(
                     narration_model=model,
                     explanation_store=store,
                     radio_index=radio_index,
-                    circuit_name=entry.circuit_name,
+                    circuit_name=entry.circuit_name or entry.location,
                 )
             return
 

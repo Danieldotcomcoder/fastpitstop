@@ -27,8 +27,12 @@ from f1_domain import (
     PitEntry,
     PitExit,
     PositionChanged,
+    QualifyingBestLap,
+    QualifyingKnockout,
+    QualifyingPartChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionClockUpdated,
     SessionInfoUpdated,
     SessionKey,
     SessionStatusChanged,
@@ -139,6 +143,12 @@ EXAMPLES: Sequence[EventBase] = [
     ),
     SessionStatusChanged(**_envelope(), status="Started"),
     LapCounterUpdated(**_envelope(), current_lap=21, total_laps=57),
+    SessionClockUpdated(**_envelope(), remaining=timedelta(minutes=12, seconds=4), running=True),
+    QualifyingPartChanged(**_envelope(), part=2, entries=[22, 16, 10]),
+    QualifyingBestLap(
+        **_envelope(), driver="16", part=2, lap_time=timedelta(seconds=87.533), lap_number=7
+    ),
+    QualifyingKnockout(**_envelope(), driver="77", part=1),
     SessionInfoUpdated(
         **_envelope(), meeting_name="Azerbaijan Grand Prix", circuit_short_name="Baku"
     ),

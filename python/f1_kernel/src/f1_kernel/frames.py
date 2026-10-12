@@ -502,16 +502,19 @@ def session_frames_from_events(
     session_key: SessionKey,
     *,
     event_name: str | None = None,
+    venue: str | None = None,
 ) -> SessionFrames:
     """Build every frame for one session in a single pass over the events.
 
     The circuit comes from the stream's own `SessionInfoUpdated` when there
     is one (a live session: by the feed's venue name, which is unambiguous
-    across seasons), else from `event_name` (a historical session)."""
+    across seasons), else from `venue` (a backfilled session's schedule
+    location), else from `event_name`."""
     materialized = list(events)
     laps = lap_frame_from_events(materialized, session_key)
     stints = stint_frame_from_events(materialized, session_key, laps=laps)
-    meeting_name, venue = _session_info(materialized)
+    meeting_name, stream_venue = _session_info(materialized)
+    venue = stream_venue or venue
     name = event_name if event_name is not None else meeting_name
     return SessionFrames(
         session_key=session_key,

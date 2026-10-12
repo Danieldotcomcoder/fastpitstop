@@ -187,6 +187,10 @@ DEFAULT_STREAM_KINDS: frozenset[str] = frozenset(
         "weather_sample",
         "team_radio_clip",
         "session_status_changed",
+        "session_clock_updated",
+        "qualifying_part_changed",
+        "qualifying_best_lap",
+        "qualifying_knockout",
         "driver_list_updated",
         "unknown",
     }

@@ -247,7 +247,18 @@ chronological order, stamped `provenance=HISTORICAL`.
 What historical **can** provide: `LapCompleted`, `SectorCompleted`,
 `PitEntry`/`PitExit`, `StintStarted`, `PositionChanged`, `GapUpdated`,
 `WeatherSample`, `RaceControlMessage`, `TeamRadioClip`, `DriverListUpdated`,
-and (opt-in via `include_telemetry`) `CarTelemetry`.
+and (opt-in via `include_telemetry`) `CarTelemetry`. For qualifying and
+sprint qualifying, also `QualifyingPartChanged`, `QualifyingBestLap`,
+`QualifyingKnockout` and `SessionClockUpdated`, rebuilt from race control's
+`qualifying_phase`, the laps and the results
+(`f1_historical_adapter.qualifying`). Live, the same four come from
+`TimingData`'s `SessionPart`/`NoEntries`/`BestLapTimes`/`KnockedOut` and the
+`ExtrapolatedClock` topic. Checked 2026-10-11 against the recorded 2026
+Singapore sprint qualifying and qualifying: both paths knock out the same
+cars as F1 at every break. Live, a part's best laps are what the timing
+screen showed at the time; a lap deleted after the part ended stays in
+them (four SQ1 times there), while the archive drops it when FastF1 marks
+it deleted.
 
 What historical **cannot** provide (the kernel must not assume it):
 

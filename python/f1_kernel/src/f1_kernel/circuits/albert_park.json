@@ -11,6 +11,22 @@
   "schedule_locations": [
     "Melbourne"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0878,
+      "good_fits": 33,
+      "sessions": [
+        "2024-3"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.1012,
+      "good_fits": 4,
+      "sessions": [
+        "2024-3"
+      ]
+    }
+  },
   "lap_distance_m": 5211.6,
   "pit_loss_s": 21.09,
   "pit_loss_provenance": "calibrated",

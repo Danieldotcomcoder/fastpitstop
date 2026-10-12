@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Spa-Francorchamps"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0952,
+      "good_fits": 22,
+      "sessions": [
+        "2024-14",
+        "2025-13"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0843,
+      "good_fits": 23,
+      "sessions": [
+        "2024-14",
+        "2025-13"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.0698,
+      "good_fits": 2,
+      "sessions": [
+        "2024-14"
+      ]
+    }
+  },
   "lap_distance_m": 6920.7,
   "pit_loss_s": 18.78,
   "pit_loss_provenance": "calibrated",

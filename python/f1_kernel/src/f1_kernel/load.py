@@ -24,7 +24,7 @@ from f1_kernel.frames import (
     stint_frame_from_events,
     telemetry_frame_from_events,
 )
-from f1_kernel.sources import LAP_FRAME_KINDS, EventSource
+from f1_kernel.sources import LAP_FRAME_KINDS, EventSource, SessionRef
 
 _TELEMETRY_KINDS = frozenset({*LAP_FRAME_KINDS, "car_telemetry"})
 
@@ -65,9 +65,12 @@ def session_frames(
     A source that cannot enumerate its sessions simply yields no circuit —
     an analytic must already handle a circuit we do not ship.
     """
-    resolved = event_name if event_name is not None else _event_name(source, session_key)
+    ref = _session_ref(source, session_key)
+    resolved = event_name if event_name is not None else (ref.event_name if ref else None)
     events = list(source.events(session_key, kinds=LAP_FRAME_KINDS))
-    frames = session_frames_from_events(events, session_key, event_name=resolved)
+    frames = session_frames_from_events(
+        events, session_key, event_name=resolved, venue=ref.location if ref else None
+    )
     if frames.event_name is None and resolved is not None:
         # Keep the resolved name even when no circuit file matches it.
         return SessionFrames(
@@ -80,12 +83,12 @@ def session_frames(
     return frames
 
 
-def _event_name(source: EventSource, session_key: SessionKey) -> str | None:
+def _session_ref(source: EventSource, session_key: SessionKey) -> SessionRef | None:
     try:
         refs = source.sessions()
     except Exception:
         return None
     for ref in refs:
         if ref.session_key == session_key:
-            return ref.event_name
+            return ref
     return None

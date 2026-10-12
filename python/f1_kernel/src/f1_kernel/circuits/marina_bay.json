@@ -11,6 +11,32 @@
   "schedule_locations": [
     "Marina Bay"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0967,
+      "good_fits": 28,
+      "sessions": [
+        "2024-18",
+        "2025-18"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0798,
+      "good_fits": 32,
+      "sessions": [
+        "2024-18",
+        "2025-18"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.0829,
+      "good_fits": 9,
+      "sessions": [
+        "2024-18",
+        "2025-18"
+      ]
+    }
+  },
   "lap_distance_m": 4858.6,
   "pit_loss_s": 30.13,
   "pit_loss_provenance": "calibrated",

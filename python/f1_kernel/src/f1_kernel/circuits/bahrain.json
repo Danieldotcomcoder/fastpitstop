@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Sakhir"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.1325,
+      "good_fits": 47,
+      "sessions": [
+        "2024-1",
+        "2025-4"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.1434,
+      "good_fits": 20,
+      "sessions": [
+        "2025-4"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1572,
+      "good_fits": 19,
+      "sessions": [
+        "2024-1",
+        "2025-4"
+      ]
+    }
+  },
   "lap_distance_m": 5351.4,
   "pit_loss_s": 24.32,
   "pit_loss_provenance": "calibrated",

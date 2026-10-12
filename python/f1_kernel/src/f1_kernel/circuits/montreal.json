@@ -11,6 +11,24 @@
   "schedule_locations": [
     "Montr\u00e9al"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0419,
+      "good_fits": 31,
+      "sessions": [
+        "2024-9",
+        "2025-10"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0798,
+      "good_fits": 15,
+      "sessions": [
+        "2024-9",
+        "2025-10"
+      ]
+    }
+  },
   "lap_distance_m": 4304.5,
   "pit_loss_s": 26.28,
   "pit_loss_provenance": "calibrated",

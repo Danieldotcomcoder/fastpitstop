@@ -28,6 +28,7 @@ from enum import StrEnum
 from pydantic import JsonValue
 
 from f1_parse.car_data import CarDataSample, decode_car_data
+from f1_parse.clock import ClockDecoded, decode_clock
 from f1_parse.driver_list import DriverEntryDelta, decode_driver_list
 from f1_parse.lap_count import LapCountDecoded, decode_lap_count
 from f1_parse.position import PositionSample, decode_position
@@ -56,6 +57,7 @@ class Family(StrEnum):
     SESSION_INFO = "session_info"
     SESSION_DATA = "session_data"
     LAP_COUNT = "lap_count"
+    CLOCK = "clock"
     DRIVER_LIST = "driver_list"
     META = "meta"
     """Our own recording sentinels (`_meta.*`), passed through verbatim."""
@@ -74,6 +76,7 @@ DecodedData = (
     | SessionInfoDecoded
     | SessionDataDecoded
     | LapCountDecoded
+    | ClockDecoded
     | dict[str, DriverEntryDelta]
     | JsonValue
 )
@@ -120,6 +123,8 @@ def decode(record: RawRecord) -> DecodedMessage:
             return _msg(record, Family.SESSION_DATA, decode_session_data(payload))
         if topic == "LapCount":
             return _msg(record, Family.LAP_COUNT, decode_lap_count(payload))
+        if topic == "ExtrapolatedClock":
+            return _msg(record, Family.CLOCK, decode_clock(payload))
         if topic == "DriverList":
             return _msg(record, Family.DRIVER_LIST, decode_driver_list(payload))
         if topic.startswith("_meta."):

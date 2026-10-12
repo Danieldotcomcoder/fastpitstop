@@ -19,9 +19,11 @@ import logging
 import sys
 from pathlib import Path
 
+from f1_backfill.catalog import CATALOG_FILENAME, Catalog
 from f1_backfill.fastf1_source import configure_cache
 from f1_backfill.pipeline import DEFAULT_OUT_DIR, run_backfill
 from f1_backfill.positions import run_positions
+from f1_backfill.schedule import sessions_for_season
 
 logger = logging.getLogger("f1_backfill")
 
@@ -37,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     configure_cache(args.fastf1_cache)
     if args.positions_only:
         return _positions(args)
+    if args.locations_only:
+        return _locations(args)
     report = run_backfill(
         args.season,
         round_filter=args.round,
@@ -75,6 +79,21 @@ def _positions(args: argparse.Namespace) -> int:
     for key, error in report.failed:
         logger.error("  %s: %s", key.catalog_key, error)
     return 1 if report.failed else 0
+
+
+def _locations(args: argparse.Namespace) -> int:
+    """Record FastF1's schedule location on sessions catalogued before the
+    catalog kept it: no session data is fetched, only the season's schedule."""
+    catalog_path = args.catalog or args.out / CATALOG_FILENAME
+    catalog = Catalog.load(catalog_path)
+    changed = sum(
+        catalog.record_location(key)
+        for key in sessions_for_season(args.season, round_filter=args.round)
+    )
+    if changed:
+        catalog.save(catalog_path)
+    logger.info("Done: location recorded on %d sessions", changed)
+    return 0
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -132,6 +151,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--refresh",
         action="store_true",
         help="re-pull sessions already present in the catalog instead of skipping them",
+    )
+    parser.add_argument(
+        "--locations-only",
+        action="store_true",
+        help=(
+            "only record FastF1's schedule location on sessions already in the catalog "
+            "(the venue, which a Grand Prix name is not)"
+        ),
     )
     return parser.parse_args(argv)
 

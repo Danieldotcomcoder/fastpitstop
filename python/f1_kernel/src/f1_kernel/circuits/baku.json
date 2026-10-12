@@ -11,6 +11,24 @@
   "schedule_locations": [
     "Baku"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0548,
+      "good_fits": 35,
+      "sessions": [
+        "2024-17",
+        "2025-17"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0728,
+      "good_fits": 19,
+      "sessions": [
+        "2024-17",
+        "2025-17"
+      ]
+    }
+  },
   "lap_distance_m": 5917.5,
   "pit_loss_s": 22.29,
   "pit_loss_provenance": "calibrated",

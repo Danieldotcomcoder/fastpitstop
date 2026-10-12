@@ -15,6 +15,9 @@ What historical CANNOT provide (documented so the kernel never assumes it):
   session-relative `Time`; we rebuild absolute UTC from the session start
   (`reader.session_start_utc`). Sub-second alignment across channels is
   therefore approximate, unlike the live feed's own timestamps.
+- Qualifying's parts, per-part best laps, knockouts and clock are rebuilt
+  from race control, laps and results (`f1_historical_adapter.qualifying`
+  says how, and what that cannot know).
 - No track/session-status delta stream. `CarTelemetry` is available but
   OFF BY DEFAULT (`include_telemetry`): FastF1's telemetry is resampled and
   gap-filled (its `Source` column flags interpolated rows), so it is not
@@ -55,6 +58,7 @@ from f1_domain import (
     RaceControlMessage,
     SectorCompleted,
     SessionKey,
+    SessionType,
     StintStarted,
     TeamRadioClip,
     WeatherSample,
@@ -69,6 +73,7 @@ from f1_historical_adapter.coerce import (
     opt_timedelta,
     to_utc,
 )
+from f1_historical_adapter.qualifying import emit_qualifying
 from f1_historical_adapter.reader import SessionTables, load_session_tables
 from f1_parse import LapGap, parse_gap
 
@@ -163,6 +168,8 @@ def build_events(
     race_control = tables.get("race_control")
     if race_control is not None:
         _emit_race_control(race_control, env, collector)
+        if key.session_type in (SessionType.QUALIFYING, SessionType.SPRINT_QUALIFYING):
+            emit_qualifying(race_control, laps, tables.get("results"), start, env, collector.add)
 
     team_radio = tables.get("team_radio")
     if team_radio is not None:

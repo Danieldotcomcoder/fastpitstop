@@ -2,7 +2,6 @@
 	/** One race, replayed. Resolves the session named by the URL and hands
 	 * it to `RaceWorkspace` — the same component `/live` renders, so what
 	 * you test against a replay is literally what a live session shows. */
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { api, type components } from '$lib/api/client';
 	import { seoFor, toSeoSession } from '$lib/seo';
@@ -12,12 +11,21 @@
 	type Session = components['schemas']['SessionSummaryOut'];
 
 	let session = $state<Session | null>(null);
+	/** Every session held at this round, for the links between them. */
+	let weekend = $state<Session[]>([]);
 	let status = $state<'loading' | 'ready' | 'error'>('loading');
 	let error = $state('');
 	let generation = 0;
 
 	const year = $derived(Number(page.params.year));
 	const round = $derived(Number(page.params.round));
+	const wantedSession = $derived(page.url.searchParams.get('session'));
+
+	// A different round, or another session at the same one, reloads.
+	$effect(() => {
+		void [year, round, wantedSession];
+		void load();
+	});
 
 	async function load(): Promise<void> {
 		const own = ++generation;
@@ -29,12 +37,18 @@
 			const matches = result.data.filter(
 				(s) => s.session_key.year === year && s.session_key.round === round
 			);
-			// The race is the headline session of a weekend; anything else at
-			// that round is a fallback rather than a 404.
+			// `?session=qualifying` picks that session; otherwise the race, the
+			// headline of a weekend, with anything else at that round a
+			// fallback rather than a 404.
+			const wanted = page.url.searchParams.get('session') ?? 'race';
 			const found =
-				matches.find((s) => s.session_key.session_type === 'race') ?? matches[0] ?? null;
+				matches.find((s) => s.session_key.session_type === wanted) ??
+				matches.find((s) => s.session_key.session_type === 'race') ??
+				matches[0] ??
+				null;
 			if (!found) throw new Error('This session is not available.');
 			session = found;
+			weekend = matches;
 			status = 'ready';
 		} catch (e) {
 			if (own !== generation) return;
@@ -42,10 +56,6 @@
 			status = 'error';
 		}
 	}
-
-	onMount(() => {
-		void load();
-	});
 </script>
 
 <!-- The same title the server writes into the HTML (`$lib/seo`), so the
@@ -67,7 +77,7 @@
 	<button onclick={() => void load()}>Try again</button>
 {:else if session}
 	{#key session.key}
-		<RaceWorkspace {session} />
+		<RaceWorkspace {session} {weekend} />
 	{/key}
 {/if}
 

@@ -53,7 +53,7 @@ if TYPE_CHECKING:  # geometry imports the stream, which imports this module
 
 def session_summary(entry: SessionEntry) -> SessionSummaryOut:
     """`GET /sessions` row — metadata + data badges, no frame load."""
-    circuit = circuit_for_session(entry.event_name, entry.circuit_name)
+    circuit = circuit_for_session(entry.event_name, entry.circuit_name or entry.location)
     tables = {name.casefold() for name in entry.tables}
     has_radio = any("radio" in name for name in tables)
     has_telemetry = any(

@@ -79,6 +79,8 @@ class SessionEntry:
     """Whether this session is in progress RIGHT NOW — never merely
     whether the store happens to hold it (see the module docstring)."""
     circuit_name: str | None = None
+    location: str | None = None
+    """A backfilled session's FastF1 schedule location (its venue)."""
     """The feed's venue short name when the source knows it (live sessions,
     from the log's `session_info_updated`): how a live session finds its
     circuit, since a Grand Prix name alone is ambiguous across seasons."""
@@ -146,10 +148,26 @@ def _sort_key(entry: SessionEntry) -> tuple[int, int, str]:
     return (key.year, key.round, key.session_type.value)
 
 
+_QUALIFYING = (SessionType.QUALIFYING, SessionType.SPRINT_QUALIFYING)
+
+
+def _store_lacks_qualifying(store: _Store, session_key: SessionKey) -> bool:
+    """A finished qualifying the store holds without its Q parts: ingested
+    before the parser read them (2026-10-12), so its replay would show an
+    empty qualifying board. The backfill rebuilds the parts, so such a
+    session is served from there when the backfill has it. A session still
+    running stays on the store."""
+    if session_key.session_type not in _QUALIFYING or session_key in store.live_keys:
+        return False
+    parts = store.source.events(session_key, kinds=["qualifying_part_changed"])
+    return next(iter(parts), None) is None
+
+
 def list_sessions(settings: Settings) -> list[SessionEntry]:
     """Every session either source can serve, `live` winning over
     `historical` when the same key appears in both (the store is the fresher
-    copy of a session currently being ingested)."""
+    copy of a session currently being ingested), except a finished
+    qualifying the store holds without its parts (`_store_lacks_qualifying`)."""
     historical = HistoricalSource(settings.historical_root)
     by_key: dict[SessionKey, SessionEntry] = {
         ref.session_key: SessionEntry(
@@ -157,12 +175,15 @@ def list_sessions(settings: Settings) -> list[SessionEntry]:
             event_name=ref.event_name,
             provenance="historical",
             tables=ref.tables,
+            location=ref.location,
         )
         for ref in historical.sessions()
     }
     with _store_source(settings) as store:
         if store is not None:
             for ref in store.source.sessions():
+                if ref.session_key in by_key and _store_lacks_qualifying(store, ref.session_key):
+                    continue
                 by_key[ref.session_key] = SessionEntry(
                     session_key=ref.session_key,
                     event_name=ref.event_name,
@@ -178,41 +199,46 @@ def list_sessions(settings: Settings) -> list[SessionEntry]:
 def resolve_session(
     settings: Settings, session_key: SessionKey
 ) -> Generator[ResolvedSession | None, None, None]:
-    """Find the source backing `session_key`, live first. `None` means
-    neither source has it — a 404 to the caller, not a crash.
+    """Find the source backing `session_key`, live first (with the same
+    qualifying exception as `list_sessions`). `None` means neither source
+    has it — a 404 to the caller, not a crash.
 
     A context manager because the live source may hold an open database
     connection for as long as the caller reads from it; the historical
     source holds nothing that needs closing."""
+    historical = HistoricalSource(settings.historical_root)
+    backfilled = next((r for r in historical.sessions() if r.session_key == session_key), None)
     with _store_source(settings) as store:
         if store is not None:
             for ref in store.source.sessions():
-                if ref.session_key == session_key:
-                    yield ResolvedSession(
-                        source=store.source,
-                        entry=SessionEntry(
-                            session_key=session_key,
-                            event_name=ref.event_name,
-                            provenance="live",
-                            tables=ref.tables,
-                            live=session_key in store.live_keys,
-                            circuit_name=ref.circuit_name,
-                        ),
-                    )
-                    return
-        historical = HistoricalSource(settings.historical_root)
-        for ref in historical.sessions():
-            if ref.session_key == session_key:
+                if ref.session_key != session_key:
+                    continue
+                if backfilled is not None and _store_lacks_qualifying(store, session_key):
+                    break
                 yield ResolvedSession(
-                    source=historical,
+                    source=store.source,
                     entry=SessionEntry(
                         session_key=session_key,
                         event_name=ref.event_name,
-                        provenance="historical",
+                        provenance="live",
                         tables=ref.tables,
+                        live=session_key in store.live_keys,
+                        circuit_name=ref.circuit_name,
                     ),
                 )
                 return
+        if backfilled is not None:
+            yield ResolvedSession(
+                source=historical,
+                entry=SessionEntry(
+                    session_key=session_key,
+                    event_name=backfilled.event_name,
+                    provenance="historical",
+                    tables=backfilled.tables,
+                    location=backfilled.location,
+                ),
+            )
+            return
         yield None
 
 

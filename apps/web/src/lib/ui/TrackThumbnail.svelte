@@ -8,7 +8,10 @@
 	import { outlinePath } from './geometry';
 
 	interface Props {
-		points: readonly Point[];
+		points?: readonly Point[];
+		/** The outline already fitted to `width` x `height` by `outlinePath`,
+		 * for a page that drew it on the server instead of shipping points. */
+		fitted?: string;
 		/** The circuit's name, for screen readers. */
 		label: string;
 		width?: number;
@@ -17,9 +20,17 @@
 		strokeWidth?: number;
 	}
 
-	let { points, label, width = 160, height = 110, draw = false, strokeWidth = 2 }: Props = $props();
+	let {
+		points = [],
+		fitted,
+		label,
+		width = 160,
+		height = 110,
+		draw = false,
+		strokeWidth = 2
+	}: Props = $props();
 
-	let path = $derived(outlinePath(points, width, height, strokeWidth * 3));
+	let path = $derived(fitted ?? outlinePath(points, width, height, strokeWidth * 3));
 </script>
 
 <svg

@@ -87,8 +87,12 @@ from f1_domain import (
     PitEntry,
     PitExit,
     PositionChanged,
+    QualifyingBestLap,
+    QualifyingKnockout,
+    QualifyingPartChanged,
     RaceControlMessage,
     SectorCompleted,
+    SessionClockUpdated,
     SessionInfoUpdated,
     SessionKey,
     SessionState,
@@ -103,6 +107,7 @@ from f1_domain import (
 )
 from f1_parse._json import as_bool_flag, as_dict, as_int, as_str
 from f1_parse.car_data import CarDataSample
+from f1_parse.clock import ClockDecoded, decode_clock
 from f1_parse.decode import DecodedMessage, Family, decode
 from f1_parse.driver_list import DriverEntryDelta, decode_driver_list
 from f1_parse.lap_count import LapCountDecoded, decode_lap_count
@@ -112,7 +117,7 @@ from f1_parse.race_control import RaceControlEntry, decode_race_control
 from f1_parse.session_data import SessionDataDecoded, decode_session_data
 from f1_parse.session_info import SessionInfoDecoded, decode_session_info
 from f1_parse.team_radio import TeamRadioCapture, decode_team_radio
-from f1_parse.times import parse_lap_time
+from f1_parse.times import parse_lap_time, parse_utc
 from f1_parse.timing import TimingLinesDelta, decode_timing
 from f1_parse.track_status import TrackStatusDecoded, decode_track_status
 from f1_parse.weather import WeatherDecoded, decode_weather
@@ -130,6 +135,7 @@ absolute audio URLs (the same base FastF1 uses for livetiming statics)."""
 
 _MAX_SECTORS = 10
 _MAX_STINTS = 50
+_MAX_QUALIFYING_PARTS = 3
 """Sanity caps on sparse-list indices, so one corrupt message can't balloon
 the merged structures."""
 
@@ -240,6 +246,10 @@ class _TimingFacts:
     in_pit: bool | None = None
     pit_stops: int | None = None
     sectors: tuple[str | None, ...] = ()
+    best_laps: tuple[tuple[str | None, int | None], ...] = ()
+    """Qualifying only: (best lap value, its lap number) per part."""
+    knocked_out: bool | None = None
+    """Qualifying only: the feed's `KnockedOut`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +301,8 @@ def _timing_facts(merged: JsonValue) -> _TimingFacts:
         in_pit=as_bool_flag(line.get("InPit")),
         pit_stops=as_int(line.get("NumberOfPitStops")),
         sectors=_sector_values(line.get("Sectors")),
+        best_laps=_best_laps(line.get("BestLapTimes")),
+        knocked_out=as_bool_flag(line.get("KnockedOut")),
     )
 
 
@@ -340,6 +352,42 @@ def _sector_values(sectors: JsonValue | None) -> tuple[str | None, ...]:
     return tuple(values)
 
 
+def _best_laps(value: JsonValue | None) -> tuple[tuple[str | None, int | None], ...]:
+    """A qualifying line's best lap in each part, from `BestLapTimes`."""
+    result: list[tuple[str | None, int | None]] = []
+    for index, raw in _sparse_items(value, _MAX_QUALIFYING_PARTS):
+        while len(result) <= index:
+            result.append((None, None))
+        entry = as_dict(raw) or {}
+        lap_time = _non_empty(as_str(entry.get("Value")))
+        result[index] = (lap_time, as_int(entry.get("Lap")) if lap_time else None)
+    return tuple(result)
+
+
+def _entries(value: JsonValue | None, previous: tuple[int, ...]) -> tuple[int, ...]:
+    """`NoEntries` (cars in each qualifying part), merged over what was
+    known: the feed sends it as a list or, as a delta, a digit-keyed dict."""
+    merged = list(previous)
+    for index, raw in _sparse_items(value, _MAX_QUALIFYING_PARTS):
+        count = as_int(raw)
+        if count is None:
+            continue
+        while len(merged) <= index:
+            merged.append(0)
+        merged[index] = count
+    return tuple(merged)
+
+
+def _knockout_part(facts: _TimingFacts, current_part: int | None) -> int:
+    """The part a knocked-out driver went out in, for a baseline that never
+    saw the knockout happen: the last part they set a time in, else the
+    part before the current one."""
+    timed = [index + 1 for index, (value, _) in enumerate(facts.best_laps) if value]
+    if timed:
+        return max(timed)
+    return max(1, (current_part or 2) - 1)
+
+
 def _stint_facts(merged_app: JsonValue) -> tuple[_StintFacts, ...]:
     line = as_dict(merged_app) or {}
     result: list[_StintFacts] = []
@@ -385,6 +433,15 @@ class SessionStateMachine:
         # SessionInfo's meeting and venue, published as SessionInfoUpdated.
         self._meeting_name: str | None = None
         self._circuit_name: str | None = None
+        # Qualifying: the current part (the feed's `SessionPart`, 0 before
+        # Q1) and how many cars run in each (`NoEntries`).
+        self._quali_part: int | None = None
+        self._quali_entries: tuple[int, ...] = ()
+        # ExtrapolatedClock, merged verbatim, and the last state emitted.
+        self._clock_utc: str | None = None
+        self._clock_remaining: str | None = None
+        self._clock_running: bool | None = None
+        self._clock_emitted: tuple[str | None, str | None, bool] | None = None
         self._track_status_code: str | None = None
         self._track_status_kind: TrackStatusKind | None = None
         self._track_status_message: str | None = None
@@ -455,6 +512,8 @@ class SessionStateMachine:
             return self._apply_session_data(data, ts, seq)
         if message.family is Family.LAP_COUNT and isinstance(data, LapCountDecoded):
             return self._lap_count_events(data, ts, seq)
+        if message.family is Family.CLOCK and isinstance(data, ClockDecoded):
+            return self._apply_clock(data, ts, seq)
         if message.family is Family.DRIVER_LIST and isinstance(data, dict):
             return self._apply_driver_list(data, ts, seq)
         # Family.UNKNOWN (or a decoder degradation): preserve verbatim —
@@ -530,6 +589,33 @@ class SessionStateMachine:
                     total_laps=self._total_laps,
                 )
             )
+        if self._clock_remaining is not None:
+            events.append(self._clock_event(ts, seq))
+        if self._quali_part:
+            # Joining mid-qualifying: which part it is, each driver's best
+            # lap in every part so far, and who is already out.
+            events.append(self._part_event(ts, seq))
+            for number in sorted(self._drivers, key=_number_sort_key):
+                facts = self._drivers[number].facts
+                for index, (value, lap) in enumerate(facts.best_laps):
+                    if value is not None:
+                        events.append(
+                            QualifyingBestLap(
+                                **self._envelope(ts, seq),
+                                driver=number,
+                                part=index + 1,
+                                lap_time=parse_lap_time(value),
+                                lap_number=lap,
+                            )
+                        )
+                if facts.knocked_out:
+                    events.append(
+                        QualifyingKnockout(
+                            **self._envelope(ts, seq),
+                            driver=number,
+                            part=_knockout_part(facts, self._quali_part),
+                        )
+                    )
         return events
 
     def _absorb_snapshot(self, snapshot: Mapping[str, JsonValue]) -> None:
@@ -552,9 +638,15 @@ class SessionStateMachine:
                 tracker.app = deep_merge(None, line)
                 tracker.stints = _stint_facts(tracker.app)
                 tracker.announced_stints = set(range(len(tracker.stints)))
+        clock = snapshot.get("ExtrapolatedClock")
+        if clock is not None:
+            self._merge_clock(decode_clock(clock))
+            self._clock_emitted = self._clock_state()
         timing = snapshot.get("TimingData")
         if timing is not None:
-            for number, line in decode_timing(timing).lines.items():
+            decoded_timing = decode_timing(timing)
+            self._merge_quali_session(decoded_timing.other)
+            for number, line in decoded_timing.lines.items():
                 if not isinstance(line, dict):
                     continue
                 tracker = self._tracker(number)
@@ -635,6 +727,15 @@ class SessionStateMachine:
         self, delta: TimingLinesDelta, ts: datetime, seq: int
     ) -> list[DomainEvent]:
         events: list[DomainEvent] = []
+        part_before = self._quali_part
+        self._merge_quali_session(delta.other)
+        part_changed = bool(self._quali_part) and self._quali_part != part_before
+        if part_changed:
+            events.append(self._part_event(ts, seq))
+        # The feed knocks drivers out in the same message that opens the next
+        # part, so a knockout seen alongside a part change belongs to the
+        # part that just ended.
+        knockout_part = part_before if part_changed and part_before else self._quali_part
         for number, line_delta in delta.lines.items():
             if not isinstance(line_delta, dict):
                 continue  # bookkeeping keys like "_kf", not a driver line
@@ -658,7 +759,96 @@ class SessionStateMachine:
             if new.position is not None and new.position != old.position:
                 self._emit_position(events, number, tracker, new.position, ts, seq)
             self._emit_gap(events, number, old, new, ts, seq)
+            self._emit_qualifying(events, number, old, new, knockout_part, ts, seq)
         return events
+
+    def _merge_quali_session(self, other: Mapping[str, JsonValue]) -> None:
+        """Fold TimingData's session-level qualifying keys into state."""
+        if "NoEntries" in other:
+            self._quali_entries = _entries(other["NoEntries"], self._quali_entries)
+        part = as_int(other.get("SessionPart"))
+        if part is not None:
+            self._quali_part = part
+
+    def _part_event(self, ts: datetime, seq: int) -> QualifyingPartChanged:
+        return QualifyingPartChanged(
+            **self._envelope(ts, seq),
+            part=self._quali_part,
+            entries=list(self._quali_entries) if any(self._quali_entries) else None,
+        )
+
+    def _emit_qualifying(
+        self,
+        events: list[DomainEvent],
+        number: str,
+        old: _TimingFacts,
+        new: _TimingFacts,
+        knockout_part: int | None,
+        ts: datetime,
+        seq: int,
+    ) -> None:
+        """A part's best lap changing (a quicker lap, or one deleted), and a
+        knockout or reinstatement."""
+        for index in range(max(len(old.best_laps), len(new.best_laps))):
+            before = old.best_laps[index] if index < len(old.best_laps) else (None, None)
+            after = new.best_laps[index] if index < len(new.best_laps) else (None, None)
+            if after[0] == before[0]:
+                continue
+            events.append(
+                QualifyingBestLap(
+                    **self._envelope(ts, seq),
+                    driver=number,
+                    part=index + 1,
+                    lap_time=parse_lap_time(after[0]),
+                    lap_number=after[1],
+                )
+            )
+        if new.knocked_out is True and old.knocked_out is not True:
+            events.append(
+                QualifyingKnockout(**self._envelope(ts, seq), driver=number, part=knockout_part)
+            )
+        elif new.knocked_out is False and old.knocked_out is True:
+            events.append(
+                QualifyingKnockout(
+                    **self._envelope(ts, seq),
+                    driver=number,
+                    part=knockout_part,
+                    knocked_out=False,
+                )
+            )
+
+    def _merge_clock(self, decoded: ClockDecoded) -> None:
+        if decoded.utc is not None:
+            self._clock_utc = decoded.utc
+        if decoded.remaining is not None:
+            self._clock_remaining = decoded.remaining
+        if decoded.extrapolating is not None:
+            self._clock_running = decoded.extrapolating
+
+    def _clock_state(self) -> tuple[str | None, str | None, bool]:
+        return (self._clock_utc, self._clock_remaining, bool(self._clock_running))
+
+    def _apply_clock(self, decoded: ClockDecoded, ts: datetime, seq: int) -> list[DomainEvent]:
+        """The clock started, stopped or was restated: emit what it reads at
+        this record's time. A message restating an unchanged clock emits
+        nothing."""
+        self._merge_clock(decoded)
+        state = self._clock_state()
+        if state == self._clock_emitted or self._clock_remaining is None:
+            return []
+        self._clock_emitted = state
+        return [self._clock_event(ts, seq)]
+
+    def _clock_event(self, ts: datetime, seq: int) -> SessionClockUpdated:
+        """The clock as it reads at `ts`: `Remaining` was true at the feed's
+        `Utc`, so a running clock has since counted down by the difference
+        (seconds for a delta; minutes for a snapshot taken mid-part)."""
+        remaining = parse_lap_time(self._clock_remaining)
+        running = bool(self._clock_running)
+        since = parse_utc(self._clock_utc)
+        if remaining is not None and running and since is not None and ts > since:
+            remaining = max(timedelta(0), remaining - (ts - since))
+        return SessionClockUpdated(**self._envelope(ts, seq), remaining=remaining, running=running)
 
     def _emit_sectors(
         self,

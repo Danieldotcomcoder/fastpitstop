@@ -30,6 +30,9 @@ class SessionEntry(BaseModel):
     round: int
     session_type: str
     event_name: str
+    location: str | None = None
+    """FastF1's schedule location ("Marina Bay"): the venue, which a Grand
+    Prix name is not (the 2026 "Spanish Grand Prix" ran in Madrid)."""
     sources: list[str]
     tables: dict[str, int] = Field(description="table name -> row count")
     acquired_at: datetime
@@ -62,6 +65,7 @@ class Catalog(BaseModel):
             round=key.round,
             session_type=key.session_type,
             event_name=key.event_name,
+            location=key.location or None,
             sources=sources,
             tables=tables,
             acquired_at=acquired_at,
@@ -74,6 +78,15 @@ class Catalog(BaseModel):
         self.sessions[key.catalog_key] = entry.model_copy(
             update={"tables": {**entry.tables, table: rows}}
         )
+
+    def record_location(self, key: SessionKey) -> bool:
+        """Fill in the location of a session catalogued before it was
+        recorded. True when the entry changed."""
+        entry = self.sessions.get(key.catalog_key)
+        if entry is None or not key.location or entry.location == key.location:
+            return False
+        self.sessions[key.catalog_key] = entry.model_copy(update={"location": key.location})
+        return True
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)

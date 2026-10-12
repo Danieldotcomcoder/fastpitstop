@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Mexico City"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0555,
+      "good_fits": 18,
+      "sessions": [
+        "2024-20",
+        "2025-20"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0791,
+      "good_fits": 33,
+      "sessions": [
+        "2024-20",
+        "2025-20"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.0953,
+      "good_fits": 22,
+      "sessions": [
+        "2025-20"
+      ]
+    }
+  },
   "lap_distance_m": 4228.2,
   "pit_loss_s": 23.5,
   "pit_loss_provenance": "calibrated",

@@ -23,10 +23,13 @@
 		DelaySyncController,
 		EMPTY_VISIBLE_STATE,
 		measureServerOffset,
+		playbackClockMs,
 		serverNowMs,
 		setServerClockOffsetMs,
 		type VisibleSessionState
 	} from '$lib/delay-sync';
+	import QualifyingBoard from '$lib/qualifying/QualifyingBoard.svelte';
+	import { QualifyingReducer, qualiView } from '$lib/qualifying/reducer';
 	import { RevealTracker } from '$lib/kernel-views';
 	import { namesFromEvents } from '$lib/driver-events';
 	import { driverName } from '$lib/drivers';
@@ -57,9 +60,11 @@
 		session: Session;
 		/** Show the back-link to the session list. Off for `/live`. */
 		showBackLink?: boolean;
+		/** The weekend's sessions, for links between them (replays only). */
+		weekend?: Session[];
 	}
 
-	let { session, showBackLink = true }: Props = $props();
+	let { session, showBackLink = true, weekend = [] }: Props = $props();
 
 	/** `live`, never `provenance`: `provenance === 'live'` only means the
 	 * store serves this session, which stays true forever once ingested —
@@ -93,6 +98,16 @@
 	const why = new ExplanationLaneReducer();
 	const feed = new RaceFeedReducer();
 	const history = new SnapshotHistory();
+	const quali = new QualifyingReducer();
+
+	/** Qualifying and sprint qualifying get the qualifying board in place of
+	 * the race tower, pit board and race analytics. */
+	let isQualifying = $derived(
+		session.session_key.session_type === 'qualifying' ||
+			session.session_key.session_type === 'sprint_qualifying'
+	);
+	/** The viewer's playback time, for the qualifying clock between updates. */
+	let playbackMs = $state(0);
 
 	const year = $derived(session.session_key.year);
 	$effect(() => controller.visibleState.subscribe((s) => (visible = s)));
@@ -104,6 +119,7 @@
 		reveal.update(visible.events);
 		why.update(visible.events);
 		feed.update(visible.events);
+		if (isQualifying) quali.update(visible.events);
 		// Fresh copies: the reducer mutates rows in place, and Svelte only
 		// re-renders a keyed row whose value changed identity.
 		return tower.rows.map((r) => ({ ...r }));
@@ -123,8 +139,22 @@
 
 	let completedLaps = $derived(Math.max(0, ...rows.map((r) => r.lapNumber ?? 0)));
 	let lap = $derived(raceLap(visible.events, completedLaps));
+	let qualiBoard = $derived.by(() => {
+		void rows;
+		if (!isQualifying) return null;
+		return qualiView(quali.state, playbackMs, {
+			sprint: session.session_key.session_type === 'sprint_qualifying',
+			timeScale: isLive ? 1 : speed > 0 ? speed : 1
+		});
+	});
+	let qualiOver = $derived(
+		qualiBoard !== null && qualiBoard.part === 3 && qualiBoard.clockState === 'over'
+	);
 	let finished = $derived.by(() => {
 		void revision;
+		// Qualifying shows a chequered flag at the end of every part: it is
+		// over only when its last part is.
+		if (isQualifying) return qualiOver;
 		return reveal.state.sessionFinished;
 	});
 	let totalLaps = $derived(lap.total ?? (finished ? completedLaps : null));
@@ -169,6 +199,17 @@
 	let feedItems = $derived.by(() => {
 		void revision;
 		return feed.list(feedFilter);
+	});
+
+	const mmss = (s: number) =>
+		`${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+	let qualiFlag = $derived.by(() => {
+		const b = qualiBoard;
+		if (!b || b.part === null) return connection === 'Receiving' ? 'Waiting for Q1' : connection;
+		if (b.clockState === 'running') return 'To go';
+		if (b.clockState === 'stopped') return 'Clock stopped';
+		if (b.clockState === 'over') return b.part === 3 ? 'Qualifying over' : `${b.label} over`;
+		return 'Waiting';
 	});
 
 	function lastLapClass(driver: string, lapTime: number | null): '' | 'fastest' | 'pb' {
@@ -228,7 +269,7 @@
 
 	function connect(delay = controller.delayState.get().delaySeconds) {
 		disconnect();
-		for (const reducer of [tower, reveal, records, why, feed, history]) reducer.reset();
+		for (const reducer of [tower, reveal, records, why, feed, history, quali]) reducer.reset();
 		visible = EMPTY_VISIBLE_STATE;
 		lightsOutUtc = null;
 		firstEventUtc = null;
@@ -280,7 +321,11 @@
 		stream.connect();
 		// Ten releases a second: the page moves as the race does.
 		timer = setInterval(() => {
-			if (clockKnown) c.tick();
+			if (!clockKnown) return;
+			c.tick();
+			if (isQualifying) {
+				playbackMs = playbackClockMs(serverNowMs(), c.delayState.get().delaySeconds);
+			}
 		}, 100);
 	}
 
@@ -352,10 +397,27 @@
 		practice_2: 'Practice 2',
 		practice_3: 'Practice 3'
 	};
+	/** Links to the weekend's other competitive sessions, in running order. */
+	const LINK_ORDER = ['sprint_qualifying', 'sprint', 'qualifying', 'race'];
+	let weekendLinks = $derived(
+		LINK_ORDER.flatMap((type) => {
+			const s = weekend.find((w) => w.session_key.session_type === type);
+			if (!s) return [];
+			const path = resolve(`/sessions/${s.session_key.year}/${s.session_key.round}`);
+			return [
+				{
+					type,
+					label: TYPE_LABEL[type] ?? type,
+					href: type === 'race' ? path : `${path}?session=${type}`,
+					current: s.key === session.key
+				}
+			];
+		})
+	);
 	let meta = $derived(
 		[
 			TYPE_LABEL[session.session_key.session_type] ?? session.session_key.session_type,
-			totalLaps !== null ? `${totalLaps} laps` : null,
+			totalLaps !== null && !isQualifying ? `${totalLaps} laps` : null,
 			isLive ? 'Live' : `Replay · ${year}`
 		]
 			.filter(Boolean)
@@ -384,6 +446,14 @@
 			{#if showBackLink}<a class="back-link" href={resolve('/sessions')}>← Sessions</a>{/if}
 			<h1 class="session-title">{session.event_name ?? session.key}</h1>
 			<div class="session-meta">{meta}</div>
+			{#if weekendLinks.length > 1}
+				<nav class="weekend-links" aria-label="Sessions this weekend">
+					{#each weekendLinks as link (link.type)}
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
+					{/each}
+				</nav>
+			{/if}
 			<dl class="weather" data-testid="weather" aria-label="Weather as of your clock">
 				{#each weather as reading (reading.label)}
 					<div>
@@ -393,12 +463,20 @@
 				{/each}
 			</dl>
 		</div>
-		<div class="lapcount" aria-live="polite">
-			<span class="caps">{finished ? 'Finished' : 'Lap'}</span>
-			<span class="big" data-testid="session-lap">{String(lap.current).padStart(2, '0')}</span
-			>{#if totalLaps !== null}<span class="of">/{totalLaps}</span>{/if}
-			<span class="flag">{lapsToGo}</span>
-		</div>
+		{#if qualiBoard}
+			<div class="lapcount" data-testid="quali-clock">
+				<span class="caps">{qualiBoard.label ?? 'Qualifying'}</span>
+				<span class="big num">{qualiBoard.clockS !== null ? mmss(qualiBoard.clockS) : '—'}</span>
+				<span class="flag">{qualiFlag}</span>
+			</div>
+		{:else}
+			<div class="lapcount" aria-live="polite">
+				<span class="caps">{finished ? 'Finished' : 'Lap'}</span>
+				<span class="big" data-testid="session-lap">{String(lap.current).padStart(2, '0')}</span
+				>{#if totalLaps !== null}<span class="of">/{totalLaps}</span>{/if}
+				<span class="flag">{lapsToGo}</span>
+			</div>
+		{/if}
 	</header>
 
 	<SyncStrip
@@ -411,53 +489,76 @@
 		onRestart={() => connect()}
 	/>
 
-	<main class="desk">
-		<DeskTower
-			{rows}
-			{focus}
-			{pair}
-			{names}
-			currentLap={lap.current}
-			{totalLaps}
-			{lastLapClass}
-			{sectorClass}
-			onFocus={(d) => (focus = d)}
-		/>
-		<WhyLane {explanations} {codes} {teams} />
-		<DeskMap
-			{controller}
-			{circuit}
-			{circuitStatus}
-			{rows}
-			{pair}
-			{codes}
-			timeScale={isLive ? 1 : speed > 0 ? speed : 1}
-		/>
-		<PitBoard
-			model={board}
-			{spark}
-			focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
-		/>
-		<DeskAnalytics
-			apiKey={session.key}
-			laps={revealedLaps}
-			{pair}
-			{crossover}
-			{codes}
-			{names}
-			{teams}
-			{totalLaps}
-			isStintRevealed={(driver, stint) => reveal.isStintRevealed(driver, stint)}
-			{revision}
-		/>
-		<FeedLane
-			items={feedItems}
-			filter={feedFilter}
-			{codes}
-			{teams}
-			onFilter={(f) => (feedFilter = f)}
-		/>
-	</main>
+	{#if qualiBoard}
+		<main class="desk q-desk">
+			<QualifyingBoard view={qualiBoard} {names} />
+			<DeskMap
+				{controller}
+				{circuit}
+				{circuitStatus}
+				{rows}
+				pair={null}
+				{codes}
+				timeScale={isLive ? 1 : speed > 0 ? speed : 1}
+				estimate={false}
+			/>
+			<FeedLane
+				items={feedItems}
+				filter={feedFilter}
+				{codes}
+				{teams}
+				onFilter={(f) => (feedFilter = f)}
+			/>
+		</main>
+	{:else}
+		<main class="desk">
+			<DeskTower
+				{rows}
+				{focus}
+				{pair}
+				{names}
+				currentLap={lap.current}
+				{totalLaps}
+				{lastLapClass}
+				{sectorClass}
+				onFocus={(d) => (focus = d)}
+			/>
+			<WhyLane {explanations} {codes} {teams} />
+			<DeskMap
+				{controller}
+				{circuit}
+				{circuitStatus}
+				{rows}
+				{pair}
+				{codes}
+				timeScale={isLive ? 1 : speed > 0 ? speed : 1}
+			/>
+			<PitBoard
+				model={board}
+				{spark}
+				focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
+			/>
+			<DeskAnalytics
+				apiKey={session.key}
+				laps={revealedLaps}
+				{pair}
+				{crossover}
+				{codes}
+				{names}
+				{teams}
+				{totalLaps}
+				isStintRevealed={(driver, stint) => reveal.isStintRevealed(driver, stint)}
+				{revision}
+			/>
+			<FeedLane
+				items={feedItems}
+				filter={feedFilter}
+				{codes}
+				{teams}
+				onFilter={(f) => (feedFilter = f)}
+			/>
+		</main>
+	{/if}
 
 	<footer class="site-foot">
 		<span>{finished ? 'Race complete' : connection} · {rows.length} drivers on the timing feed</span
@@ -479,5 +580,25 @@
 	}
 	.back-link:hover {
 		color: var(--ink);
+	}
+	.weekend-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+		margin-top: 2px;
+		font-size: 12.5px;
+	}
+	.weekend-links a {
+		color: var(--muted);
+		text-decoration: none;
+		padding-bottom: 1px;
+		border-bottom: 1px solid transparent;
+	}
+	.weekend-links a:hover {
+		color: var(--ink);
+	}
+	.weekend-links a[aria-current='page'] {
+		color: var(--ink);
+		border-bottom-color: var(--ink);
 	}
 </style>

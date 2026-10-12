@@ -1623,3 +1623,41 @@
 .desk-page .lapcount {
 	min-width: 150px;
 }
+
+/* Qualifying (ROADMAP W4): the board and its side cards, then the map and
+   the feed. More specific than the race desk's placements, which also
+   match these panels. */
+.desk-page .desk.q-desk > .q-board {
+	order: 1;
+}
+.desk-page .desk.q-desk > .q-side {
+	order: 2;
+}
+.desk-page .desk.q-desk > .p-map {
+	order: 3;
+}
+.desk-page .desk.q-desk > .p-radio {
+	order: 4;
+}
+@media (min-width: 900px) {
+	.desk-page .desk.q-desk {
+		grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+		align-items: start;
+	}
+	.desk-page .desk.q-desk > .q-board {
+		grid-column: 1;
+		grid-row: 1 / span 2;
+	}
+	.desk-page .desk.q-desk > .q-side {
+		grid-column: 2;
+		grid-row: 1;
+	}
+	.desk-page .desk.q-desk > .p-map {
+		grid-column: 2;
+		grid-row: 2;
+	}
+	.desk-page .desk.q-desk > .p-radio {
+		grid-column: 1 / -1;
+		grid-row: 3;
+	}
+}

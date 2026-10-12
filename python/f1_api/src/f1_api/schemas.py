@@ -428,6 +428,130 @@ class CircuitOut(BaseModel):
     season's race) did not fit them."""
 
 
+class TyreWearOut(BaseModel):
+    """`f1_kernel.TyreWear`: one compound's measured wear at a circuit."""
+
+    compound: str
+    median_s_per_lap: float
+    good_fits: int
+    """Reliable stint fits behind the median: fewer than a handful is thin."""
+    sessions: list[str]
+
+
+class TyrePlanOut(BaseModel):
+    compounds: list[str]
+    cars: int
+
+
+class RaceStrategyOut(BaseModel):
+    """How a race was run (`f1_api.circuits.race_strategy`): the finishers'
+    stops and tyre plans. Never a result."""
+
+    finishers: int
+    stops: dict[str, int]
+    """Stops made -> finishers who made that many."""
+    plans: list[TyrePlanOut]
+
+
+class CircuitRaceOut(BaseModel):
+    key: str
+    season: int
+    round: int
+    event_name: str | None
+    strategy: RaceStrategyOut | None
+
+
+class CircuitSummaryOut(BaseModel):
+    """`GET /circuits`: one shipped circuit, for the circuits index."""
+
+    circuit_id: str
+    name: str
+    country: str
+    lap_distance_m: float
+    corners: int
+    drs_zones: int
+    pit_loss_s: float
+    pit_loss_provenance: str
+    pit_loss_uncertainty_s: float | None
+    pit_loss_n_stops: int | None
+    outline: TrackOutlineOut | None
+
+
+class CircuitProfileOut(CircuitOut):
+    """`GET /circuits/{circuit_id}`: the circuit page. Its geometry (as
+    `CircuitOut`) plus the measured figures and the races held there."""
+
+    country: str
+    pit_loss_s: float
+    pit_loss_provenance: str
+    pit_loss_uncertainty_s: float | None
+    pit_loss_n_stops: int | None
+    tyre_wear: list[TyreWearOut]
+    races: list[CircuitRaceOut]
+
+
+class StandingsRoundOut(BaseModel):
+    """A round with Grand Prix results, for the "last race you watched"
+    choice. Names a race, never its result."""
+
+    round: int
+    event_name: str | None
+    sprint: bool
+    race_start_utc: datetime | None
+    """When its Grand Prix started, from the calendar: the page keeps a race
+    from the last few days hidden until the viewer says they've seen it."""
+
+
+class DriverStandingOut(BaseModel):
+    position: int
+    code: str
+    name: str
+    """Family name ("Verstappen"), or the code when the results lack one."""
+    team: str | None
+    """The team of their latest counted Grand Prix."""
+    team_color: str | None
+    points: float
+    wins: int
+    by_round: list[float]
+    """Running total after each counted round, in round order."""
+
+
+class ConstructorStandingOut(BaseModel):
+    position: int
+    team: str
+    team_color: str | None
+    points: float
+    wins: int
+    by_round: list[float]
+
+
+class RemainingPointsOut(BaseModel):
+    """What one driver could still score after the counted rounds, from the
+    calendar: every Grand Prix and sprint still to run, at its maximum."""
+
+    races: int
+    sprints: int
+    race_points: int
+    """The most a driver can score in one Grand Prix that season."""
+    sprint_points: int
+    max_points: int
+
+
+class StandingsOut(BaseModel):
+    """`GET /standings`: the championship after a round the viewer chose
+    (`after_round`), so no later race reaches the page."""
+
+    season: int
+    after_round: int
+    """The last round counted; 0 when none is."""
+    rounds: list[StandingsRoundOut]
+    """Every round of the season with results, counted or not."""
+    drivers: list[DriverStandingOut]
+    constructors: list[ConstructorStandingOut]
+    remaining: RemainingPointsOut | None
+    """Null when the calendar can't be read."""
+
+
 class RadioSegmentOut(BaseModel):
     """One `f1_radio.transcription.TranscriptSegment`, stored as a plain
     dict on `radio_transcripts.segments` and reshaped here field-for-field."""

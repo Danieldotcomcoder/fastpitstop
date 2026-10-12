@@ -11,6 +11,31 @@
   "schedule_locations": [
     "Monaco"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0314,
+      "good_fits": 27,
+      "sessions": [
+        "2024-8",
+        "2025-8"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0128,
+      "good_fits": 20,
+      "sessions": [
+        "2024-8",
+        "2025-8"
+      ]
+    },
+    "soft": {
+      "median_s_per_lap": 0.1296,
+      "good_fits": 1,
+      "sessions": [
+        "2024-8"
+      ]
+    }
+  },
   "lap_distance_m": 3275.0,
   "pit_loss_s": 19.0,
   "pit_loss_provenance": "provisional",

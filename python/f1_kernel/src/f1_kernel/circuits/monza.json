@@ -11,6 +11,24 @@
   "schedule_locations": [
     "Monza"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0692,
+      "good_fits": 44,
+      "sessions": [
+        "2024-16",
+        "2025-16"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0714,
+      "good_fits": 24,
+      "sessions": [
+        "2024-16",
+        "2025-16"
+      ]
+    }
+  },
   "lap_distance_m": 5728.4,
   "pit_loss_s": 25.73,
   "pit_loss_provenance": "calibrated",

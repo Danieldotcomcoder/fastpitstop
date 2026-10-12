@@ -329,6 +329,257 @@
         "title": "CircuitOut",
         "type": "object"
       },
+      "CircuitProfileOut": {
+        "description": "`GET /circuits/{circuit_id}`: the circuit page. Its geometry (as\n`CircuitOut`) plus the measured figures and the races held there.",
+        "properties": {
+          "circuit_id": {
+            "title": "Circuit Id",
+            "type": "string"
+          },
+          "corners": {
+            "items": {
+              "$ref": "#/components/schemas/CornerOut"
+            },
+            "title": "Corners",
+            "type": "array"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "drs_zones": {
+            "items": {
+              "$ref": "#/components/schemas/DrsZoneOut"
+            },
+            "title": "Drs Zones",
+            "type": "array"
+          },
+          "geometry_from_session": {
+            "default": false,
+            "title": "Geometry From Session",
+            "type": "boolean"
+          },
+          "lap_distance_m": {
+            "title": "Lap Distance M",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pit_lane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PitLaneOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pit_loss_n_stops": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pit Loss N Stops"
+          },
+          "pit_loss_provenance": {
+            "title": "Pit Loss Provenance",
+            "type": "string"
+          },
+          "pit_loss_s": {
+            "title": "Pit Loss S",
+            "type": "number"
+          },
+          "pit_loss_uncertainty_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pit Loss Uncertainty S"
+          },
+          "races": {
+            "items": {
+              "$ref": "#/components/schemas/CircuitRaceOut"
+            },
+            "title": "Races",
+            "type": "array"
+          },
+          "tyre_wear": {
+            "items": {
+              "$ref": "#/components/schemas/TyreWearOut"
+            },
+            "title": "Tyre Wear",
+            "type": "array"
+          }
+        },
+        "required": [
+          "circuit_id",
+          "name",
+          "lap_distance_m",
+          "corners",
+          "drs_zones",
+          "outline",
+          "country",
+          "pit_loss_s",
+          "pit_loss_provenance",
+          "pit_loss_uncertainty_s",
+          "pit_loss_n_stops",
+          "tyre_wear",
+          "races"
+        ],
+        "title": "CircuitProfileOut",
+        "type": "object"
+      },
+      "CircuitRaceOut": {
+        "properties": {
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "integer"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RaceStrategyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "season",
+          "round",
+          "event_name",
+          "strategy"
+        ],
+        "title": "CircuitRaceOut",
+        "type": "object"
+      },
+      "CircuitSummaryOut": {
+        "description": "`GET /circuits`: one shipped circuit, for the circuits index.",
+        "properties": {
+          "circuit_id": {
+            "title": "Circuit Id",
+            "type": "string"
+          },
+          "corners": {
+            "title": "Corners",
+            "type": "integer"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "drs_zones": {
+            "title": "Drs Zones",
+            "type": "integer"
+          },
+          "lap_distance_m": {
+            "title": "Lap Distance M",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pit_loss_n_stops": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pit Loss N Stops"
+          },
+          "pit_loss_provenance": {
+            "title": "Pit Loss Provenance",
+            "type": "string"
+          },
+          "pit_loss_s": {
+            "title": "Pit Loss S",
+            "type": "number"
+          },
+          "pit_loss_uncertainty_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pit Loss Uncertainty S"
+          }
+        },
+        "required": [
+          "circuit_id",
+          "name",
+          "country",
+          "lap_distance_m",
+          "corners",
+          "drs_zones",
+          "pit_loss_s",
+          "pit_loss_provenance",
+          "pit_loss_uncertainty_s",
+          "pit_loss_n_stops",
+          "outline"
+        ],
+        "title": "CircuitSummaryOut",
+        "type": "object"
+      },
       "CitedEvidenceOut": {
         "description": "One evidence item an explanation actually cited \u2014 enough for a\ncitation trail, with an optional `href` the client follows for full\ndetail (radio clip / degradation / laps). Items with no dedicated REST\nroute (anomaly facts, race-control messages) carry `href=None`.",
         "properties": {
@@ -541,6 +792,54 @@
         ],
         "title": "Confidence",
         "type": "string"
+      },
+      "ConstructorStandingOut": {
+        "properties": {
+          "by_round": {
+            "items": {
+              "type": "number"
+            },
+            "title": "By Round",
+            "type": "array"
+          },
+          "points": {
+            "title": "Points",
+            "type": "number"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          },
+          "team_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Color"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "position",
+          "team",
+          "team_color",
+          "points",
+          "wins",
+          "by_round"
+        ],
+        "title": "ConstructorStandingOut",
+        "type": "object"
       },
       "CornerOut": {
         "description": "One `f1_kernel.Corner` \u2014 a numbered corner along the reference lap.",
@@ -987,6 +1286,71 @@
           "reliability"
         ],
         "title": "DegradationFitOut",
+        "type": "object"
+      },
+      "DriverStandingOut": {
+        "properties": {
+          "by_round": {
+            "items": {
+              "type": "number"
+            },
+            "title": "By Round",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "title": "Points",
+            "type": "number"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "team_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Color"
+          },
+          "wins": {
+            "title": "Wins",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "position",
+          "code",
+          "name",
+          "team",
+          "team_color",
+          "points",
+          "wins",
+          "by_round"
+        ],
+        "title": "DriverStandingOut",
         "type": "object"
       },
       "DriverStintStateOut": {
@@ -1944,6 +2308,36 @@
         "title": "PitLaneOut",
         "type": "object"
       },
+      "RaceStrategyOut": {
+        "description": "How a race was run (`f1_api.circuits.race_strategy`): the finishers'\nstops and tyre plans. Never a result.",
+        "properties": {
+          "finishers": {
+            "title": "Finishers",
+            "type": "integer"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/TyrePlanOut"
+            },
+            "title": "Plans",
+            "type": "array"
+          },
+          "stops": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Stops",
+            "type": "object"
+          }
+        },
+        "required": [
+          "finishers",
+          "stops",
+          "plans"
+        ],
+        "title": "RaceStrategyOut",
+        "type": "object"
+      },
       "RadioClipOut": {
         "description": "One team-radio exchange \u2014 the join `f1_radio.domain.radio_clip`\nalready makes at the library layer, reshaped for the API: the\noriginating `TeamRadioClip` event's own fields (`driver`, `captured_at`,\n`audio_url`) plus whatever `radio_transcripts` row exists for it.\n`has_transcript=False` with every transcript field `None` is a normal,\nexpected state (Phase 4's own \"transcription runs offline/batch\" \u2014 a\nclip fetched but not yet transcribed), never an error. `audio_url` is\nthe feed's own clip URL \u2014 the frontend fetches audio lazily from it when\nthe user plays a clip; this API never streams audio bytes. `clip_id` is\n`f1_api.radio.clip_id_path`'s own opaque path segment, included here so\na client (the corpus search page, whose `RadioSearchResultOut.clip`\nnever carries `audio_url`) can resolve `GET /radio/{clip_id}` for one\nresult without reimplementing that encoding itself.",
         "properties": {
@@ -2205,6 +2599,40 @@
         ],
         "title": "Reliability",
         "type": "string"
+      },
+      "RemainingPointsOut": {
+        "description": "What one driver could still score after the counted rounds, from the\ncalendar: every Grand Prix and sprint still to run, at its maximum.",
+        "properties": {
+          "max_points": {
+            "title": "Max Points",
+            "type": "integer"
+          },
+          "race_points": {
+            "title": "Race Points",
+            "type": "integer"
+          },
+          "races": {
+            "title": "Races",
+            "type": "integer"
+          },
+          "sprint_points": {
+            "title": "Sprint Points",
+            "type": "integer"
+          },
+          "sprints": {
+            "title": "Sprints",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "races",
+          "sprints",
+          "race_points",
+          "sprint_points",
+          "max_points"
+        ],
+        "title": "RemainingPointsOut",
+        "type": "object"
       },
       "ScheduleEventOut": {
         "description": "`GET /schedule` and `GET /schedule/next`: one round of the calendar.\nHolds no results, so it needs no spoiler gate.",
@@ -2539,6 +2967,104 @@
         "title": "SessionType",
         "type": "string"
       },
+      "StandingsOut": {
+        "description": "`GET /standings`: the championship after a round the viewer chose\n(`after_round`), so no later race reaches the page.",
+        "properties": {
+          "after_round": {
+            "title": "After Round",
+            "type": "integer"
+          },
+          "constructors": {
+            "items": {
+              "$ref": "#/components/schemas/ConstructorStandingOut"
+            },
+            "title": "Constructors",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/DriverStandingOut"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "remaining": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RemainingPointsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/StandingsRoundOut"
+            },
+            "title": "Rounds",
+            "type": "array"
+          },
+          "season": {
+            "title": "Season",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "season",
+          "after_round",
+          "rounds",
+          "drivers",
+          "constructors",
+          "remaining"
+        ],
+        "title": "StandingsOut",
+        "type": "object"
+      },
+      "StandingsRoundOut": {
+        "description": "A round with Grand Prix results, for the \"last race you watched\"\nchoice. Names a race, never its result.",
+        "properties": {
+          "event_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Name"
+          },
+          "race_start_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Race Start Utc"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "sprint": {
+            "title": "Sprint",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "round",
+          "event_name",
+          "sprint",
+          "race_start_utc"
+        ],
+        "title": "StandingsRoundOut",
+        "type": "object"
+      },
       "StoryMomentOut": {
         "description": "One entry of `GET /sessions/{key}/story` \u2014 an anomaly together with\nits grounded explanation, resolved in the SAME pass.\n\nExists because the alternative the frontend used to do (list anomalies,\nthen one `GET /anomalies/{id}/explanation` per row) re-ran the whole\n`analyze_session` + `detect_anomalies` chain once per request: seconds\nof work per row, times a few hundred rows. Detection is a per-session\ncomputation, so the story is served as a per-session read.\n\n`explanation` is `None` only when narration for that moment could not\nbe produced at all; a moment with no clear cause still carries a real\n`ExplanationOut` whose `text` is the canonical fallback and whose\n`grounded` is False \u2014 the honest \"we don't know\" the UI renders\ndifferently, never a missing row.",
         "properties": {
@@ -2603,6 +3129,59 @@
           "source_points"
         ],
         "title": "TrackOutlineOut",
+        "type": "object"
+      },
+      "TyrePlanOut": {
+        "properties": {
+          "cars": {
+            "title": "Cars",
+            "type": "integer"
+          },
+          "compounds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Compounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "compounds",
+          "cars"
+        ],
+        "title": "TyrePlanOut",
+        "type": "object"
+      },
+      "TyreWearOut": {
+        "description": "`f1_kernel.TyreWear`: one compound's measured wear at a circuit.",
+        "properties": {
+          "compound": {
+            "title": "Compound",
+            "type": "string"
+          },
+          "good_fits": {
+            "title": "Good Fits",
+            "type": "integer"
+          },
+          "median_s_per_lap": {
+            "title": "Median S Per Lap",
+            "type": "number"
+          },
+          "sessions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "compound",
+          "median_s_per_lap",
+          "good_fits",
+          "sessions"
+        ],
+        "title": "TyreWearOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2727,10 +3306,36 @@
         ]
       }
     },
+    "/circuits": {
+      "get": {
+        "description": "Every circuit this project ships measured data for.",
+        "operationId": "get_circuits_circuits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CircuitSummaryOut"
+                  },
+                  "title": "Response Get Circuits Circuits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Circuits",
+        "tags": [
+          "circuits"
+        ]
+      }
+    },
     "/circuits/{circuit_id}": {
       "get": {
-        "description": "A shipped circuit's geometry by id, for a calendar entry that has no\nsession yet (the home page's track drawing).",
-        "operationId": "get_circuit_by_id_circuits__circuit_id__get",
+        "description": "A circuit page: its geometry, measured pit loss and tyre wear, and the\nraces any source holds there with how each was run (strategy only).",
+        "operationId": "get_circuit_profile_circuits__circuit_id__get",
         "parameters": [
           {
             "in": "path",
@@ -2747,7 +3352,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CircuitOut"
+                  "$ref": "#/components/schemas/CircuitProfileOut"
                 }
               }
             },
@@ -2764,9 +3369,9 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Circuit By Id",
+        "summary": "Get Circuit Profile",
         "tags": [
-          "schedule"
+          "circuits"
         ]
       }
     },
@@ -3705,6 +4310,76 @@
         "summary": "Get Telemetry",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/standings": {
+      "get": {
+        "description": "Drivers' and constructors' standings for `season` (default: this\nyear) counting rounds up to `after_round` (default: every round with\nresults). Built from the backfilled results, so a round counts once\nits Grand Prix has been archived.",
+        "operationId": "get_standings_standings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 2018,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_round",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 40,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Round"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Standings",
+        "tags": [
+          "standings"
         ]
       }
     },

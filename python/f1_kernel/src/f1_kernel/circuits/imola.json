@@ -11,6 +11,24 @@
   "schedule_locations": [
     "Imola"
   ],
+  "tyre_wear": {
+    "hard": {
+      "median_s_per_lap": 0.0858,
+      "good_fits": 46,
+      "sessions": [
+        "2024-7",
+        "2025-7"
+      ]
+    },
+    "medium": {
+      "median_s_per_lap": 0.0975,
+      "good_fits": 28,
+      "sessions": [
+        "2024-7",
+        "2025-7"
+      ]
+    }
+  },
   "lap_distance_m": 4858.6,
   "pit_loss_s": 28.5,
   "pit_loss_provenance": "calibrated",

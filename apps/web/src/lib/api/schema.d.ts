@@ -27,6 +27,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/circuits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Circuits
+         * @description Every circuit this project ships measured data for.
+         */
+        get: operations["get_circuits_circuits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/circuits/{circuit_id}": {
         parameters: {
             query?: never;
@@ -35,11 +55,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Circuit By Id
-         * @description A shipped circuit's geometry by id, for a calendar entry that has no
-         *     session yet (the home page's track drawing).
+         * Get Circuit Profile
+         * @description A circuit page: its geometry, measured pit loss and tyre wear, and the
+         *     races any source holds there with how each was run (strategy only).
          */
-        get: operations["get_circuit_by_id_circuits__circuit_id__get"];
+        get: operations["get_circuit_profile_circuits__circuit_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -450,6 +470,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/standings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Standings
+         * @description Drivers' and constructors' standings for `season` (default: this
+         *     year) counting rounds up to `after_round` (default: every round with
+         *     results). Built from the backfilled results, so a round counts once
+         *     its Grand Prix has been archived.
+         */
+        get: operations["get_standings_standings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/time": {
         parameters: {
             query?: never;
@@ -633,6 +676,83 @@ export interface components {
             pit_lane?: components["schemas"]["PitLaneOut"] | null;
         };
         /**
+         * CircuitProfileOut
+         * @description `GET /circuits/{circuit_id}`: the circuit page. Its geometry (as
+         *     `CircuitOut`) plus the measured figures and the races held there.
+         */
+        CircuitProfileOut: {
+            /** Circuit Id */
+            circuit_id: string;
+            /** Corners */
+            corners: components["schemas"]["CornerOut"][];
+            /** Country */
+            country: string;
+            /** Drs Zones */
+            drs_zones: components["schemas"]["DrsZoneOut"][];
+            /**
+             * Geometry From Session
+             * @default false
+             */
+            geometry_from_session: boolean;
+            /** Lap Distance M */
+            lap_distance_m: number;
+            /** Name */
+            name: string;
+            outline: components["schemas"]["TrackOutlineOut"] | null;
+            pit_lane?: components["schemas"]["PitLaneOut"] | null;
+            /** Pit Loss N Stops */
+            pit_loss_n_stops: number | null;
+            /** Pit Loss Provenance */
+            pit_loss_provenance: string;
+            /** Pit Loss S */
+            pit_loss_s: number;
+            /** Pit Loss Uncertainty S */
+            pit_loss_uncertainty_s: number | null;
+            /** Races */
+            races: components["schemas"]["CircuitRaceOut"][];
+            /** Tyre Wear */
+            tyre_wear: components["schemas"]["TyreWearOut"][];
+        };
+        /** CircuitRaceOut */
+        CircuitRaceOut: {
+            /** Event Name */
+            event_name: string | null;
+            /** Key */
+            key: string;
+            /** Round */
+            round: number;
+            /** Season */
+            season: number;
+            strategy: components["schemas"]["RaceStrategyOut"] | null;
+        };
+        /**
+         * CircuitSummaryOut
+         * @description `GET /circuits`: one shipped circuit, for the circuits index.
+         */
+        CircuitSummaryOut: {
+            /** Circuit Id */
+            circuit_id: string;
+            /** Corners */
+            corners: number;
+            /** Country */
+            country: string;
+            /** Drs Zones */
+            drs_zones: number;
+            /** Lap Distance M */
+            lap_distance_m: number;
+            /** Name */
+            name: string;
+            outline: components["schemas"]["TrackOutlineOut"] | null;
+            /** Pit Loss N Stops */
+            pit_loss_n_stops: number | null;
+            /** Pit Loss Provenance */
+            pit_loss_provenance: string;
+            /** Pit Loss S */
+            pit_loss_s: number;
+            /** Pit Loss Uncertainty S */
+            pit_loss_uncertainty_s: number | null;
+        };
+        /**
          * CitedEvidenceOut
          * @description One evidence item an explanation actually cited — enough for a
          *     citation trail, with an optional `href` the client follows for full
@@ -701,6 +821,21 @@ export interface components {
          * @enum {string}
          */
         Confidence: "high" | "medium" | "low";
+        /** ConstructorStandingOut */
+        ConstructorStandingOut: {
+            /** By Round */
+            by_round: number[];
+            /** Points */
+            points: number;
+            /** Position */
+            position: number;
+            /** Team */
+            team: string;
+            /** Team Color */
+            team_color: string | null;
+            /** Wins */
+            wins: number;
+        };
         /**
          * CornerOut
          * @description One `f1_kernel.Corner` — a numbered corner along the reference lap.
@@ -829,6 +964,25 @@ export interface components {
             session_year: number;
             /** Stint Number */
             stint_number: number;
+        };
+        /** DriverStandingOut */
+        DriverStandingOut: {
+            /** By Round */
+            by_round: number[];
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Points */
+            points: number;
+            /** Position */
+            position: number;
+            /** Team */
+            team: string | null;
+            /** Team Color */
+            team_color: string | null;
+            /** Wins */
+            wins: number;
         };
         /**
          * DriverStintStateOut
@@ -1147,6 +1301,21 @@ export interface components {
             source_stops: number;
         };
         /**
+         * RaceStrategyOut
+         * @description How a race was run (`f1_api.circuits.race_strategy`): the finishers'
+         *     stops and tyre plans. Never a result.
+         */
+        RaceStrategyOut: {
+            /** Finishers */
+            finishers: number;
+            /** Plans */
+            plans: components["schemas"]["TyrePlanOut"][];
+            /** Stops */
+            stops: {
+                [key: string]: number;
+            };
+        };
+        /**
          * RadioClipOut
          * @description One team-radio exchange — the join `f1_radio.domain.radio_clip`
          *     already makes at the library layer, reshaped for the API: the
@@ -1251,6 +1420,23 @@ export interface components {
          * @enum {string}
          */
         Reliability: "good" | "thin" | "unreliable";
+        /**
+         * RemainingPointsOut
+         * @description What one driver could still score after the counted rounds, from the
+         *     calendar: every Grand Prix and sprint still to run, at its maximum.
+         */
+        RemainingPointsOut: {
+            /** Max Points */
+            max_points: number;
+            /** Race Points */
+            race_points: number;
+            /** Races */
+            races: number;
+            /** Sprint Points */
+            sprint_points: number;
+            /** Sprints */
+            sprints: number;
+        };
         /**
          * ScheduleEventOut
          * @description `GET /schedule` and `GET /schedule/next`: one round of the calendar.
@@ -1389,6 +1575,39 @@ export interface components {
          */
         SessionType: "practice_1" | "practice_2" | "practice_3" | "sprint_qualifying" | "sprint" | "qualifying" | "race" | "unknown";
         /**
+         * StandingsOut
+         * @description `GET /standings`: the championship after a round the viewer chose
+         *     (`after_round`), so no later race reaches the page.
+         */
+        StandingsOut: {
+            /** After Round */
+            after_round: number;
+            /** Constructors */
+            constructors: components["schemas"]["ConstructorStandingOut"][];
+            /** Drivers */
+            drivers: components["schemas"]["DriverStandingOut"][];
+            remaining: components["schemas"]["RemainingPointsOut"] | null;
+            /** Rounds */
+            rounds: components["schemas"]["StandingsRoundOut"][];
+            /** Season */
+            season: number;
+        };
+        /**
+         * StandingsRoundOut
+         * @description A round with Grand Prix results, for the "last race you watched"
+         *     choice. Names a race, never its result.
+         */
+        StandingsRoundOut: {
+            /** Event Name */
+            event_name: string | null;
+            /** Race Start Utc */
+            race_start_utc: string | null;
+            /** Round */
+            round: number;
+            /** Sprint */
+            sprint: boolean;
+        };
+        /**
          * StoryMomentOut
          * @description One entry of `GET /sessions/{key}/story` — an anomaly together with
          *     its grounded explanation, resolved in the SAME pass.
@@ -1426,6 +1645,27 @@ export interface components {
             source_points: number;
             /** Width M */
             width_m: number;
+        };
+        /** TyrePlanOut */
+        TyrePlanOut: {
+            /** Cars */
+            cars: number;
+            /** Compounds */
+            compounds: string[];
+        };
+        /**
+         * TyreWearOut
+         * @description `f1_kernel.TyreWear`: one compound's measured wear at a circuit.
+         */
+        TyreWearOut: {
+            /** Compound */
+            compound: string;
+            /** Good Fits */
+            good_fits: number;
+            /** Median S Per Lap */
+            median_s_per_lap: number;
+            /** Sessions */
+            sessions: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1499,7 +1739,27 @@ export interface operations {
             };
         };
     };
-    get_circuit_by_id_circuits__circuit_id__get: {
+    get_circuits_circuits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CircuitSummaryOut"][];
+                };
+            };
+        };
+    };
+    get_circuit_profile_circuits__circuit_id__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1516,7 +1776,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CircuitOut"];
+                    "application/json": components["schemas"]["CircuitProfileOut"];
                 };
             };
             /** @description Validation Error */
@@ -2048,6 +2308,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrakingPointRowOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_standings_standings_get: {
+        parameters: {
+            query?: {
+                season?: number | null;
+                after_round?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingsOut"];
                 };
             };
             /** @description Validation Error */

@@ -8,6 +8,8 @@
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { components } from '$lib/api/schema';
+import { grandsPrix, toSeoRace } from '$lib/races/view';
+import type { SeoRace } from '$lib/seo';
 
 export type ScheduleEvent = components['schemas']['ScheduleEventOut'];
 export type Point = [number, number];
@@ -30,8 +32,8 @@ function apiBase(): string {
 	return base.replace(/\/+$/, '');
 }
 
-async function getJson<T>(path: string): Promise<T> {
-	const response = await fetch(`${apiBase()}${path}`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+async function getJson<T>(path: string, timeoutMs = TIMEOUT_MS): Promise<T> {
+	const response = await fetch(`${apiBase()}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
 	if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
 	return (await response.json()) as T;
 }
@@ -67,4 +69,34 @@ export async function nextRace(): Promise<NextRace | null> {
 		}
 	})();
 	return inflight;
+}
+
+const seasons = new Map<number, { at: number; events: ScheduleEvent[] }>();
+
+/** Every round of `season`, for the Grand Prix pages (ROADMAP S3). Throws
+ * when the API can't answer and nothing is cached, so a page can tell "no
+ * such race" from "try again". The caller bounds `season`. */
+export async function seasonSchedule(season: number): Promise<ScheduleEvent[]> {
+	const hit = seasons.get(season);
+	if (hit && Date.now() - hit.at < TTL_MS) return hit.events;
+	try {
+		// Longer than the home page's budget: a season the API hasn't
+		// cached yet is fetched from FastF1 on first ask.
+		const events = await getJson<ScheduleEvent[]>(`/schedule?season=${season}`, 5_000);
+		seasons.set(season, { at: Date.now(), events });
+		return events;
+	} catch (error) {
+		if (hit) return hit.events;
+		throw error;
+	}
+}
+
+/** A season's Grand Prix weekends, for search tags and the sitemap; empty
+ * when the API can't answer. */
+export async function seoRaces(season: number): Promise<SeoRace[]> {
+	try {
+		return grandsPrix(await seasonSchedule(season)).map(toSeoRace);
+	} catch {
+		return [];
+	}
 }

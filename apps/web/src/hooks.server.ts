@@ -6,7 +6,16 @@
  * own short timeout. */
 
 import type { Handle } from '@sveltejs/kit';
-import { renderSeoHead, SERVER_RENDERED, seoFor, type SeoSession } from '$lib/seo';
+import {
+	renderSeoHead,
+	seoFor,
+	serverRendered,
+	type SeoCircuit,
+	type SeoRace,
+	type SeoSession
+} from '$lib/seo';
+import { seoCircuits } from '$lib/server/circuits';
+import { seoRaces } from '$lib/server/schedule';
 import { seoSessions } from '$lib/server/sessions';
 
 const PLACEHOLDER = '<!--seo-head-->';
@@ -20,8 +29,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	let head = '';
 	try {
 		const sessions: SeoSession[] = needsSessions(path) ? await seoSessions() : [];
-		const seo = seoFor(path, sessions);
-		head = renderSeoHead(seo, { withTitle: !SERVER_RENDERED.has(seo.path) });
+		const circuits: SeoCircuit[] = path.startsWith('/circuits/') ? await seoCircuits() : [];
+		const raceYear = /^\/races\/(\d{4})\//.exec(path)?.[1];
+		const races: SeoRace[] = raceYear ? await seoRaces(Number(raceYear)) : [];
+		const seo = seoFor(path, sessions, circuits, races);
+		head = renderSeoHead(seo, { withTitle: !serverRendered(seo.path) });
 	} catch {
 		head = '';
 	}
