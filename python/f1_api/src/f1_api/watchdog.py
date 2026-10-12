@@ -8,9 +8,8 @@ dashboard freezes while the TV carries on. This runs beside the API (the
 browser does (`/stream/{key}?mode=live`), and raises an alert when nothing
 has arrived for `stall_after_s`, then another when traffic resumes.
 
-Alerts always go to the log (`docker compose logs watchdog`) and, when SMTP
-is configured (the same `F1_SMTP_*` settings the feedback form uses), by
-email to `F1_ALERT_TO`, falling back to `F1_FEEDBACK_TO`.
+Alerts go to the log only (`docker compose logs watchdog`): an ERROR line
+when a stream stalls, INFO when it recovers.
 
 The default threshold is a minute, not seconds: a red-flag stoppage can be
 legitimately quiet, and an alert that cries wolf every red flag gets
@@ -30,9 +29,6 @@ from urllib.parse import quote
 
 import httpx
 import websockets
-
-from f1_api.alerts import send_alert
-from f1_api.config import Settings, get_settings
 
 _log = logging.getLogger("f1_api.watchdog")
 
@@ -130,21 +126,15 @@ async def live_session_keys(client: httpx.AsyncClient, api: str) -> set[str]:
     return {str(row["key"]) for row in response.json() if row.get("live")}
 
 
-def build_alert(settings: Settings) -> Alert:
-    """Log every alert; email it too when SMTP is configured."""
+def build_alert() -> Alert:
+    """Log every alert: a stall at ERROR, a recovery at INFO."""
 
     def alert(event: str, key: str, detail: str) -> None:
-        line = f"live stream {event}: {key} ({detail})"
+        line = f"live stream {event}: {key} ({detail}); see `docker compose logs worker api`"
         if event == "recovered":
             _log.info(line)
         else:
             _log.error(line)
-        send_alert(
-            settings,
-            f"live stream {event}: {key}",
-            f"{line}\n\nCheck `docker compose logs worker api` on the VM."
-            "\nThis message is from f1-watchdog.",
-        )
 
     return alert
 
@@ -180,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     # httpx logs every request at INFO: one line per poll, ~2,900 a day of noise.
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    alert = build_alert(get_settings())
+    alert = build_alert()
     asyncio.run(run(args.api, alert, stall_after_s=args.stall_after, poll_s=args.poll))
     return 0
 

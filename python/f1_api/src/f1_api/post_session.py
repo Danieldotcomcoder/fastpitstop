@@ -15,8 +15,8 @@ archive after a session) and has no report yet:
 2. The store's events, what viewers saw, are compared with those tables
    (`f1_historical_adapter.compare_event_streams`).
 3. The report goes to `<data>/post_session/<key>.md` (and `.json`).
-   Anything beyond `Tolerances` is logged as an error and emailed
-   (`f1_api.alerts`).
+   Anything beyond `Tolerances` is logged at ERROR, one line each, in
+   `docker compose logs postsession`. Logs only, by choice: no email.
 
 A session with a report is never checked again; `--session KEY` checks one
 now and replaces its report. A session whose archive is not there yet is
@@ -45,7 +45,6 @@ from typing import Any
 import pandas as pd
 import psycopg
 
-from f1_api.alerts import send_alert
 from f1_api.config import get_settings
 from f1_domain import (
     DomainEvent,
@@ -327,12 +326,11 @@ def check_session(
     fetch: ArchiveFetcher,
     *,
     now: datetime,
-    alert: Callable[[str, str], object],
     tolerances: Tolerances = DEFAULT_TOLERANCES,
     openf1: Any = None,
 ) -> list[str] | str:
-    """File, compare, report and alert for one session. The findings, or
-    (a string) why the archive is not there yet."""
+    """File, compare, report and log one session. The findings, or (a
+    string) why the archive is not there yet."""
     reason = file_archive(
         key, historical_root, fetch, last_lap=_last_lap(live), now=now, openf1=openf1
     )
@@ -345,11 +343,8 @@ def check_session(
     name = f"{key.year} round {key.round} {key.session_type.value}"
     if found:
         _log.error("post-session check %s: %d differences (%s)", name, len(found), path)
-        alert(
-            f"post-session check: {name}, {len(found)} differences",
-            "\n\n".join(found)
-            + f"\n\nFull report on the VM: {path}\nThis message is from f1-post-session-check.",
-        )
+        for line in found:
+            _log.error("post-session check %s: %s", name, line)
     else:
         _log.info("post-session check %s: matches the archive (%s)", name, path)
     return found
@@ -381,7 +376,6 @@ def check_once(
     fetch: ArchiveFetcher,
     *,
     now: datetime,
-    alert: Callable[[str, str], object],
     settle: timedelta = DEFAULT_SETTLE,
     max_age: timedelta = DEFAULT_MAX_AGE,
     skip: Collection[SessionKey] = (),
@@ -403,7 +397,6 @@ def check_once(
                 report_dir,
                 fetch,
                 now=now,
-                alert=alert,
                 openf1=openf1,
             )
         except Exception as exc:
@@ -478,9 +471,6 @@ def main(argv: list[str] | None = None) -> int:
     report_dir = args.report_dir or historical_root.parent / "post_session"
     fetch = isolated_fetcher(settings.fastf1_cache_dir)
 
-    def alert(subject: str, body: str) -> bool:
-        return send_alert(settings, subject, body)
-
     if args.session:
         key = _session_key(args.session)
         outcome = check_session(
@@ -490,7 +480,6 @@ def main(argv: list[str] | None = None) -> int:
             report_dir,
             fetch,
             now=datetime.now(UTC),
-            alert=alert,
         )
         if isinstance(outcome, str):
             _log.warning("%s: not checked: %s", args.session, outcome)
@@ -518,7 +507,6 @@ def main(argv: list[str] | None = None) -> int:
                 report_dir,
                 fetch,
                 now=now,
-                alert=alert,
                 settle=settle,
                 max_age=max_age,
                 skip=backoff.waiting(now),

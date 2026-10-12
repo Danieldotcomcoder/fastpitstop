@@ -111,7 +111,8 @@ friend watching the race with you.
   - compares what viewers saw with it: each lap's time, tyre and tyre age,
     plus each driver's laps, stops and final place;
   - writes a report to `data/post_session/`;
-  - alerts (log, and email once SMTP is configured) on what disagrees.
+  - logs an ERROR line for each thing that disagrees (logs only, no
+    email: your call, 2026-10-12).
 
   Laps are paired by number in races and by lap time elsewhere, since the
   live lap count runs one ahead in qualifying. The archive's stops are its
@@ -136,10 +137,12 @@ Comes first because every other workstream ships through it.
   - p95 frame time above 20 ms at 1× with 4× CPU throttling;
   - layout shift (CLS) above 0.05;
   - a final running order that differs from the official classification.
-- **Visual regression.** Screenshot baselines for every redesigned screen
+- **Visual regression.** *Built 2026-10-12:* `just verify-visual`, see
+  the status above. Screenshot baselines for every redesigned screen
   at 390, 768 and 1440 px, in both themes. A diff needs explicit approval.
 - **Session watchdog.** During live sessions, a synthetic viewer on the VM
-  emails an alert if the live stream stalls for more than 30 s.
+  logs an alert if the live stream stalls for more than 30 s (logs only, no
+  email).
 - **Post-session data check.** After each session, laps, positions and pit
   stops are compared against F1's archive automatically.
 
@@ -775,14 +778,31 @@ Each milestone ships between race weekends and passes W0 before deploy.
 ### Status (2026-10-12)
 
 - **M0:** done.
-- **M1:** done, with one W0 part still open:
-  - visual baselines.
+- **M1:** done, all of W0 included. The last part, visual baselines,
+  was built 2026-10-12:
+  - **What:** `just verify-visual` covers ten screens at 390, 768 and
+    1440 px in both themes (60 screenshots). They are the production build
+    over the checked-in fixture, with a fixed-date calendar, the browser's
+    clock frozen and the time zone set to UTC. The race desk is taken at
+    the fixture race's last lap, its map and clock strip masked.
+  - **Approving:** a difference fails it until `just visual-approve`.
+  - **Sensitivity, measured:** identical runs differ by at most 98
+    pixels, all inside display-font glyphs, so 300 are allowed. 2 px
+    more padding on the archive's cards moved about 5,500 pixels on every
+    screen, and all six failed.
+  - **Release gate:** part of it (DEPLOY.md).
   
-  The post-session check was finished 2026-10-12 (see W0). Its first runs
-  found one live gap, next to fix before the baselines. In the Singapore
-  sprint the feed briefly cleared `TyresNotChanged` during safety-car
-  drive-throughs, so the tower counted a stop for Leclerc and #5 that
-  neither made.
+  The post-session check was finished 2026-10-12 (see W0). The one live
+  gap its first runs found is fixed. In the Singapore sprint the feed
+  cleared `TyresNotChanged` during safety-car drive-throughs and set it
+  again seconds later, so the tower counted stops Leclerc and #5 never
+  made. A stop is now counted once the new set has done a lap with the
+  flag still clear: it shows one lap later, and the tyre itself switches
+  at once.
+
+  Replayed live, every session of the Singapore weekend now matches F1's
+  archive in the check: race, sprint, qualifying, sprint qualifying and
+  practice.
 - **M2:** every content item is built, deployed and checked:
   - W3 weekend hub;
   - W4 completeness: the tower against official timing, sprints,

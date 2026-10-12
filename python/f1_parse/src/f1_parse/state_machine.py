@@ -275,6 +275,19 @@ class _StintFacts:
 
 
 @dataclass(slots=True)
+class _PendingStint:
+    """A set started but not yet announced (`_apply_timing_app`)."""
+
+    slot: int
+    lap: int | None
+    """The lap in progress when it started: the stint's start lap."""
+    laps_then: int | None
+    """Laps on the set when it started; announced once that goes up."""
+    shown: bool
+    """Whether the car has been put on it (once, when known fitted)."""
+
+
+@dataclass(slots=True)
 class _DriverTracker:
     """Mutable per-driver accumulation. Internal only — `state` projects
     trackers into frozen `DriverState`s on demand."""
@@ -296,10 +309,8 @@ class _DriverTracker:
     stints_announced: int = 0
     """Stints a StintStarted was emitted (or seeded) for: the last one's
     number."""
-    pending_stints: list[tuple[int, int | None]] = field(
-        default_factory=list[tuple[int, int | None]]
-    )
-    """(slot, lap in progress) of sets started but not yet announced, in
+    pending_stints: list[_PendingStint] = field(default_factory=list[_PendingStint])
+    """Sets started but not yet announced, in
     order: each waits for the feed to give a compound, without holding
     up a later one."""
     current_stint: int | None = None
@@ -492,6 +503,11 @@ def _just_started(tracker: _DriverTracker, index: int) -> bool:
         and laps is not None
         and laps <= started + 1
     )
+
+
+def _laps_on(tracker: _DriverTracker, index: int) -> int | None:
+    """Laps the set in slot `index` has done, as the feed has it now."""
+    return tracker.stints[index].total_laps if index < len(tracker.stints) else None
 
 
 def _tyres_fitted(tracker: _DriverTracker, index: int) -> bool:
@@ -1174,10 +1190,13 @@ class SessionStateMachine:
                 started = [index for index in started if not _just_started(tracker, index)]
                 lap = _in_progress_lap(tracker.facts.laps)
                 # A slot started again replaces its older start.
-                tracker.pending_stints = [
-                    (index, at) for index, at in tracker.pending_stints if index not in started
-                ] + [(index, lap) for index in started]
                 fitted = [index for index in started if _tyres_fitted(tracker, index)]
+                tracker.pending_stints = [
+                    entry for entry in tracker.pending_stints if entry.slot not in started
+                ] + [
+                    _PendingStint(index, lap, _laps_on(tracker, index), index in fitted)
+                    for index in started
+                ]
                 if fitted:
                     tracker.current_stint = fitted[-1]
                     tracker.current_started_at = tracker.facts.laps
@@ -1185,9 +1204,10 @@ class SessionStateMachine:
                     counted == tracker.current_stint or _settled(tracker)
                 ):
                     tracker.current_stint = counted
-            waiting: list[tuple[int, int | None]] = []
+            waiting: list[_PendingStint] = []
             in_progress = _in_progress_lap(tracker.facts.laps)
-            for index, lap in tracker.pending_stints:
+            for entry in tracker.pending_stints:
+                index, lap = entry.slot, entry.lap
                 stint = tracker.stints[index] if index < len(tracker.stints) else _StintFacts()
                 if stint.compound is None or not _tyres_fitted(tracker, index):
                     # A real stop names its set and clears `TyresNotChanged`
@@ -1199,13 +1219,29 @@ class SessionStateMachine:
                         or (lap is not None and in_progress is not None and in_progress > lap + 1)
                     )
                     if not stale:
-                        waiting.append((index, lap))
+                        waiting.append(entry)
                     continue  # announce once the compound arrives — never guess
-                if index != tracker.current_stint:
+                if not entry.shown:
                     # The tyres were changed once the start opened (the feed
                     # cleared `TyresNotChanged`): the car is on them now.
+                    entry.shown = True
                     tracker.current_stint = index
                     tracker.current_started_at = tracker.facts.laps
+                if entry.laps_then is None:
+                    entry.laps_then = stint.total_laps
+                counted_on = (
+                    stint.total_laps is not None
+                    and entry.laps_then is not None
+                    and stint.total_laps > entry.laps_then
+                )
+                if tracker.stints_announced > 0 and not counted_on:
+                    # Announced once the set has done a lap with the flag
+                    # still clear: in the 2026 Singapore sprint the feed
+                    # cleared `TyresNotChanged` on drive-throughs and set it
+                    # again seconds later (Leclerc) or 40 s later (#5), and
+                    # the tower counted stops neither made.
+                    waiting.append(entry)
+                    continue
                 # Numbered in the order sets were fitted, never below the
                 # feed's own slot (a stint before this connection).
                 tracker.stints_announced = max(tracker.stints_announced + 1, index + 1)

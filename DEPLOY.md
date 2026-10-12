@@ -156,6 +156,7 @@ From your own machine, with the backfill under `data/historical/`:
 ```sh
 just check         # lint, types, unit tests, the phase verifications (fixture data)
 just verify-real   # the same product on REAL races (docs/ROADMAP.md W0)
+just verify-visual # every screen against its approved screenshot
 ```
 
 `just verify-real` fails the deploy on anything a viewer would notice:
@@ -165,6 +166,14 @@ build in Chromium on five real races at phone and desktop size, any console
 or request error, race information before the viewer's delay, the released
 log ahead of the playback clock, layout shift above 0.05, main-thread work
 above 15% at 1x, or a "no clear cause" filler card. Don't deploy on red.
+
+`just verify-visual` compares every screen (home, live between sessions,
+the archive, the race desk, circuits, a circuit, a Grand Prix, standings,
+about, the design gallery) at 390, 768 and 1440 px in both themes with the
+approved screenshots in `apps/web/e2e-visual/baselines/`. A red run leaves
+the expected, actual and diff images under `apps/web/test-results/`. If
+the change was meant, look at them, then `just visual-approve` to make the
+new screens the baselines (and commit them with the change).
 
 Then deploy (`just deploy-host` builds on the VM; `just deploy` goes
 through GHCR):
@@ -221,9 +230,8 @@ actually writable. A missed race weekend is a permanent gap in the dataset
 
 During a live session the `watchdog` service (`f1-watchdog`, compose.yml)
 watches every live stream as a synthetic viewer and alerts when one goes
-quiet for a minute, and again when it recovers. Alerts are always in
-`docker compose -f compose.yml -f compose.prod.yml logs watchdog`, and are
-emailed to `F1_ALERT_TO` (else `F1_FEEDBACK_TO`) when `F1_SMTP_*` is set.
+quiet for a minute, and again when it recovers. Alerts are in the logs
+only: `docker compose -f compose.yml -f compose.prod.yml logs watchdog`.
 A red flag can be legitimately quiet; anything else is a frozen dashboard
 for every viewer, so look at `logs worker api` straight away.
 
@@ -236,8 +244,8 @@ itself, once the session has been quiet two hours:
   laps, stops and final place;
 - it writes a report to `data/post_session/<year>-<round>-<type>.md` on the
   volume;
-- it emails (as the watchdog does) when they disagree beyond its
-  tolerances.
+- it logs an ERROR line per difference beyond its tolerances
+  (`docker compose -f compose.yml -f compose.prod.yml logs postsession`).
 
 An archive that is not published yet, or stops short of the last lap
 viewers saw, is retried with backoff for a week. To check one session now,

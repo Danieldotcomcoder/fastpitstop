@@ -24,3 +24,9 @@ export const RADIO_WEB_PORT = 4320;
  * pointed at it. */
 export const REAL_API_PORT = 8840;
 export const REAL_WEB_PORT = 4321;
+
+/** The visual baselines' pair (`just verify-visual`,
+ * `playwright.visual.config.ts`): `f1_api` over the checked-in fixture with
+ * a fixed-date calendar, and the production build pointed at it. */
+export const VISUAL_API_PORT = 8842;
+export const VISUAL_WEB_PORT = 4322;

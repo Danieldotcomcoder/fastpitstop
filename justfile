@@ -123,6 +123,17 @@ verify-real:
     uv run python deploy/check_outline_fit.py --gate 2024-1-race 2025-3-race
     pnpm --filter @pitwall/web exec playwright test --config playwright.real.config.ts
 
+# Visual baselines (docs/ROADMAP.md W0): every screen at 390, 768 and 1440 px
+# in both themes, against the screenshots in apps/web/e2e-visual/baselines.
+# Part of the release gate. A difference fails it until someone has looked.
+verify-visual:
+    pnpm --filter @pitwall/web exec playwright test --config playwright.visual.config.ts
+
+# Accept the current screens as the new baselines, after reviewing the diff
+# images `verify-visual` left under apps/web/test-results.
+visual-approve:
+    pnpm --filter @pitwall/web exec playwright test --config playwright.visual.config.ts --update-snapshots
+
 # Dev-only: refresh every committed Phase 2 calibration/backtest report
 # (fuel coefficient, per-circuit pit loss, degradation, undercut) from
 # data/historical/ in one pass. Needs a populated backfill; never run in

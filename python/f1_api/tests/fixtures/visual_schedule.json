@@ -1,0 +1,34 @@
+{
+  "current": [
+    {
+      "round": 17,
+      "event_name": "Singapore Grand Prix",
+      "location": "Marina Bay",
+      "country": "Singapore",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Practice 1", "start_utc": "2099-10-02T09:30:00+00:00", "start_local": "2099-10-02T17:30:00+08:00"},
+        {"name": "Practice 2", "start_utc": "2099-10-02T13:00:00+00:00", "start_local": "2099-10-02T21:00:00+08:00"},
+        {"name": "Practice 3", "start_utc": "2099-10-03T09:30:00+00:00", "start_local": "2099-10-03T17:30:00+08:00"},
+        {"name": "Qualifying", "start_utc": "2099-10-03T13:00:00+00:00", "start_local": "2099-10-03T21:00:00+08:00"},
+        {"name": "Race", "start_utc": "2099-10-04T12:00:00+00:00", "start_local": "2099-10-04T20:00:00+08:00"}
+      ]
+    }
+  ],
+  "2025": [
+    {
+      "round": 4,
+      "event_name": "Bahrain Grand Prix",
+      "location": "Sakhir",
+      "country": "Bahrain",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Practice 1", "start_utc": "2025-04-11T11:30:00+00:00", "start_local": "2025-04-11T14:30:00+03:00"},
+        {"name": "Practice 2", "start_utc": "2025-04-11T15:00:00+00:00", "start_local": "2025-04-11T18:00:00+03:00"},
+        {"name": "Practice 3", "start_utc": "2025-04-12T12:30:00+00:00", "start_local": "2025-04-12T15:30:00+03:00"},
+        {"name": "Qualifying", "start_utc": "2025-04-12T16:00:00+00:00", "start_local": "2025-04-12T19:00:00+03:00"},
+        {"name": "Race", "start_utc": "2025-04-13T15:00:00+00:00", "start_local": "2025-04-13T18:00:00+03:00"}
+      ]
+    }
+  ]
+}

@@ -45,19 +45,9 @@ def _never_fetch(key: SessionKey) -> tuple[Any, dict[str, pd.DataFrame]]:
     raise AssertionError(f"{key} is already in the backfill; nothing should be downloaded")
 
 
-class _Alerts:
-    def __init__(self) -> None:
-        self.sent: list[tuple[str, str]] = []
-
-    def __call__(self, subject: str, body: str) -> bool:
-        self.sent.append((subject, body))
-        return True
-
-
-def test_a_session_that_matches_the_archive_is_reported_once_without_an_alert(
-    historical: Path, tmp_path: Path
+def test_a_session_that_matches_the_archive_is_reported_once_without_an_error(
+    historical: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    alerts = _Alerts()
     reports = tmp_path / "post_session"
 
     def run() -> Any:
@@ -68,12 +58,11 @@ def test_a_session_that_matches_the_archive_is_reported_once_without_an_alert(
             reports,
             _never_fetch,
             now=NOW,
-            alert=alerts,
         )
 
     first = run()
     assert first.checked == [(KEY, [])]
-    assert alerts.sent == []
+    assert not [r for r in caplog.records if r.levelname == "ERROR"]
     text = report_path(reports, KEY).read_text(encoding="utf-8")
     assert "matches F1's archive" in text
     assert report_path(reports, KEY).with_suffix(".json").is_file()
@@ -81,9 +70,11 @@ def test_a_session_that_matches_the_archive_is_reported_once_without_an_alert(
     assert run().checked == []
 
 
-def test_wrong_tyres_live_are_reported_and_emailed(historical: Path, tmp_path: Path) -> None:
-    """The bug this exists for: the live tower showing another compound."""
-    alerts = _Alerts()
+def test_wrong_tyres_live_are_reported_and_logged(
+    historical: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The bug this exists for: the live tower showing another compound.
+    Logged at ERROR, one line per difference (logs only, no email)."""
     live: list[DomainEvent] = []
     for event in _archive_events():
         if isinstance(event, LapCompleted) and event.lap_number and event.lap_number > 20:
@@ -98,14 +89,12 @@ def test_wrong_tyres_live_are_reported_and_emailed(historical: Path, tmp_path: P
         tmp_path / "post_session",
         _never_fetch,
         now=NOW,
-        alert=alerts,
     )
 
     ((_, found),) = result.checked
     assert any("tyre compounds" in line for line in found)
-    (subject, body) = alerts.sent[0]
-    assert "2024 round 1 race" in subject
-    assert "tyre compounds" in body
+    errors = [r.getMessage() for r in caplog.records if r.levelname == "ERROR"]
+    assert any("2024 round 1 race" in line and "tyre compounds" in line for line in errors)
 
 
 def test_sessions_still_settling_or_long_past_are_left_alone(
@@ -119,7 +108,6 @@ def test_sessions_still_settling_or_long_past_are_left_alone(
         tmp_path / "post_session",
         _never_fetch,
         now=NOW,
-        alert=_Alerts(),
     )
     assert result.checked == [] and result.pending == []
 

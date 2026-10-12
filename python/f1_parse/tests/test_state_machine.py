@@ -327,21 +327,17 @@ class TestStints:
     def test_a_stop_can_reuse_a_slot_the_start_duplicated(self):
         """The 2026 Singapore GP's start put Stroll's softs in two slots,
         counted together; F1 later dropped the copy, and his stop reused
-        its slot for the mediums, with no `UNKNOWN` first. The stop is a
-        stint of its own, numbered after both copies; the copies opened
-        before the first lap was counted, so they have no start lap."""
+        its slot for the mediums, with no `UNKNOWN` first. The copy was
+        marked `TyresNotChanged`, so it is no stint; the stop is the second,
+        and the first opened before a lap was counted, so has no start lap."""
         sm, feed = machine(), Feed()
+        first: JsonValue = {"0": {"Compound": "SOFT", "TotalLaps": 0}}
+        copy: JsonValue = {"1": {"Compound": "SOFT", "TyresNotChanged": "1", "TotalLaps": 0}}
         started = [
-            *only(
-                sm.apply(app(feed, "18", {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 0}}})),
-                StintStarted,
-            ),
-            *only(
-                sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "SOFT", "TotalLaps": 0}}})),
-                StintStarted,
-            ),
+            *only(sm.apply(app(feed, "18", {"Stints": first})), StintStarted),
+            *only(sm.apply(app(feed, "18", {"Stints": copy})), StintStarted),
         ]
-        assert [(s.stint_number, s.start_lap) for s in started] == [(1, None), (2, None)]
+        assert [(s.stint_number, s.start_lap) for s in started] == [(1, None)]
         for laps in range(1, 5):
             sm.apply(timing(feed, "18", {"NumberOfLaps": laps}))
             sm.apply(
@@ -351,19 +347,19 @@ class TestStints:
             sm.apply(timing(feed, "18", {"NumberOfLaps": laps}))
             sm.apply(app(feed, "18", {"Stints": {"0": {"TotalLaps": laps}}}))
         assert sm.state.drivers["18"].tyre_age == 26
-        stop = only(
-            sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "MEDIUM", "TotalLaps": 0}}})),
-            StintStarted,
-        )
-        assert [(s.stint_number, s.compound, s.start_lap) for s in stop] == [
-            (3, Compound.MEDIUM, 27)
-        ]
+        reused: JsonValue = {"1": {"Compound": "MEDIUM", "TyresNotChanged": "0", "TotalLaps": 0}}
+        assert only(sm.apply(app(feed, "18", {"Stints": reused})), StintStarted) == []
         laps = only(
             sm.apply(timing(feed, "18", {"NumberOfLaps": 27, "LastLapTime": {"Value": "1:58.0"}})),
             LapCompleted,
         )
         assert laps[0].compound is Compound.MEDIUM
         assert laps[0].tyre_age == 0
+        # Announced once the set has done its first lap.
+        stop = only(sm.apply(app(feed, "18", {"Stints": {"1": {"TotalLaps": 1}}})), StintStarted)
+        assert [(s.stint_number, s.compound, s.start_lap) for s in stop] == [
+            (2, Compound.MEDIUM, 27)
+        ]
 
     def test_a_new_set_can_share_a_delta_with_a_rewrite(self):
         """The 2026 Bahrain GP's Colapinto: his hards opened in a reused
@@ -406,11 +402,11 @@ class TestStints:
         used: JsonValue = {
             "2": {"Compound": "SOFT", "New": "false", "TotalLaps": 3, "StartLaps": 3}
         }
-        started = only(sm.apply(app(feed, "63", {"Stints": used})), StintStarted)
+        assert only(sm.apply(app(feed, "63", {"Stints": used})), StintStarted) == []
+        started = only(sm.apply(app(feed, "63", {"Stints": {"2": {"TotalLaps": 4}}})), StintStarted)
         assert [(s.compound, s.start_lap, s.tyre_age_at_start) for s in started] == [
             (Compound.SOFT, 33, 3)
         ]
-        sm.apply(app(feed, "63", {"Stints": {"2": {"TotalLaps": 4}}}))
         assert sm.state.drivers["63"].tyre_age == 4
 
     def test_a_set_waiting_for_its_compound_holds_up_no_other(self):
@@ -460,15 +456,37 @@ class TestStints:
         }
         assert only(sm.apply(app(feed, "81", {"Stints": opened})), StintStarted) == []
         named: JsonValue = {"1": {"Compound": "HARD", "TyresNotChanged": "0"}}
-        stops = only(sm.apply(app(feed, "81", {"Stints": named})), StintStarted)
-        assert [(s.stint_number, s.compound, s.start_lap) for s in stops] == [
-            (2, Compound.HARD, 10)
-        ]
+        assert only(sm.apply(app(feed, "81", {"Stints": named})), StintStarted) == []
         laps = only(
             sm.apply(timing(feed, "81", {"NumberOfLaps": 10, "LastLapTime": {"Value": "2:01.0"}})),
             LapCompleted,
         )
-        assert laps[0].compound is Compound.HARD
+        assert laps[0].compound is Compound.HARD  # the tyre shows at once
+        stops = only(sm.apply(app(feed, "81", {"Stints": {"1": {"TotalLaps": 1}}})), StintStarted)
+        assert [(s.stint_number, s.compound, s.start_lap) for s in stops] == [
+            (2, Compound.HARD, 10)
+        ]
+
+    def test_a_flag_cleared_and_set_again_is_no_stop(self):
+        """The 2026 Singapore sprint's Leclerc: on a drive-through the feed
+        cleared `TyresNotChanged`, set it again five seconds later, and the
+        set's laps carried on. Announced only after a lap: no stop."""
+        sm, feed = machine(), Feed()
+        sm.apply(app(feed, "16", {"Stints": {"0": {"Compound": "INTERMEDIATE", "TotalLaps": 0}}}))
+        sm.apply(timing(feed, "16", {"NumberOfLaps": 3}))
+        sm.apply(app(feed, "16", {"Stints": {"0": {"TotalLaps": 3}}}))
+        opened: JsonValue = {
+            "1": {"Compound": "UNKNOWN", "TyresNotChanged": "1", "TotalLaps": 0, "StartLaps": 0}
+        }
+        sm.apply(app(feed, "16", {"Stints": opened}))
+        cleared: JsonValue = {"1": {"Compound": "INTERMEDIATE", "TyresNotChanged": "0"}}
+        assert only(sm.apply(app(feed, "16", {"Stints": cleared})), StintStarted) == []
+        again: JsonValue = {"1": {"TyresNotChanged": "1", "TotalLaps": 4, "StartLaps": 4}}
+        sm.apply(app(feed, "16", {"Stints": again}))
+        sm.apply(timing(feed, "16", {"NumberOfLaps": 4}))
+        counted = only(sm.apply(app(feed, "16", {"Stints": {"1": {"TotalLaps": 5}}})), StintStarted)
+        assert counted == []
+        assert sm.state.drivers["16"].tyre_age == 5
 
     def test_a_same_tyres_slot_cleared_laps_later_is_no_stop(self):
         """2026 Bahrain: F1's rewrite of the stint history cleared

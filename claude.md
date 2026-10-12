@@ -109,7 +109,9 @@ Phase 1 packages (under python/, in dependency order):
   (or a used set, opened at the laps it had done) is a stint of its own,
   once the feed clears `TyresNotChanged` (a slot it leaves set is a
   drive-through or a duplicate on the same tyres; one still set a lap on is
-  dropped);
+  dropped). The tyre shown switches then; the StintStarted waits until the
+  set has done a lap with the flag still clear (the feed cleared and reset
+  it on drive-throughs in the 2026 Singapore sprint);
   stints are numbered in the order sets were fitted; tyre age is
   `TotalLaps`, which already counts a used set's earlier laps. Checked by
   replaying the recorded 2026 Bahrain and Singapore races against the

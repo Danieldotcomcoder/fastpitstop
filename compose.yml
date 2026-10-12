@@ -137,7 +137,7 @@ services:
   # After every live session, what viewers were shown, checked against F1's
   # own archive once it is published (f1_api.post_session): files the
   # session in the backfill (the standings count it), writes a report to
-  # data/post_session, and emails (as the watchdog does) when they disagree.
+  # data/post_session, and logs an ERROR line per difference.
   # Idle between sessions: one small query every 15 minutes.
   postsession:
     image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
@@ -151,8 +151,8 @@ services:
       db:
         condition: service_healthy
 
-  # A synthetic viewer of every live session: alerts (log, and email when
-  # SMTP is configured) when a live stream goes quiet for a minute, the
+  # A synthetic viewer of every live session: logs an ERROR when a live
+  # stream goes quiet for a minute, the
   # failure that otherwise freezes every dashboard unnoticed. Idle between
   # sessions: one /sessions request every 30 seconds. f1_api.watchdog.
   watchdog:
