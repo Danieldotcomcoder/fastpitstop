@@ -197,10 +197,13 @@ def _collect_stints(events: Sequence[DomainEvent]) -> dict[str, tuple[StintStart
 
 def _stint_for_lap(stints: Sequence[StintStarted], lap_number: int) -> StintStarted | None:
     """The stint a lap belongs to: the last one that started at or before
-    it. A lap before any recorded stint start belongs to none."""
+    it. A stint with no start lap opened before the first lap was counted
+    (the set a live race starts on), so it covers the race from the start;
+    when it was the first, every live lap had no stint at all. A lap
+    before any stint belongs to none."""
     found: StintStarted | None = None
     for stint in stints:
-        if stint.start_lap is not None and stint.start_lap <= lap_number:
+        if stint.start_lap is None or stint.start_lap <= lap_number:
             found = stint
         else:
             break

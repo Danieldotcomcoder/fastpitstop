@@ -34,12 +34,19 @@ const BACKFILL = path.join(REPO_ROOT, 'data', 'historical', 'manifest.json');
 /** One of each shape a race takes. Qualifying has its own spec
  * (`qualifying.spec.ts`): a different board, judged on its knockouts. */
 export const REAL_SESSIONS = [
-	{ year: 2024, round: 1, shape: 'measured car positions (Bahrain)' },
-	{ year: 2024, round: 6, shape: 'safety car decides the race (Miami)' },
-	{ year: 2024, round: 8, shape: 'street circuit, lap-1 red flag (Monaco)' },
-	{ year: 2024, round: 21, shape: 'wet race with a red flag (São Paulo)' },
-	{ year: 2025, round: 3, shape: 'positions in their own frame (Suzuka)' }
+	{ year: 2024, round: 1, session: 'race', shape: 'measured car positions (Bahrain)' },
+	{ year: 2024, round: 6, session: 'race', shape: 'safety car decides the race (Miami)' },
+	{ year: 2024, round: 8, session: 'race', shape: 'street circuit, lap-1 red flag (Monaco)' },
+	{ year: 2024, round: 21, session: 'race', shape: 'wet race with a red flag (São Paulo)' },
+	{ year: 2025, round: 3, session: 'race', shape: 'positions in their own frame (Suzuka)' },
+	{ year: 2024, round: 5, session: 'sprint', shape: 'a sprint (China)' }
 ] as const;
+
+/** The replay's address: the race unless the entry names another session. */
+function sessionUrl(session: (typeof REAL_SESSIONS)[number], query: string): string {
+	const which = session.session === 'race' ? '' : `session=${session.session}&`;
+	return `/sessions/${session.year}/${session.round}?${which}${query}`;
+}
 
 const VIEWPORTS = [
 	{ name: 'desktop', width: 1440, height: 900, mobile: false },
@@ -101,7 +108,7 @@ async function visibleEvents(page: Page): Promise<number> {
 
 for (const session of REAL_SESSIONS) {
 	for (const viewport of VIEWPORTS) {
-		test(`${session.year} R${session.round} ${viewport.name}: ${session.shape}`, async ({
+		test(`${session.year} R${session.round} ${session.session} ${viewport.name}: ${session.shape}`, async ({
 			browser
 		}) => {
 			const context = await browser.newContext({
@@ -114,7 +121,7 @@ for (const session of REAL_SESSIONS) {
 			// Taken BEFORE navigating: the app opens its stream before the
 			// load event, so "since load" would undercount the delay.
 			const requested = Date.now();
-			await page.goto(`/sessions/${session.year}/${session.round}?speed=16&delay=${DELAY_S}`);
+			await page.goto(sessionUrl(session, `speed=16&delay=${DELAY_S}`));
 
 			// Spoiler: no race information before the delay has passed. The
 			// pre-race grid and driver names may show at once (a replay sends
@@ -180,7 +187,7 @@ async function mainThreadAtOneTimes(
 	session: (typeof REAL_SESSIONS)[number]
 ): Promise<{ share: number; longTasks: number[] }> {
 	const cdp = await page.context().newCDPSession(page);
-	await page.goto(`/sessions/${session.year}/${session.round}?speed=1&delay=0`);
+	await page.goto(sessionUrl(session, 'speed=1&delay=0'));
 	await expect.poll(() => visibleEvents(page), { timeout: 60_000 }).toBeGreaterThan(0);
 	await page.waitForTimeout(2_000);
 	await cdp.send('Performance.enable');

@@ -429,7 +429,10 @@ def _retirement(w: _Writer) -> str:
     if last == 0:
         sentence = f"{w.name(driver)} retired on lap 1, from P{position} on the grid"
     elif w.anomaly.summary.get("in_pits") is True:
-        sentence = f"{w.name(driver)} retired from P{position}, in the pits after lap {last}"
+        sentence = (
+            f"{w.name(driver)} retired from P{position} on lap {last + 1}, "
+            f"having pitted on lap {last}"
+        )
     else:
         sentence = f"{w.name(driver)} retired from P{position} on lap {last + 1}"
     cause = _incident_cause(w, [driver])

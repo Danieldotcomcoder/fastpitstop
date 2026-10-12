@@ -4,7 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="color-scheme" content="dark light" />
-		<meta name="theme-color" content="#101214" />
+		<meta name="theme-color" content="#0b0e13" />
 		<script>
 			// Dark is the default; restore a viewer's choice of light before first
 			// paint so the page never flashes dark first (AppHeader's switch).
@@ -17,11 +17,29 @@
 				// Storage blocked (private mode): stay dark.
 			}
 		</script>
+		<!-- Google tag (gtag.js), on the live site only: local runs and the
+		     browser tests must not send visits to the analytics property.
+		     Page changes inside the app are counted by GA4's enhanced
+		     measurement (browser history events). -->
+		<script>
+			if (location.hostname === 'fastpitstop.online') {
+				window.dataLayer = window.dataLayer || [];
+				window.gtag = function () {
+					dataLayer.push(arguments);
+				};
+				gtag('js', new Date());
+				gtag('config', 'G-BVQJWG5QPX');
+				var tag = document.createElement('script');
+				tag.async = true;
+				tag.src = 'https://www.googletagmanager.com/gtag/js?id=G-BVQJWG5QPX';
+				document.head.appendChild(tag);
+			}
+		</script>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
 			rel="stylesheet"
-			href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400..650;1,6..72,400..500&display=swap"
+			href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap"
 		/>
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />

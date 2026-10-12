@@ -43,6 +43,9 @@ class Standing:
     wins: int = 0
     by_round: list[float] = field(default_factory=lambda: list[float]())
     finishes: defaultdict[int, int] = field(default_factory=lambda: defaultdict[int, int](int))
+    placings: defaultdict[int, int] = field(default_factory=lambda: defaultdict[int, int](int))
+    """Every Grand Prix place, retirements included: only orders drivers the
+    countback leaves tied (`_ranked`)."""
     """Grand Prix finishing position -> how many times, for countback."""
     code: str = ""
 
@@ -62,10 +65,13 @@ def _points(frame: pd.DataFrame | None) -> dict[str, float]:
     return {str(code): float(p) for code, p in zip(frame["Abbreviation"], points, strict=True)}
 
 
-def _finish_positions(frame: pd.DataFrame) -> dict[str, int]:
-    """Each classified driver's Grand Prix finishing position. An
-    unclassified car ("R", "D", ...) has none, and so no countback credit."""
-    column = "ClassifiedPosition" if "ClassifiedPosition" in frame else "Position"
+def _finish_positions(frame: pd.DataFrame, column: str) -> dict[str, int]:
+    """Each driver's Grand Prix place in `column`, where it is a number:
+    `ClassifiedPosition` gives only classified finishers one (the FIA
+    countback; "R", "D", "W" score nothing), `Position` gives everyone one,
+    retirements and non-starters at the back in the order they dropped out."""
+    if column not in frame:
+        return {}
     positions = pd.to_numeric(frame[column], errors="coerce")
     return {
         str(code): int(p)
@@ -87,11 +93,21 @@ def _color(row: pd.Series) -> str | None:  # type: ignore[type-arg]
 
 
 def _ranked(table: dict[str, Standing]) -> list[Standing]:
-    """Points, then the FIA countback: most wins, then most seconds, ..."""
+    """Points, then the FIA countback on classified finishes: most wins,
+    then most seconds, ... Drivers it leaves tied (after 2026 round 1, five
+    on 0 points with no classified finish between them) are genuinely level
+    under the rules; they are shown in the order they finished or dropped
+    out, which reads better than alphabetical. Sources disagree there:
+    Jolpica's order for that group follows no rule we can find."""
     deepest = max((p for s in table.values() for p in s.finishes), default=0)
+    furthest = max((p for s in table.values() for p in s.placings), default=0)
 
     def order(s: Standing) -> tuple[float, ...]:
-        return (-s.points, *(-float(s.finishes.get(p, 0)) for p in range(1, deepest + 1)))
+        return (
+            -s.points,
+            *(-float(s.finishes.get(p, 0)) for p in range(1, deepest + 1)),
+            *(-float(s.placings.get(p, 0)) for p in range(1, furthest + 1)),
+        )
 
     return sorted(table.values(), key=lambda s: (order(s), s.name))
 
@@ -110,7 +126,8 @@ def compute_standings(rounds: list[RoundResults], after_round: int | None = None
     for index, result in enumerate(counted):
         race_points = _points(result.race)
         sprint_points = _points(result.sprint)
-        finishes = _finish_positions(result.race)
+        finishes = _finish_positions(result.race, "ClassifiedPosition")
+        placings = _finish_positions(result.race, "Position")
         round_team: dict[str, str] = {}
         for frame in (result.race, result.sprint):
             if frame is None:
@@ -146,6 +163,9 @@ def compute_standings(rounds: list[RoundResults], after_round: int | None = None
             gained = race_points.get(code, 0.0) + sprint_points.get(code, 0.0)
             drivers[code].points += gained
             teams[team_key].points += gained
+            if code in placings:
+                drivers[code].placings[placings[code]] += 1
+                teams[team_key].placings[placings[code]] += 1
             if code in finishes:
                 position = finishes[code]
                 drivers[code].finishes[position] += 1

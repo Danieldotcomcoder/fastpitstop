@@ -14,7 +14,10 @@ session — the same shape `/radio/{clip_id}` uses for a corpus-scoped read.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+from threading import Lock
 from typing import Annotated
+from weakref import WeakKeyDictionary
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -36,8 +39,24 @@ from f1_api.why import (
     story_moments,
 )
 from f1_domain import SessionKey
+from f1_why import ExplanationStore
+from f1_why.store import NARRATION_VERSION
 
 router = APIRouter(tags=["why"])
+
+STORY_CACHE_SIZE = 64
+"""Finished sessions' stories kept per process. A race's story cost about
+14 s on the production VM (detection 9 s, evidence 5 s; measured
+2026-10-12), every request, and up to 137 s while other replays ran, for an
+answer that never changes once the session is over."""
+
+_StoryKey = tuple[str, int, int | None, str]
+_story_caches: WeakKeyDictionary[ExplanationStore, OrderedDict[_StoryKey, list[StoryMomentOut]]] = (
+    WeakKeyDictionary()
+)
+"""One cache per explanation store: the process's own in production, and a
+fresh one with each test's fresh store, so tests cannot read each other's."""
+_story_lock = Lock()
 
 
 def _not_found(session_key: SessionKey) -> HTTPException:
@@ -121,6 +140,12 @@ def get_session_story(
     per-session computation, so this is a per-session read; the per-anomaly
     route stays for a client that wants exactly one moment's citations."""
     budget = settings.max_explanations if limit is None else limit
+    cache_key: _StoryKey = (_session_key_path(session_key), id(model), budget, NARRATION_VERSION)
+    with _story_lock:
+        cache = _story_caches.setdefault(store, OrderedDict())
+        if cache_key in cache:
+            cache.move_to_end(cache_key)
+            return cache[cache_key]
     with resolve_session(settings, session_key) as resolved:
         if resolved is None:
             raise _not_found(session_key)
@@ -135,7 +160,7 @@ def get_session_story(
         )
         # Race order, as `precompute_session_explanations` returns it: the
         # story follows the race (start, battles, neutralizations, finish).
-        return [
+        story = [
             StoryMomentOut(
                 anomaly=anomaly_out(session_key, item.anomaly),
                 explanation=explanation_out(
@@ -144,6 +169,14 @@ def get_session_story(
             )
             for item in scheduled
         ]
+        live = resolved.entry.live
+    # A running session's story grows; only a finished one is kept.
+    if not live:
+        with _story_lock:
+            cache[cache_key] = story
+            while len(cache) > STORY_CACHE_SIZE:
+                cache.popitem(last=False)
+    return story
 
 
 @router.get("/anomalies/{anomaly_id}/explanation", response_model=ExplanationOut)

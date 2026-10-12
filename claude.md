@@ -102,6 +102,19 @@ Phase 1 packages (under python/, in dependency order):
   no `LastLapTime`), so for a race or sprint whose start it saw, the
   machine emits lap 1 timed from the "Started" status (both receive times);
   before 2026-10-11 every live race began at lap 2 with no start card.
+  The tyre a lap was run on is the stint the feed last started or counted
+  a lap on, not its last slot (`_stint_moves`): F1 rewrites a race's stint
+  lists and its deltas never remove a slot, so a stale one can sit at the
+  end, and it reuses slots for new sets. A set started in a reused slot
+  (or a used set, opened at the laps it had done) is a stint of its own,
+  once the feed clears `TyresNotChanged` (a slot it leaves set is a
+  drive-through or a duplicate on the same tyres; one still set a lap on is
+  dropped);
+  stints are numbered in the order sets were fitted; tyre age is
+  `TotalLaps`, which already counts a used set's earlier laps. Checked by
+  replaying the recorded 2026 Bahrain and Singapore races against the
+  archive: wrong-compound laps 32 -> 2, tyre ages off by more than a lap
+  767 -> 136 (ROADMAP W4).
 - f1_store (1.4): the TimescaleDB sink — append-only `events` log (source of
   truth) + typed materialized tables (laps, car_telemetry/car_positions
   hypertables, stints, pit_stops, race_control, weather, team_radio) +
@@ -1178,7 +1191,14 @@ Phase 5 packages (under python/f1_why, in dependency order):
   overdue (`AnomalyParams.retirement_overdue_laps`, from its last TIMED
   crossing: backfill placeholder lap ends are not crossings), since a car
   passed on the last lap looked retired (2024 Miami's Zhou). Replays
-  unchanged (109/109, 35/35).
+  unchanged (109/109, 35/35). 2026-10-12, found checking the tower against
+  official timing (ROADMAP W4): the historical adapter replayed the
+  archive's untimed row for the lap a car stopped on as a completed lap,
+  which the live feed never sends, and the story's retirement rule leaned
+  on it. The adapter drops it now (docs/DATA_CONTRACTS.md); the story finds
+  a lap-1 crasher from the grid, places a retirement on the lap the car
+  stopped on, and folds a retirement only into a neutralization card that
+  is shown. 110/110, 35/35.
 - (next) Phase 5's own exit criteria are now all met. Remaining gaps are
   depth, not product surface: telemetry-derived evidence kinds, and `AnomalyParams`/`EvidenceParams`/
   `NarrationParams` calibration against a measured corpus. Phase 6

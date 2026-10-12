@@ -227,23 +227,28 @@ emailed to `F1_ALERT_TO` (else `F1_FEEDBACK_TO`) when `F1_SMTP_*` is set.
 A red flag can be legitimately quiet; anything else is a frozen dashboard
 for every viewer, so look at `logs worker api` straight away.
 
-After the session, check the live recording against F1's own archive once
-it is published (typically within a few hours): backfill the session, then
-compare (lap counts, classification, pit stops):
+After each session the `postsession` service (`f1-post-session-check`,
+compose.yml) checks what viewers were shown against F1's own archive, by
+itself, once the session has been quiet two hours:
+- it files the session in the backfill if it is not there, which is also
+  what makes the standings count a race;
+- it compares, per lap, the time, the tyre and its age, plus each driver's
+  laps, stops and final place;
+- it writes a report to `data/post_session/<year>-<round>-<type>.md` on the
+  volume;
+- it emails (as the watchdog does) when they disagree beyond its
+  tolerances.
+
+An archive that is not published yet, or stops short of the last lap
+viewers saw, is retried with backoff for a week. To check one session now,
+replacing its report:
 
 ```sh
-docker compose -f compose.yml -f compose.prod.yml run --rm worker   f1-backfill --season <YEAR> --round <N>
-docker compose -f compose.yml -f compose.prod.yml run --rm worker   f1-historical-compare /app/data/recordings/<session-dir> --year <YEAR> --round <N>
+docker compose -f compose.yml -f compose.prod.yml run --rm postsession   f1-post-session-check --session 2026-17-race
 ```
 
-After the session, ingest the recording into the database (this does not
-happen automatically — `mode=live`'s direct SignalR→API wiring is a known
-gap, see `CLAUDE.md`'s Phase 3 status):
-
-```sh
-docker compose -f compose.yml -f compose.prod.yml run --rm worker \
-  f1-pipeline replay /app/data/recordings/<session-dir> --round <N>
-```
+The worker records and ingests in one process (`f1-pipeline live`), so a
+live session needs no replay into the database afterwards.
 
 ### Car positions for the track map
 

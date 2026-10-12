@@ -139,7 +139,9 @@ def detect_anomalies(
     )
     table = _LapTable(kernel_report.annotated_laps)
 
-    retirements = _detect_retirements(table, grid, kernel_report.total_laps, params)
+    retirements = _detect_retirements(
+        table, grid, kernel_report.total_laps, _stint_starts(session_frames.stints), params
+    )
     anomalies: list[Anomaly] = [
         *_detect_pace_loss(annotated, params),
         *_detect_off_track(annotated, params),
@@ -378,9 +380,10 @@ class _LapRow:
     lap_start_utc: datetime | None
     lap_end_utc: datetime | None
     lap_time_s: float | None
-    """`None` for an untimed lap: the backfill gives a lap a car never
-    finished a placeholder end time (the 2024 Australian GP's Russell), so
-    only a timed lap is proof the car crossed the line."""
+    """`None` for an untimed lap. Some laps a car did complete carry no
+    time (a race's first lap live, gaps in the archive's timing), so its
+    end time is an estimate: only a timed lap is proof the car crossed the
+    line when it says."""
     is_pit_in: bool
     is_pit_out: bool
     track_status: str | None
@@ -465,8 +468,8 @@ class _LapTable:
 
     def ending_at(self, when: datetime) -> _LapRow | None:
         """The lap that ended at exactly `when`, preferring one with a
-        recorded position (several positionless placeholder rows can share
-        an end time, as the 2024 Monaco GP's lap-1 crashers do)."""
+        recorded position (untimed rows without one can share an end
+        time)."""
         rows = self._by_end.get(when, [])
         placed = [row for row in rows if row.position is not None]
         return (placed or rows or [None])[0]
@@ -1046,7 +1049,8 @@ def _neutral_periods(table: _LapTable) -> list[_Period]:
 
 
 def _retired_around(table: _LapTable, retirements: Sequence[Anomaly], first: int) -> list[str]:
-    """Cars whose race ended on lap `first` or the lap before: what a
+    """Cars whose race ended on lap `first` or the lap before (the lap a
+    car stopped on is the one after its last completed lap): what a
     neutralization starting on `first` was most likely called for. Measured
     from the lap frame, so it never rests on which race-control message
     happened to be sent first (the 2024 Monaco GP noted a Gasly/Ocon
@@ -1062,7 +1066,10 @@ def _retired_around(table: _LapTable, retirements: Sequence[Anomaly], first: int
     retired: list[tuple[float, str]] = []
     for anomaly in retirements:
         last = anomaly.summary.get("last_completed_lap")
-        if isinstance(last, int) and first - 1 <= last <= first and table.max_lap > last + 2:
+        if not isinstance(last, int):
+            continue
+        stopped = last + 1
+        if first - 1 <= stopped <= first and table.max_lap > stopped + 2:
             retired.append((anomaly.magnitude, anomaly.drivers[0]))
     return [driver for _, driver in sorted(retired)]
 
@@ -1172,10 +1179,23 @@ def _laps_down(table: _LapTable, at: datetime | None, last: int) -> int:
     return led - last
 
 
+def _stint_starts(stints: pl.DataFrame) -> set[tuple[str, int]]:
+    """(driver, first lap) of every stint: a car that left the pits has a
+    stint starting on its out-lap, completed or not."""
+    if stints.is_empty():
+        return set()
+    return {
+        (str(row["driver"]), int(row["start_lap"]))
+        for row in stints.select("driver", "start_lap").to_dicts()
+        if row["driver"] is not None and row["start_lap"] is not None
+    }
+
+
 def _detect_retirements(
     table: _LapTable,
     grid: Mapping[str, int] | None,
     total_laps: int | None,
+    stint_starts: set[tuple[str, int]],
     params: AnomalyParams,
 ) -> list[Anomaly]:
     """RETIREMENT: a car that never completed a lap the cars behind it did.
@@ -1187,13 +1207,16 @@ def _detect_retirements(
     for a repair longer than that and then rejoined would be misread; the
     lap frame cannot tell the two apart.
 
-    Only laps with a recorded position count as completed: the 2024 Monaco
-    GP's lap-1 crashers each carry a lap-1 row with no position and a
-    placeholder end time. A car with no lap row at all never started (the
-    2024 São Paulo GP's Albon and Stroll were on its grid list) and is not a
-    retirement. The position reported is where the car was RACING: when its
-    last lap was an in-lap or a sudden drop (the 2024 Australian GP's
-    Verstappen limped into the pits from P2 and was P19 when his lap ended),
+    Only laps with a recorded position count as completed. The lap a car
+    stopped on has no row at all, live or replayed (the feed never counts
+    it, and `f1_historical_adapter` drops the archive's untimed row for
+    it), so a car on the grid that completed nothing stopped on lap 1: the
+    2024 Monaco GP's four lap-1 crashers. A replay's grid leaves out the
+    cars the results say did not start (the 2024 São Paulo GP's Albon and
+    Stroll); live, a car that never took the start may be on the grid the
+    feed reported and would be read as stopping on lap 1. The position
+    reported is where the car was RACING: when its last lap was an in-lap
+    or a sudden drop (a car limping to the pits loses places on the way),
     it is the lap before.
 
     The last car on the road has nobody behind it: it counts as stopped once
@@ -1216,7 +1239,9 @@ def _detect_retirements(
     # How far the frame reaches: live, the latest crossing seen so far.
     horizon = _latest([row.lap_end_utc for d in table.drivers for row in table.driver_laps(d)])
     anomalies: list[Anomaly] = []
-    for driver in table.drivers:
+    on_grid: list[str] = list(grid) if grid else []
+    drivers = sorted({*table.drivers, *on_grid}, key=lambda d: (len(d), d))
+    for driver in drivers:
         rows = table.driver_laps(driver)
         completed = [row for row in rows if row.position is not None]
         last_row: _LapRow | None = None
@@ -1300,12 +1325,16 @@ def _detect_retirements(
                 summary={
                     "position": position,
                     "last_completed_lap": last,
-                    # Retired in the pits: came in and never went back out.
-                    # A car that left the pits and stopped on its out-lap
-                    # has a (positionless) row for that lap.
+                    # Came into the pits on its last lap and never
+                    # completed another. Not proof it stayed there: a car
+                    # that left again started a stint on its out-lap, but
+                    # the archive can lose that lap entirely (the 2024 São
+                    # Paulo GP's Colapinto pitted on lap 30 and crashed on
+                    # lap 31, bringing out the red flag).
                     "in_pits": last_row is not None
                     and last_row.is_pit_in
-                    and table.row(driver, last + 1) is None,
+                    and table.row(driver, last + 1) is None
+                    and (driver, last + 1) not in stint_starts,
                     "window_start_utc": since.isoformat() if since else None,
                 },
                 reasons=(

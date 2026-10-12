@@ -4,7 +4,8 @@
 	import { api, type components } from '$lib/api/client';
 	import Panel from '$lib/components/Panel.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
-	import { seoFor } from '$lib/seo';
+	import { SESSION_TYPE_LABELS, seoFor } from '$lib/seo';
+	import { TrackThumbnail } from '$lib/ui';
 	import type { PageProps } from './$types';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
@@ -61,6 +62,12 @@
 			});
 	});
 
+	/** The circuit's outline, fitted on the server (none when the page
+	 * fetched its list itself). */
+	function thumbFor(session: SessionSummary): string | undefined {
+		return session.circuit_name ? data.thumbs?.[session.circuit_name] : undefined;
+	}
+
 	function sessionHref(session: SessionSummary): string {
 		const { year, round, session_type } = session.session_key;
 		const path = resolve(`/sessions/${year}/${round}`);
@@ -78,7 +85,8 @@
 
 <h1>Sessions</h1>
 <p>
-	Completed races, newest first. Open a race to explore the result, tyre performance and strategy.
+	Completed races, newest first. Nothing here gives a result away: open one to replay it from the
+	start.
 </p>
 
 <div class="toolbar">
@@ -124,6 +132,7 @@
 {:else}
 	<ul class="session-list">
 		{#each filtered as session (session.key)}
+			{@const thumb = thumbFor(session)}
 			<li>
 				<!-- sessionHref() calls resolve() itself (see above). -->
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
@@ -136,11 +145,8 @@
 								{session.circuit_name}
 								<span class="sep" aria-hidden="true">·</span>
 							{/if}
-							<span class="tabular">{session.session_key.session_type}</span>
-							{#if session.winner}
-								<span class="sep" aria-hidden="true">·</span>
-								Winner {session.winner}
-							{/if}
+							{SESSION_TYPE_LABELS[session.session_key.session_type] ??
+								session.session_key.session_type}
 						</span>
 						<span class="badges">
 							{#if session.has_radio}
@@ -157,6 +163,17 @@
 							{/if}
 						</span>
 					</span>
+					{#if thumb}
+						<span class="thumb">
+							<TrackThumbnail
+								fitted={thumb}
+								label={`${session.circuit_name} outline`}
+								width={data.thumbSize.width}
+								height={data.thumbSize.height}
+								strokeWidth={data.thumbSize.stroke}
+							/>
+						</span>
+					{/if}
 				</a>
 			</li>
 		{/each}
@@ -187,6 +204,7 @@
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		font-size: var(--font-size-sm);
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 	}
 
@@ -235,6 +253,7 @@
 		align-items: flex-start;
 		padding: var(--space-4);
 		border: 1px solid var(--hairline);
+		border-radius: var(--radius-md);
 		background: var(--surface-raised);
 		text-decoration: none;
 		color: inherit;
@@ -251,6 +270,11 @@
 
 	.session-card:focus-visible {
 		border-color: var(--hairline-strong);
+	}
+
+	.thumb {
+		flex: 0 0 72px;
+		align-self: center;
 	}
 
 	.round {
@@ -301,6 +325,7 @@
 		text-transform: uppercase;
 		color: var(--text-secondary);
 		border: 1px solid var(--hairline);
+		border-radius: var(--radius-sm);
 		padding: 0.1rem 0.4rem;
 	}
 

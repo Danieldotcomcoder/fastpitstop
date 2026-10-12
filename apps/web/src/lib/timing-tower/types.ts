@@ -77,6 +77,23 @@ export function createDriverRow(driver: string): DriverRow {
 	};
 }
 
+/** The stints the car raced on. Live, the sets opened before the first lap
+ * have no start lap, and the feed can open one twice (the 2026 Singapore
+ * GP did for three cars): only the last of them is the set it started on. */
+function racedStints(row: DriverRow): TowerStint[] {
+	const firstTimed = row.stints.findIndex((stint) => stint.startLap !== null);
+	const beforeStart = firstTimed === -1 ? row.stints.length : firstTimed;
+	return beforeStart > 1 ? row.stints.slice(beforeStart - 1) : row.stints;
+}
+
+/** Pit stops made: the stints begun after the first lap. Counting stints
+ * put the cars whose set the feed opened twice before the start a stop
+ * down from lap 1. `null` until any stint is known. */
+export function stopsMade(row: DriverRow): number | null {
+	if (row.stints.length === 0) return null;
+	return row.stints.filter((stint) => stint.startLap !== null && stint.startLap > 1).length;
+}
+
 /** The stints as the stint bar draws them: each ends the lap before the
  * next begins, and the last is still running. A stint whose start the feed
  * didn't give starts where the previous one ended (lap 1 for the first). */
@@ -84,7 +101,7 @@ export function stintsForBar(
 	row: DriverRow
 ): { compound: string | null; startLap: number; endLap: number | null }[] {
 	const out: { compound: string | null; startLap: number; endLap: number | null }[] = [];
-	row.stints.forEach((stint, i) => {
+	racedStints(row).forEach((stint, i) => {
 		const previous = out[i - 1];
 		const startLap = stint.startLap ?? (previous ? (previous.endLap ?? previous.startLap) + 1 : 1);
 		if (previous) previous.endLap = Math.max(previous.startLap, startLap - 1);

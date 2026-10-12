@@ -48,10 +48,15 @@ Transition semantics worth knowing (the fine print lives on each
   orderings (time and lap count in one message, time first, or count
   first with the time trailing) so a stale previous time is never
   attributed to a new lap.
-- StintStarted fires when a NEW stint index appears in TimingAppData
-  with a compound (waiting for the compound if it trails) — that is the
-  authoritative "new tyres" signal, and unlike pit-exit it also covers
-  the opening stint and red-flag tyre changes.
+- StintStarted fires when TimingAppData starts a set: a NEW stint slot,
+  or a slot it reuses (see `_stint_moves`), once the feed gives its
+  compound (`UNKNOWN` counts) — that is the authoritative "new tyres" signal, and
+  unlike pit-exit it also covers the opening stint and red-flag tyre
+  changes. Stints are numbered in the order the sets were fitted, not by
+  slot: F1 rewrites a race's stint lists and reuses slots.
+- The tyre a lap was run on is the stint the feed last STARTED or counted
+  a lap on, not its last slot (`_stint_moves`): the rewrites can leave a
+  stale slot at the end.
 - Lap attribution for mid-lap events (sectors, pit in/out, stint
   starts) is "the lap in progress", i.e. completed laps + 1 at the
   moment of the message.
@@ -258,9 +263,15 @@ class _StintFacts:
 
     compound: str | None = None
     total_laps: int | None = None
-    """Laps run on the set during THIS stint (the feed ticks it per lap)."""
+    """Laps on the set, the ones it had done before this stint included
+    (the feed ticks it per lap; see `_tyre_age`)."""
     start_laps: int | None = None
     """Laps already on the set when the stint began (>0 = used set)."""
+    tyres_not_changed: bool = False
+    """The feed's `TyresNotChanged`: the slot is a pit-lane visit on the same
+    tyres (a drive-through, or a set the feed listed twice), not a new set.
+    A real stop opens its slot with it set too and clears it within seconds,
+    once the new tyres are on."""
 
 
 @dataclass(slots=True)
@@ -282,8 +293,20 @@ class _DriverTracker:
     lap_time_dirty: bool = False
     """True when LastLapTime changed since the last LapCompleted — i.e.
     the merged lap time is FRESH, not a leftover from the previous lap."""
-    announced_stints: set[int] = field(default_factory=set[int])
-    """Stint indices a StintStarted was emitted (or seeded) for."""
+    stints_announced: int = 0
+    """Stints a StintStarted was emitted (or seeded) for: the last one's
+    number."""
+    pending_stints: list[tuple[int, int | None]] = field(
+        default_factory=list[tuple[int, int | None]]
+    )
+    """(slot, lap in progress) of sets started but not yet announced, in
+    order: each waits for the feed to give a compound, without holding
+    up a later one."""
+    current_stint: int | None = None
+    """Slot of the set the car is on now (`_stint_moves`); `None` until a
+    delta shows one, when the last slot stands in."""
+    current_started_at: int | None = None
+    """Laps completed when the current stint STARTED (`_settled`)."""
 
 
 def _timing_facts(merged: JsonValue) -> _TimingFacts:
@@ -399,15 +422,109 @@ def _stint_facts(merged_app: JsonValue) -> tuple[_StintFacts, ...]:
             compound=_non_empty(as_str(entry.get("Compound"))),
             total_laps=as_int(entry.get("TotalLaps")),
             start_laps=as_int(entry.get("StartLaps")),
+            tyres_not_changed=str(entry.get("TyresNotChanged")) == "1",
         )
     return tuple(result)
 
 
+def _current_stint(tracker: _DriverTracker) -> _StintFacts:
+    """The stint the car is on now."""
+    if not tracker.stints:
+        return _StintFacts()
+    index = tracker.current_stint
+    if index is None or index >= len(tracker.stints):
+        return tracker.stints[-1]
+    return tracker.stints[index]
+
+
+def _stint_moves(
+    delta: JsonValue, previous: tuple[_StintFacts, ...]
+) -> tuple[list[int], int | None]:
+    """What a TimingAppData `Stints` delta says about the car's sets: the
+    slots it starts a set in (in slot order), and otherwise the one slot it
+    counts a lap on (one more than that slot had), if any.
+
+    The car is on the last set started or counted, usually the last slot,
+    but F1 rewrites a race's stint history,
+    and the deltas only ever add or change slots, never remove one. At the
+    2026 Bahrain GP (run at Sepang) it removed red-flag tyre changes from
+    several cars' lists by moving the later stints down a slot, and reused
+    a slot for Piastri's next set. His old last slot stayed behind (hards,
+    one lap), and reading the last slot showed hards for his final ten laps
+    on mediums. At the 2026 Singapore GP the start put several cars' sets
+    in two slots, and each car's first stop then reused the second. So a
+    stint starts in a new slot, or in a reused one when the feed resets it
+    with a compound (`UNKNOWN` until it is known) to the laps the set had
+    already done (none for a new set; Russell's used softs opened at 3 of
+    3) as the highest slot the delta touches: Bahrain's Colapinto got his hards that way, in
+    the same delta as a lap count for his first slot. F1's rewrites touch
+    several slots and end on the stint being run, with its laps; the slot
+    they reset to zero is an early one. Neither they nor a slot's laps
+    reset alone say which set is fitted."""
+    entries = [(index, as_dict(raw) or {}) for index, raw in _sparse_items(delta, _MAX_STINTS)]
+    new_slots = [index for index, _ in entries if index >= len(previous)]
+    if new_slots or isinstance(delta, list):
+        return new_slots, None
+    changed = [
+        (index, entry) for index, entry in entries if "TotalLaps" in entry or "Compound" in entry
+    ]
+    if not changed:
+        return [], None
+    index, entry = changed[-1]
+    total = as_int(entry.get("TotalLaps"))
+    if "Compound" in entry and total is not None and total == (as_int(entry.get("StartLaps")) or 0):
+        return [index], None
+    if len(changed) != 1:
+        return [], None
+    before = previous[index].total_laps
+    if total is not None and before is not None and total == before + 1:
+        return [], index
+    return [], None
+
+
+def _just_started(tracker: _DriverTracker, index: int) -> bool:
+    """Whether `index` is the set the car started within the last lap: a
+    second start there names that set, it is not a new one."""
+    started, laps = tracker.current_started_at, tracker.facts.laps
+    return (
+        index == tracker.current_stint
+        and started is not None
+        and laps is not None
+        and laps <= started + 1
+    )
+
+
+def _tyres_fitted(tracker: _DriverTracker, index: int) -> bool:
+    """Whether the slot started at `index` is a set fitted to the car: not
+    one the feed marks `TyresNotChanged`, unless it is the car's first. The
+    2026 Singapore sprint's Hadjar and Colapinto drove through the pit lane
+    on lap 2 and each got a slot marked so; read as stops, the tower showed
+    a stop neither made. The flag also marked the race's sets listed twice
+    before the start, and Piastri's stale slot in Bahrain."""
+    if index >= len(tracker.stints):
+        return True
+    return not tracker.stints[index].tyres_not_changed or tracker.stints_announced == 0
+
+
+def _settled(tracker: _DriverTracker) -> bool:
+    """Whether a lap counted on another slot may move the car off its
+    current stint. Not during a new stint's first lap: should the set it
+    replaced be counted one last lap after the new one opens (the in-lap
+    ending), the car has not gone back to it. Later it may: a stale slot
+    never counts a lap, so the stint that does is the one being run."""
+    started, laps = tracker.current_started_at, tracker.facts.laps
+    return started is None or laps is None or laps >= started + 2
+
+
 def _tyre_age(stint: _StintFacts) -> int | None:
-    """Total laps on the driver's current set, prior usage included."""
-    if stint.total_laps is None and stint.start_laps is None:
-        return None
-    return (stint.total_laps or 0) + (stint.start_laps or 0)
+    """Laps on the driver's current set, prior usage included. The feed's
+    `TotalLaps` already counts the laps the set had done: a used set opens
+    with it equal to `StartLaps` (the 2026 Bahrain GP's Russell: softs at
+    3 and 3), and Piastri finished on mediums at 12 with 2 from before, ten
+    laps raced. Adding the two counted those laps twice."""
+    if stint.total_laps is not None:
+        return stint.total_laps
+    return stint.start_laps
 
 
 def _in_progress_lap(completed: int | None) -> int | None:
@@ -637,7 +754,10 @@ class SessionStateMachine:
                 tracker = self._tracker(number)
                 tracker.app = deep_merge(None, line)
                 tracker.stints = _stint_facts(tracker.app)
-                tracker.announced_stints = set(range(len(tracker.stints)))
+                tracker.stints_announced = len(tracker.stints)
+                tracker.pending_stints = []
+                tracker.current_stint = None
+                tracker.current_started_at = None
         clock = snapshot.get("ExtrapolatedClock")
         if clock is not None:
             self._merge_clock(decode_clock(clock))
@@ -913,7 +1033,7 @@ class SessionStateMachine:
             return  # hold until this lap's own time arrives
         tracker.last_emitted_lap = new.laps
         tracker.lap_time_dirty = False
-        stint = tracker.stints[-1] if tracker.stints else _StintFacts()
+        stint = _current_stint(tracker)
         sector_times = [parse_lap_time(value) for value in new.sectors]
         events.append(
             LapCompleted(
@@ -965,7 +1085,7 @@ class SessionStateMachine:
         )
         tracker.last_emitted_lap = 1
         tracker.lap_time_dirty = False
-        stint = tracker.stints[-1] if tracker.stints else _StintFacts()
+        stint = _current_stint(tracker)
         events.append(
             LapCompleted(
                 **self._envelope(ts, seq),
@@ -1044,24 +1164,62 @@ class SessionStateMachine:
             if not isinstance(line_delta, dict):
                 continue
             tracker = self._tracker(number)
+            previous = tracker.stints
             tracker.app = deep_merge(tracker.app, line_delta)
             tracker.stints = _stint_facts(tracker.app)
-            for index, stint in enumerate(tracker.stints):
-                if index in tracker.announced_stints:
-                    continue
-                if stint.compound is None:
+            if "Stints" in line_delta:
+                started, counted = _stint_moves(line_delta["Stints"], previous)
+                # The feed opens a set (`UNKNOWN`, no laps) and then names it,
+                # at the laps a used set had done: one set, not two.
+                started = [index for index in started if not _just_started(tracker, index)]
+                lap = _in_progress_lap(tracker.facts.laps)
+                # A slot started again replaces its older start.
+                tracker.pending_stints = [
+                    (index, at) for index, at in tracker.pending_stints if index not in started
+                ] + [(index, lap) for index in started]
+                fitted = [index for index in started if _tyres_fitted(tracker, index)]
+                if fitted:
+                    tracker.current_stint = fitted[-1]
+                    tracker.current_started_at = tracker.facts.laps
+                elif counted is not None and (
+                    counted == tracker.current_stint or _settled(tracker)
+                ):
+                    tracker.current_stint = counted
+            waiting: list[tuple[int, int | None]] = []
+            in_progress = _in_progress_lap(tracker.facts.laps)
+            for index, lap in tracker.pending_stints:
+                stint = tracker.stints[index] if index < len(tracker.stints) else _StintFacts()
+                if stint.compound is None or not _tyres_fitted(tracker, index):
+                    # A real stop names its set and clears `TyresNotChanged`
+                    # within seconds. A start still waiting a lap on was the
+                    # same tyres: dropped, so a later rewrite of that slot
+                    # (2026 Bahrain, laps 27-29) cannot read as a stop.
+                    stale = tracker.stints_announced > 0 and (
+                        (lap is None and in_progress is not None)
+                        or (lap is not None and in_progress is not None and in_progress > lap + 1)
+                    )
+                    if not stale:
+                        waiting.append((index, lap))
                     continue  # announce once the compound arrives — never guess
-                tracker.announced_stints.add(index)
+                if index != tracker.current_stint:
+                    # The tyres were changed once the start opened (the feed
+                    # cleared `TyresNotChanged`): the car is on them now.
+                    tracker.current_stint = index
+                    tracker.current_started_at = tracker.facts.laps
+                # Numbered in the order sets were fitted, never below the
+                # feed's own slot (a stint before this connection).
+                tracker.stints_announced = max(tracker.stints_announced + 1, index + 1)
                 events.append(
                     StintStarted(
                         **self._envelope(ts, seq),
                         driver=number,
-                        stint_number=index + 1,
+                        stint_number=tracker.stints_announced,
                         compound=_map_compound(stint.compound),
-                        start_lap=_in_progress_lap(tracker.facts.laps),
+                        start_lap=lap,
                         tyre_age_at_start=stint.start_laps,
                     )
                 )
+            tracker.pending_stints = waiting
         return events
 
     def _apply_car_data(
@@ -1328,7 +1486,7 @@ class SessionStateMachine:
         if tracker is None:
             return DriverState(driver=identity)
         facts = tracker.facts
-        stint = tracker.stints[-1] if tracker.stints else _StintFacts()
+        stint = _current_stint(tracker)
         gap = parse_gap(facts.gap_leader)
         interval = parse_gap(facts.interval)
         return DriverState(
@@ -1342,7 +1500,7 @@ class SessionStateMachine:
             laps_down=gap.laps if isinstance(gap, LapGap) else None,
             interval=interval if isinstance(interval, timedelta) else None,
             in_pit=facts.in_pit,
-            stint_number=len(tracker.stints) if tracker.stints else None,
+            stint_number=tracker.stints_announced or None,
             laps_completed=facts.laps,
         )
 

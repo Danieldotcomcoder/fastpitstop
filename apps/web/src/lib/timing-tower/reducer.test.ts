@@ -6,7 +6,7 @@ import {
 	sortedRows,
 	TimingTowerReducer
 } from './reducer';
-import { positionsGained, stintsForBar } from './types';
+import { createDriverRow, positionsGained, stintsForBar, stopsMade } from './types';
 
 function envelope(kind: string, payload: Record<string, unknown>): Envelope {
 	return { event_time_utc: new Date(0).toISOString(), kind, payload };
@@ -314,6 +314,35 @@ describe('stint history', () => {
 			{ compound: 'medium', startLap: 1, endLap: 27 },
 			{ compound: 'hard', startLap: 28, endLap: null }
 		]);
+	});
+
+	it('counts a stop for each stint begun after the first lap', () => {
+		const state = createTimingTowerState();
+		const stint = (n: number, compound: string, start: number | null) =>
+			envelope('stint_started', { driver: '18', stint_number: n, compound, start_lap: start });
+		// Live: the set opened twice before the start (2026 Singapore), then a stop.
+		applyTowerEnvelope(state, stint(1, 'soft', null));
+		applyTowerEnvelope(state, stint(2, 'soft', null));
+		const row = state.rows.get('18')!;
+		expect(stopsMade(row)).toBe(0);
+		expect(stintsForBar(row)).toEqual([{ compound: 'soft', startLap: 1, endLap: null }]);
+		applyTowerEnvelope(state, stint(3, 'medium', 27));
+		expect(stopsMade(row)).toBe(1);
+		expect(stintsForBar(row)).toEqual([
+			{ compound: 'soft', startLap: 1, endLap: 26 },
+			{ compound: 'medium', startLap: 27, endLap: null }
+		]);
+	});
+
+	it('counts the stops of a replay as its stints less one', () => {
+		const state = createTimingTowerState();
+		const stint = (n: number, compound: string, start: number) =>
+			envelope('stint_started', { driver: '1', stint_number: n, compound, start_lap: start });
+		applyTowerEnvelope(state, stint(1, 'medium', 1));
+		applyTowerEnvelope(state, stint(2, 'hard', 18));
+		applyTowerEnvelope(state, stint(3, 'hard', 40));
+		expect(stopsMade(state.rows.get('1')!)).toBe(2);
+		expect(stopsMade(createDriverRow('1'))).toBeNull();
 	});
 
 	it('starts a stint with no given start lap after the previous one', () => {

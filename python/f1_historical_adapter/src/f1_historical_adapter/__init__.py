@@ -11,13 +11,16 @@ history can and cannot provide.
 
 `compare_session` / `compare_streams` are the comparison harness: run both
 paths for one session and report field-level agreement (a report, not an
-assertion — discrepancies between the two sources are expected).
+assertion — discrepancies between the two sources are expected);
+`compare_event_streams` is the check run on every live session afterwards
+(`f1_api.post_session`).
 """
 
 from f1_historical_adapter.adapter import build_events, events_from_parquet
 from f1_historical_adapter.compare import (
     Agreement,
     ComparisonReport,
+    compare_event_streams,
     compare_session,
     compare_streams,
 )
@@ -32,6 +35,7 @@ __all__ = [
     "ComparisonReport",
     "SessionTables",
     "build_events",
+    "compare_event_streams",
     "compare_session",
     "compare_streams",
     "events_from_parquet",

@@ -195,7 +195,7 @@ class TestLapCompleted:
             LapCompleted,
         )
         assert laps[0].compound is Compound.SOFT
-        assert laps[0].tyre_age == 7  # 2 already on the set + 5 this stint
+        assert laps[0].tyre_age == 5  # TotalLaps counts the 2 the set had done
 
 
 class TestSectors:
@@ -277,6 +277,211 @@ class TestStints:
         sm.apply(app(feed, "1", {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 0}}}))
         assert sm.apply(app(feed, "1", {"Stints": {"0": {"TotalLaps": 7}}})) == []
         assert sm.state.drivers["1"].tyre_age == 7
+
+    def test_the_tyre_is_the_stint_being_run_not_the_last_slot(self):
+        """F1 rewrites a race's stint history: at the 2026 Bahrain GP (run
+        at Sepang) it moved Piastri's stints down a slot and reused one for
+        his last set, leaving a stale slot at the end (hards, one lap). The
+        lap is on the stint the feed last started or counted a lap on."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "81", {"NumberOfLaps": 21}))
+        sm.apply(app(feed, "81", {"Stints": {"0": {"Compound": "HARD", "TotalLaps": 0}}}))
+        sm.apply(app(feed, "81", {"Stints": {"1": {"Compound": "HARD", "TotalLaps": 0}}}))
+        # A rewrite resetting an old slot's laps alone is not a new set.
+        sm.apply(app(feed, "81", {"Stints": {"0": {"TotalLaps": 0}}}))
+        # The stale slot: appears once and is never counted again.
+        sm.apply(app(feed, "81", {"Stints": {"2": {"Compound": "HARD", "TotalLaps": 1}}}))
+        for laps in range(1, 13):
+            sm.apply(timing(feed, "81", {"NumberOfLaps": 21 + laps}))
+            sm.apply(app(feed, "81", {"Stints": {"1": {"TotalLaps": laps}}}))
+        # A correction rewriting several slots says nothing about the car.
+        sm.apply(app(feed, "81", {"Stints": {"0": {"TotalLaps": 24}, "2": {"TotalLaps": 2}}}))
+        assert sm.state.drivers["81"].tyre_age == 12
+        # The next set reuses slot 1: reset, then its compound.
+        sm.apply(app(feed, "81", {"Stints": {"1": {"Compound": "UNKNOWN", "TotalLaps": 0}}}))
+        named: JsonValue = {"1": {"Compound": "MEDIUM", "TotalLaps": 2, "StartLaps": 2}}
+        sm.apply(app(feed, "81", {"Stints": named}))
+        sm.apply(app(feed, "81", {"Stints": {"1": {"TotalLaps": 3}}}))
+        laps = only(
+            sm.apply(timing(feed, "81", {"NumberOfLaps": 34, "LastLapTime": {"Value": "1:45.0"}})),
+            LapCompleted,
+        )
+        assert laps[0].compound is Compound.MEDIUM
+        assert laps[0].tyre_age == 3
+
+    def test_the_old_set_counted_after_the_new_one_opens_is_not_a_return(self):
+        """Should the feed count the old set's last lap after opening the
+        new one, the car has not gone back to the old set."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "18", {"NumberOfLaps": 25}))
+        sm.apply(app(feed, "18", {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 25}}}))
+        sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "UNKNOWN", "TotalLaps": 0}}}))
+        sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "MEDIUM"}}}))
+        sm.apply(app(feed, "18", {"Stints": {"0": {"TotalLaps": 26}}}))
+        laps = only(
+            sm.apply(timing(feed, "18", {"NumberOfLaps": 26, "LastLapTime": {"Value": "2:05.0"}})),
+            LapCompleted,
+        )
+        assert laps[0].compound is Compound.MEDIUM
+
+    def test_a_stop_can_reuse_a_slot_the_start_duplicated(self):
+        """The 2026 Singapore GP's start put Stroll's softs in two slots,
+        counted together; F1 later dropped the copy, and his stop reused
+        its slot for the mediums, with no `UNKNOWN` first. The stop is a
+        stint of its own, numbered after both copies; the copies opened
+        before the first lap was counted, so they have no start lap."""
+        sm, feed = machine(), Feed()
+        started = [
+            *only(
+                sm.apply(app(feed, "18", {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 0}}})),
+                StintStarted,
+            ),
+            *only(
+                sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "SOFT", "TotalLaps": 0}}})),
+                StintStarted,
+            ),
+        ]
+        assert [(s.stint_number, s.start_lap) for s in started] == [(1, None), (2, None)]
+        for laps in range(1, 5):
+            sm.apply(timing(feed, "18", {"NumberOfLaps": laps}))
+            sm.apply(
+                app(feed, "18", {"Stints": {"0": {"TotalLaps": laps}, "1": {"TotalLaps": laps}}})
+            )
+        for laps in range(5, 27):
+            sm.apply(timing(feed, "18", {"NumberOfLaps": laps}))
+            sm.apply(app(feed, "18", {"Stints": {"0": {"TotalLaps": laps}}}))
+        assert sm.state.drivers["18"].tyre_age == 26
+        stop = only(
+            sm.apply(app(feed, "18", {"Stints": {"1": {"Compound": "MEDIUM", "TotalLaps": 0}}})),
+            StintStarted,
+        )
+        assert [(s.stint_number, s.compound, s.start_lap) for s in stop] == [
+            (3, Compound.MEDIUM, 27)
+        ]
+        laps = only(
+            sm.apply(timing(feed, "18", {"NumberOfLaps": 27, "LastLapTime": {"Value": "1:58.0"}})),
+            LapCompleted,
+        )
+        assert laps[0].compound is Compound.MEDIUM
+        assert laps[0].tyre_age == 0
+
+    def test_a_new_set_can_share_a_delta_with_a_rewrite(self):
+        """The 2026 Bahrain GP's Colapinto: his hards opened in a reused
+        slot, in the same delta as a lap count for his first slot. A
+        rewrite resetting an early slot among several is not a new set."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "43", {"NumberOfLaps": 0}))
+        for slot, compound in enumerate(("INTERMEDIATE", "SOFT", "MEDIUM", "MEDIUM")):
+            sm.apply(
+                app(feed, "43", {"Stints": {str(slot): {"Compound": compound, "TotalLaps": 0}}})
+            )
+        sm.apply(timing(feed, "43", {"NumberOfLaps": 3}))
+        rewrite: JsonValue = {
+            "0": {"Compound": "INTERMEDIATE", "TotalLaps": 0},
+            "1": {"Compound": "SOFT", "TotalLaps": 1},
+            "2": {"Compound": "MEDIUM", "TotalLaps": 2},
+        }
+        sm.apply(app(feed, "43", {"Stints": rewrite}))
+        sm.apply(app(feed, "43", {"Stints": {"2": {"TotalLaps": 3}}}))
+        sm.apply(timing(feed, "43", {"NumberOfLaps": 31}))
+        assert sm.state.drivers["43"].current_compound is Compound.MEDIUM
+        reused: JsonValue = {"0": {"TotalLaps": 1}, "3": {"Compound": "HARD", "TotalLaps": 0}}
+        sm.apply(app(feed, "43", {"Stints": reused}))
+        laps = only(
+            sm.apply(timing(feed, "43", {"NumberOfLaps": 32, "LastLapTime": {"Value": "2:01.0"}})),
+            LapCompleted,
+        )
+        assert laps[0].compound is Compound.HARD
+
+    def test_a_used_set_is_a_new_stint_aged_by_its_own_count(self):
+        """The 2026 Bahrain GP's Russell fitted used softs in a reused slot:
+        the feed opened them at 3 laps, of which 3 from before."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "63", {"NumberOfLaps": 0}))
+        for slot in range(3):
+            sm.apply(
+                app(feed, "63", {"Stints": {str(slot): {"Compound": "MEDIUM", "TotalLaps": 0}}})
+            )
+        sm.apply(timing(feed, "63", {"NumberOfLaps": 32}))
+        used: JsonValue = {
+            "2": {"Compound": "SOFT", "New": "false", "TotalLaps": 3, "StartLaps": 3}
+        }
+        started = only(sm.apply(app(feed, "63", {"Stints": used})), StintStarted)
+        assert [(s.compound, s.start_lap, s.tyre_age_at_start) for s in started] == [
+            (Compound.SOFT, 33, 3)
+        ]
+        sm.apply(app(feed, "63", {"Stints": {"2": {"TotalLaps": 4}}}))
+        assert sm.state.drivers["63"].tyre_age == 4
+
+    def test_a_set_waiting_for_its_compound_holds_up_no_other(self):
+        """A set the feed never names (the 2026 Bahrain GP had several) is
+        never announced, and the sets after it still are."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "10", {"NumberOfLaps": 37}))
+        assert (
+            only(sm.apply(app(feed, "10", {"Stints": {"0": {"TotalLaps": 0}}})), StintStarted) == []
+        )
+        sm.apply(timing(feed, "10", {"NumberOfLaps": 45}))
+        later: JsonValue = {"1": {"Compound": "SOFT", "TotalLaps": 0}}
+        announced = only(sm.apply(app(feed, "10", {"Stints": later})), StintStarted)
+        assert [(s.stint_number, s.compound, s.start_lap) for s in announced] == [
+            (2, Compound.SOFT, 46)
+        ]
+
+    def test_a_drive_through_on_the_same_tyres_is_no_stop(self):
+        """The 2026 Singapore sprint: Hadjar drove through the pit lane on
+        lap 2 and the feed opened a slot marked `TyresNotChanged`, the set's
+        laps carrying on. No stint starts, and the age carries on."""
+        sm, feed = machine(), Feed()
+        sm.apply(app(feed, "6", {"Stints": {"0": {"Compound": "INTERMEDIATE", "TotalLaps": 0}}}))
+        sm.apply(timing(feed, "6", {"NumberOfLaps": 2}))
+        sm.apply(app(feed, "6", {"Stints": {"0": {"TotalLaps": 2}}}))
+        same: JsonValue = {
+            "1": {
+                "Compound": "INTERMEDIATE",
+                "TyresNotChanged": "1",
+                "TotalLaps": 2,
+                "StartLaps": 2,
+            }
+        }
+        assert only(sm.apply(app(feed, "6", {"Stints": same})), StintStarted) == []
+        sm.apply(timing(feed, "6", {"NumberOfLaps": 3}))
+        sm.apply(app(feed, "6", {"Stints": {"1": {"TotalLaps": 3}}}))
+        assert sm.state.drivers["6"].tyre_age == 3
+
+    def test_a_stop_is_announced_once_the_feed_clears_tyres_not_changed(self):
+        """A real stop opens its slot marked `TyresNotChanged` and clears
+        it seconds later, naming the set."""
+        sm, feed = machine(), Feed()
+        sm.apply(app(feed, "81", {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 0}}}))
+        sm.apply(timing(feed, "81", {"NumberOfLaps": 9}))
+        opened: JsonValue = {
+            "1": {"Compound": "UNKNOWN", "TyresNotChanged": "1", "TotalLaps": 0, "StartLaps": 0}
+        }
+        assert only(sm.apply(app(feed, "81", {"Stints": opened})), StintStarted) == []
+        named: JsonValue = {"1": {"Compound": "HARD", "TyresNotChanged": "0"}}
+        stops = only(sm.apply(app(feed, "81", {"Stints": named})), StintStarted)
+        assert [(s.stint_number, s.compound, s.start_lap) for s in stops] == [
+            (2, Compound.HARD, 10)
+        ]
+        laps = only(
+            sm.apply(timing(feed, "81", {"NumberOfLaps": 10, "LastLapTime": {"Value": "2:01.0"}})),
+            LapCompleted,
+        )
+        assert laps[0].compound is Compound.HARD
+
+    def test_a_same_tyres_slot_cleared_laps_later_is_no_stop(self):
+        """2026 Bahrain: F1's rewrite of the stint history cleared
+        `TyresNotChanged` on old same-tyres slots laps after they opened."""
+        sm, feed = machine(), Feed()
+        sm.apply(app(feed, "5", {"Stints": {"0": {"Compound": "HARD", "TotalLaps": 0}}}))
+        sm.apply(timing(feed, "5", {"NumberOfLaps": 5}))
+        same: JsonValue = {"1": {"Compound": "HARD", "TyresNotChanged": "1", "TotalLaps": 5}}
+        sm.apply(app(feed, "5", {"Stints": same}))
+        sm.apply(timing(feed, "5", {"NumberOfLaps": 8}))
+        sm.apply(app(feed, "5", {"Stints": {"0": {"TotalLaps": 8}}}))
+        rewrite: JsonValue = {"1": {"TyresNotChanged": "0"}}
+        assert only(sm.apply(app(feed, "5", {"Stints": rewrite})), StintStarted) == []
 
     def test_unrecognized_compound_maps_to_unknown_never_guessed(self):
         sm, feed = machine(), Feed()

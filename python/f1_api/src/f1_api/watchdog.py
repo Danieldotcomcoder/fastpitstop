@@ -23,17 +23,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
-import os
-import smtplib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from email.message import EmailMessage
 from urllib.parse import quote
 
 import httpx
 import websockets
 
+from f1_api.alerts import send_alert
 from f1_api.config import Settings, get_settings
 
 _log = logging.getLogger("f1_api.watchdog")
@@ -134,7 +132,6 @@ async def live_session_keys(client: httpx.AsyncClient, api: str) -> set[str]:
 
 def build_alert(settings: Settings) -> Alert:
     """Log every alert; email it too when SMTP is configured."""
-    recipient = os.environ.get("F1_ALERT_TO") or settings.feedback_to
 
     def alert(event: str, key: str, detail: str) -> None:
         line = f"live stream {event}: {key} ({detail})"
@@ -142,25 +139,12 @@ def build_alert(settings: Settings) -> Alert:
             _log.info(line)
         else:
             _log.error(line)
-        if not settings.smtp_host or not recipient:
-            return
-        message = EmailMessage()
-        message["Subject"] = f"[FastPitStop] live stream {event}: {key}"
-        message["From"] = settings.smtp_from or recipient
-        message["To"] = recipient
-        message.set_content(
+        send_alert(
+            settings,
+            f"live stream {event}: {key}",
             f"{line}\n\nCheck `docker compose logs worker api` on the VM."
-            "\nThis message is from f1-watchdog."
+            "\nThis message is from f1-watchdog.",
         )
-        try:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-                if settings.smtp_use_tls:
-                    smtp.starttls()
-                if settings.smtp_username:
-                    smtp.login(settings.smtp_username, settings.smtp_password or "")
-                smtp.send_message(message)
-        except Exception:
-            _log.warning("could not email the alert; it is in this log", exc_info=True)
 
     return alert
 

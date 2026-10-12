@@ -219,6 +219,9 @@
 	.last-race h2 {
 		margin: var(--space-1) 0 0;
 		font-size: var(--font-size-xl);
+		/* The card is the dark board in both themes: the page's own ink
+		   would vanish on it in the light theme. */
+		color: var(--board-ink);
 	}
 	.last-race .venue {
 		color: var(--board-muted);

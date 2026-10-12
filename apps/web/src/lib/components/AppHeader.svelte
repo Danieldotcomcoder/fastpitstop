@@ -35,7 +35,7 @@
 		else delete root.dataset.theme;
 		document
 			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', light ? '#eeefea' : '#101214');
+			?.setAttribute('content', light ? '#eeefea' : '#0b0e13');
 		try {
 			if (light) localStorage.setItem('theme', 'light');
 			else localStorage.removeItem('theme');
@@ -148,7 +148,7 @@
 	}
 
 	.wordmark {
-		font: italic 600 24px/1 var(--font-display);
+		font: italic 700 24px/1 var(--font-display);
 		letter-spacing: -0.02em;
 		color: var(--ink);
 		text-decoration: none;

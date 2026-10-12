@@ -160,7 +160,9 @@ def _float(anomaly: Anomaly, key: str) -> float | None:
     return float(value)
 
 
-def merge_incidents(anomalies: Sequence[Anomaly]) -> list[Anomaly]:
+def merge_incidents(
+    anomalies: Sequence[Anomaly], params: StoryParams | None = None
+) -> list[Anomaly]:
     """One card per incident.
 
     - A sector loss (`OFF_TRACK`) on a lap that also lost pace overall is
@@ -176,11 +178,15 @@ def merge_incidents(anomalies: Sequence[Anomaly]) -> list[Anomaly]:
     - A retirement that a neutralization was called for (the detector lists
       the cars whose race ended as it began) is told by that card; the 2024
       Monaco GP otherwise opened with a red flag and four retirement cards
-      for the same crash."""
+      for the same crash. Only by a card that is shown: a one-lap VSC nobody
+      pitted under is not a moment, and folded into one, the 2024 Austrian
+      GP's Norris (out after the collision whose debris it was called for)
+      went untold."""
+    params = params or StoryParams()
     told_by_neutralization = {
         driver
         for anomaly in anomalies
-        if anomaly.kind is AnomalyKind.NEUTRALIZATION
+        if anomaly.kind is AnomalyKind.NEUTRALIZATION and is_story_moment(anomaly, params)
         for driver in str(anomaly.summary.get("retired") or "").split(",")
         if driver
     }
@@ -338,7 +344,7 @@ def select_story(anomalies: Sequence[Anomaly], params: StoryParams | None = None
     order. When more than `params.max_moments` qualify, the least salient
     non-landmarks are dropped first."""
     params = params or StoryParams()
-    kept = [a for a in merge_incidents(anomalies) if is_story_moment(a, params)]
+    kept = [a for a in merge_incidents(anomalies, params) if is_story_moment(a, params)]
 
     by_key: dict[str, Anomaly] = {}
     for anomaly in sorted(kept, key=lambda a: (a.anomaly_time, anomaly_id(a))):

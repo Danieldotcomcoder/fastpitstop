@@ -134,6 +134,23 @@ services:
       db:
         condition: service_healthy
 
+  # After every live session, what viewers were shown, checked against F1's
+  # own archive once it is published (f1_api.post_session): files the
+  # session in the backfill (the standings count it), writes a report to
+  # data/post_session, and emails (as the watchdog does) when they disagree.
+  # Idle between sessions: one small query every 15 minutes.
+  postsession:
+    image: ghcr.io/${GHCR_NAMESPACE:-yourname/f1dashboard}/pitwall-api:${IMAGE_TAG:-latest}
+    command: ["f1-post-session-check", "--watch", "900"]
+    env_file: .env
+    environment:
+      F1_STORE_DSN: postgresql://${POSTGRES_USER:-pitwall}:${POSTGRES_PASSWORD:-pitwall}@db:5432/${POSTGRES_DB:-pitwall}
+    volumes:
+      - pitwall-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
   # A synthetic viewer of every live session: alerts (log, and email when
   # SMTP is configured) when a live stream goes quiet for a minute, the
   # failure that otherwise freezes every dashboard unnoticed. Idle between

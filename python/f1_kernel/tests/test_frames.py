@@ -300,3 +300,35 @@ def _laps_where(laps: pl.DataFrame, column: str) -> dict[str, list[int]]:
     for driver, lap_number in zip(hits["driver"], hits["lap_number"], strict=True):
         result.setdefault(str(driver), []).append(int(lap_number))
     return result
+
+
+def test_a_stint_opened_before_the_first_lap_covers_the_race_from_the_start() -> None:
+    """Live, a race's first set opens before the feed counts a lap, so its
+    `StintStarted` has no start lap; every live lap of the 2026 Singapore
+    GP had no stint number until a stint like that counted from the start."""
+    from datetime import UTC, datetime, timedelta
+
+    from f1_domain import Compound, LapCompleted, StintStarted
+
+    key = SessionKey(year=2026, round=17, session_type=SessionType.RACE)
+    t0 = datetime(2026, 10, 11, 12, 0, tzinfo=UTC)
+
+    def envelope(seconds: float) -> dict[str, Any]:
+        return {
+            "session_key": key,
+            "ts_utc": t0 + timedelta(seconds=seconds),
+            "source_seq": 0,
+            "provenance": Provenance.LIVE,
+        }
+
+    events = [
+        StintStarted(**envelope(0), driver="18", stint_number=1, compound=Compound.SOFT),
+        *(LapCompleted(**envelope(100 * lap), driver="18", lap_number=lap) for lap in range(1, 5)),
+        StintStarted(
+            **envelope(250), driver="18", stint_number=2, compound=Compound.MEDIUM, start_lap=3
+        ),
+    ]
+
+    laps = lap_frame_from_events(events, key).sort("lap_number")
+
+    assert laps["stint_number"].to_list() == [1, 1, 2, 2]

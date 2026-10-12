@@ -496,6 +496,7 @@ name = "f1-api"
 version = "0.0.1"
 source = { editable = "python/f1_api" }
 dependencies = [
+    { name = "f1-backfill" },
     { name = "f1-domain" },
     { name = "f1-historical-adapter" },
     { name = "f1-kernel" },
@@ -510,6 +511,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "f1-backfill", editable = "python/f1_backfill" },
     { name = "f1-domain", editable = "python/f1_domain" },
     { name = "f1-historical-adapter", editable = "python/f1_historical_adapter" },
     { name = "f1-kernel", editable = "python/f1_kernel" },

@@ -25,23 +25,33 @@ function cutoffsAsked(page: Page): number[] {
 test('the latest race stays hidden until the viewer says they watched it', async ({ page }) => {
 	const asked = cutoffsAsked(page);
 	await page.goto('/standings/2024');
-	const shield = page.getByRole('status').filter({ hasText: 'As of' });
-	await expect(shield).toContainText('As of Bahrain, round 1');
-	await expect(shield).toContainText('The latest race stays hidden');
+	// The heading says what is counted; a notice names what is held back.
+	const cutoff = page.getByTestId('standings-cutoff');
+	await expect(cutoff).toHaveText(/After Bahrain, round 1\s*· 1 of 2 races counted/);
+	const notice = page.getByTestId('standings-notice');
+	await expect(notice).toContainText('Saudi Arabian, round 2 is not counted');
 	const drivers = page.getByRole('region', { name: 'Drivers' }).getByRole('listitem');
 	await expect(drivers.first()).toContainText('VER');
 	expect(Math.max(...asked)).toBeLessThanOrEqual(1);
 
-	await shield.getByLabel('Count races up to').selectOption({ label: 'Saudi Arabian, round 2' });
-	await expect(shield).toContainText('As of the last race you watched: Saudi Arabian, round 2');
-	await expect(shield).toContainText('Every race so far is counted.');
+	// One click counts it.
+	await notice.getByRole('button', { name: 'Count Saudi Arabian' }).click();
+	await expect(cutoff).toHaveText(/After Saudi Arabian, round 2\s*· 2 of 2 races counted/);
+	await expect(notice).toHaveCount(0);
 
 	// Remembered on this device.
 	await page.reload();
-	await expect(page.getByRole('status').filter({ hasText: 'As of' })).toContainText(
-		'As of the last race you watched: Saudi Arabian, round 2'
-	);
+	await expect(page.getByTestId('standings-cutoff')).toContainText('After Saudi Arabian, round 2');
 	expect(asked).not.toContain(Infinity);
+});
+
+test('any race can be chosen as the last one watched', async ({ page }) => {
+	await page.goto('/standings/2024');
+	await page.getByLabel('Count races up to').selectOption({ label: 'none yet' });
+	await expect(page.getByTestId('standings-cutoff')).toHaveText('No race counted yet');
+	await expect(page.getByTestId('standings-notice')).toContainText(
+		"Counting up to the last race you said you've watched."
+	);
 });
 
 test('the standings fit a phone', async ({ page }) => {

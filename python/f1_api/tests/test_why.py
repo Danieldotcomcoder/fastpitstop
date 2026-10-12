@@ -189,6 +189,33 @@ def test_explanation_is_cached_and_not_regenerated(settings: Settings) -> None:
     assert len(model.calls) == calls_after_first, "cache hit must not call the model again"
 
 
+def test_a_finished_session_s_story_is_built_once(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A finished race's story never changes, and building it cost ~14 s a
+    request on the production VM: the second request is served from memory.
+    A fresh explanation store (another test's) starts with nothing."""
+    import f1_api.routes.why as why_routes
+
+    built: list[SessionKey] = []
+    from f1_api.why import precompute_session_explanations as real
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        built.append(args[1])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(why_routes, "precompute_session_explanations", counting)
+    client = _client(settings)
+    first = client.get(f"/sessions/{SESSION_KEY}/story")
+    second = client.get(f"/sessions/{SESSION_KEY}/story")
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert len(built) == 1
+    assert _client(settings).get(f"/sessions/{SESSION_KEY}/story").status_code == 200
+    assert len(built) == 2
+
+
 # -- anomaly_id path round-trip -----------------------------------------------
 
 

@@ -134,7 +134,7 @@ export const HOME_FAQ: readonly { question: string; answer: string }[] = [
 	}
 ];
 
-const SESSION_LABELS: Record<string, string> = {
+export const SESSION_TYPE_LABELS: Record<string, string> = {
 	race: 'Race',
 	sprint: 'Sprint',
 	qualifying: 'Qualifying',
@@ -183,7 +183,7 @@ export function seoFor(
 	if (path === '/live') {
 		const live = sessions.find((s) => s.live) ?? null;
 		const now = live
-			? `${eventTitle(live.year, live.eventName, live.round)} ${SESSION_LABELS[live.sessionType] ?? ''}`.trim()
+			? `${eventTitle(live.year, live.eventName, live.round)} ${SESSION_TYPE_LABELS[live.sessionType] ?? ''}`.trim()
 			: null;
 		return page(
 			now

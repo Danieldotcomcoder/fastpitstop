@@ -158,7 +158,7 @@ def build_events(
 
     laps = tables.get("laps")
     if laps is not None and start is not None:
-        _emit_laps(laps, start, env, collector)
+        _emit_laps(laps, start, env, collector, _completed_laps(tables.get("results")))
         _emit_stints(laps, start, env, collector)
 
     weather = tables.get("weather")
@@ -212,7 +212,33 @@ _SECTORS = (
 )
 
 
-def _emit_laps(laps: pd.DataFrame, start: datetime, env: EnvFactory, collector: _Collector) -> None:
+def _completed_laps(results: pd.DataFrame | None) -> dict[str, int]:
+    """Laps each driver completed, per the official classification."""
+    if results is None or "Laps" not in results.columns:
+        return {}
+    completed: dict[str, int] = {}
+    for rec in results.to_dict("records"):
+        number = driver_number(rec.get("DriverNumber"))
+        laps = opt_int(rec.get("Laps"))
+        if number is not None and laps is not None:
+            completed[number] = laps
+    return completed
+
+
+def _emit_laps(
+    laps: pd.DataFrame,
+    start: datetime,
+    env: EnvFactory,
+    collector: _Collector,
+    completed: dict[str, int] | None = None,
+) -> None:
+    """`completed` is the official laps-completed count per driver: the
+    archive keeps a placeholder row, with no lap time, for the lap a car
+    stopped on (2024 Miami's Sargeant crashed on lap 28 of his 27 completed),
+    and that lap was never completed. Its sectors and any pit entry are real
+    and still emitted; the `LapCompleted` is not, as the live feed would
+    never send one."""
+    completed = completed or {}
     ordered = laps
     if {"DriverNumber", "LapNumber"}.issubset(laps.columns):
         ordered = laps.sort_values(["DriverNumber", "LapNumber"], kind="stable")
@@ -228,23 +254,26 @@ def _emit_laps(laps: pd.DataFrame, start: datetime, env: EnvFactory, collector: 
         if ts is None:
             continue
 
-        collector.add(
-            ts,
-            LapCompleted(
-                **env(ts),
-                driver=number,
-                lap_number=lap_number,
-                lap_time=opt_timedelta(rec.get("LapTime")),
-                sector_times=[
-                    opt_timedelta(rec.get("Sector1Time")),
-                    opt_timedelta(rec.get("Sector2Time")),
-                    opt_timedelta(rec.get("Sector3Time")),
-                ],
-                is_personal_best=opt_bool(rec.get("IsPersonalBest")),
-                compound=compound(rec.get("Compound")),
-                tyre_age=opt_int(rec.get("TyreLife")),
-            ),
-        )
+        lap_time = opt_timedelta(rec.get("LapTime"))
+        never_completed = lap_time is None and lap_number > completed.get(number, lap_number)
+        if not never_completed:
+            collector.add(
+                ts,
+                LapCompleted(
+                    **env(ts),
+                    driver=number,
+                    lap_number=lap_number,
+                    lap_time=lap_time,
+                    sector_times=[
+                        opt_timedelta(rec.get("Sector1Time")),
+                        opt_timedelta(rec.get("Sector2Time")),
+                        opt_timedelta(rec.get("Sector3Time")),
+                    ],
+                    is_personal_best=opt_bool(rec.get("IsPersonalBest")),
+                    compound=compound(rec.get("Compound")),
+                    tyre_age=opt_int(rec.get("TyreLife")),
+                ),
+            )
 
         for index, (dur_col, session_col) in enumerate(_SECTORS, start=1):
             duration = opt_timedelta(rec.get(dur_col))

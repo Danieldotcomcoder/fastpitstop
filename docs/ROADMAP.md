@@ -95,11 +95,32 @@ friend watching the race with you.
     the map canvas in software, so frame intervals measure the test
     machine, not the app);
   - qualifying joined the set on 2026-10-12 (`e2e-real/qualifying.spec.ts`,
-    2024 Miami, checked break by break); a sprint session is still not in
-    it.
+    2024 Miami, checked break by break), and so did a sprint (the 2024
+    China sprint replayed at both sizes; it and the wet 2025 Miami sprint
+    are also checked against official timing in `tower.spec.ts`). No sprint
+    qualifying is in it: the backfill has no 2024 sprint qualifying
+    classification to check its knockouts against. The 2026 Singapore one
+    was checked against F1 on 2026-10-11, outside the gate.
 - The watchdog is the `watchdog` service (`f1_api.watchdog`), tested
-  against a real stalled stream. The post-session check is the existing
-  `f1-historical-compare`, documented in DEPLOY.md; automating it is open.
+  against a real stalled stream.
+- **Post-session check, automated (2026-10-12).** The `postsession` service
+  (`f1_api.post_session`) runs after every live session, once it has been
+  quiet two hours. It:
+  - files the session from F1's archive in the backfill, only once that
+    archive is complete; this also keeps the standings current;
+  - compares what viewers saw with it: each lap's time, tyre and tyre age,
+    plus each driver's laps, stops and final place;
+  - writes a report to `data/post_session/`;
+  - alerts (log, and email once SMTP is configured) on what disagrees.
+
+  Laps are paired by number in races and by lap time elsewhere, since the
+  live lap count runs one ahead in qualifying. The archive's stops are its
+  tyre changes, not its stint slots.
+
+  Replaying the recorded Singapore weekend through today's parser, the
+  check reports nothing for the race, qualifying, sprint qualifying or
+  practice. It reports two real tower errors in the sprint, and the
+  red-flagged Bahrain race's genuine tyre and stop gaps.
 
 Comes first because every other workstream ships through it.
 
@@ -432,9 +453,88 @@ Status (2026-10-11):
 - **Flag banner:** the sticky sync strip is the full-width flag banner,
   tinted for yellow, SC, VSC and red. It occupies the same space on green,
   so a flag never moves the page.
-- **Still open:** pit count beyond stints, the race control feed on every
-  layout, sprint, mini-sectors, and the check against official timing.
-  Qualifying and standings are built (see the M2 screens below).
+- **Checked against official timing (2026-10-12):** `e2e-real/tower.spec.ts`
+  (in `just verify-real`) replays each W0 race to the flag in the browser
+  and compares every tower row with F1's classification and lap data
+  (`deploy/official_timing.py`): place, laps completed, last lap, best lap,
+  stops, finishing tyre and OUT. All five match. It found one real bug: the
+  archive keeps an untimed row for the lap a car stopped on, and the
+  adapter replayed it as a completed lap (2024 Miami's Sargeant showed 28
+  laps of his 27; Monaco's lap-1 crashers showed 1). The live feed never
+  counts that lap, so a replay disagreed with live. `f1_historical_adapter`
+  now drops it when the classification says the car never completed it
+  (its sectors and pit entry stay). The story's retirement rule had leaned
+  on those rows, so it now finds a lap-1 crasher from the grid and places
+  each retirement on the lap the car stopped on. That is what a live
+  viewer gets too, and it is more accurate: 2024 Australia's Russell
+  crashed on lap 57, not 58. The story check still gives 110/110 true
+  cards and 35/35 headlines.
+- **Live sessions checked too (2026-10-12):** the four races the store took
+  in live (2026 rounds 14 to 17) against the archive's timing. Laps
+  completed match for every car in all four. Round 17 (Singapore) matches
+  every field. The rest is explained:
+  - Hamilton's round-14 best lap: his first four laps are missing from the
+    store (the weekend the worker filed the race under practice).
+  - Round 15's last laps: a slow final lap is timed live and untimed in
+    the archive.
+  - Round 16's stop counts: the store lacked lap 1, before the parser
+    timed it.
+  - Round 16's tyres: a real bug. In that red-flagged race F1 rewrote the
+    stint lists (moving stints down a slot and reusing slots), and the
+    parser read the last slot as the tyre fitted. A stale slot left
+    Piastri on "hards, 1 lap old" for his last ten laps, on mediums.
+  
+  The parser now takes the stint the feed last started or counted a lap
+  on (`f1_parse.state_machine._stint_moves`), and a set started in a
+  reused slot, or a used set (it opens at the laps it had already done),
+  is a stint of its own. Stints are numbered in the order the sets were
+  fitted. Tyre age is the feed's `TotalLaps`, which already counts a used
+  set's earlier laps; adding `StartLaps` counted them twice (Russell's
+  used softs read 7 laps old when they were 5). These changes were
+  checked by replaying the recorded Bahrain and Singapore races through
+  the live path against the archive's tyre on every lap:
+
+  | Race | Laps on the wrong compound | Laps whose tyre age is off by more than 1 |
+  | --- | --- | --- |
+  | Bahrain | 32 → 2 | 439 → 136 |
+  | Singapore | 0 → 0 | 328 → 0 |
+
+  Both remaining Bahrain laps are ones on which the feed itself said
+  softs until it corrected them.
+- **Live stints in the kernel (2026-10-12):** every live lap of the 2026
+  Singapore GP had no stint number, because a race's first set opens
+  before the feed counts a lap and `f1_kernel.frames._stint_for_lap`
+  skipped a stint with no start lap. Live degradation fits therefore
+  merged stints on the same compound. A stint with no start lap now covers
+  the race from the start.
+- **Pit count beyond stints (2026-10-12):** the tower counts stops as the
+  stints begun after the first lap (`timing-tower` `stopsMade`).
+  - Before the start the live feed can open a car's set twice. Singapore
+    did this for three cars, and counting stints showed them a stop down
+    from lap 1. The stint bar now draws only the last set opened before
+    the start.
+  - Replayed live, Singapore's stop counts match official for all 22 cars
+    throughout the race.
+  - Bahrain's are off for 5 of 22 at the flag. Four of those had sets F1
+    never named, opened in old slots with nothing to mark them (the
+    archive has no compound for them either). The fifth is Piastri's
+    stale slot.
+  - The old count was off for 2 Bahrain cars at the flag, and for the
+    three Singapore cars from lap 1.
+- **Race control feed on every layout (2026-10-12):**
+  `e2e-real/feed.spec.ts` replays the 2024 Bahrain GP at 390 px and
+  1440 px. The "Radio & race control" panel is on the page, inside the
+  screen's width, and lists race control's messages under its filter.
+- **Sprints (2026-10-12):** a sprint replays like a race (`?session=sprint`)
+  and its tower matches the official timing in every field. It is checked
+  on the 2024 China sprint and on the wet 2025 Miami sprint, in which
+  every car but one pitted. Writing the check found a flaw in the check
+  itself: OUT means the car stopped, not that it was unclassified. The
+  China sprint's Alonso stopped on lap 18 of 19 and was classified 20th.
+  The 2024 Miami sprint cannot be a test: its archive gives every car two
+  pre-race pit visits as laps 1 and 2, so its replay shows two stops each.
+- **Still open:** mini-sectors (the stretch). Qualifying and standings are
+  built (see the M2 screens below).
 
 **Done when** every tower field is checked against the official timing for
 the W0 sessions, and qualifying shows the right drivers eliminated at each
@@ -477,6 +577,13 @@ approved the same day):
   device); until they choose, a race from the last 7 days, or an undated
   latest round, stays out. A round counts once its Grand Prix is
   backfilled. Checked by `e2e/standings.spec.ts` in `verify-phase3`.
+  2026-10-12: read as "completely wrong" because the page showed the table
+  after round 16 (Singapore held back) and said so only in a small box. The
+  heading now names the race it counts up to ("After Bahrain, round 16 ·
+  16 of 17 races counted") and a notice names the held-back race with a
+  one-click "Count Singapore". `deploy/check_standings.py` compares every
+  round with Jolpica: all of 2025 and 2026 match on points and wins, and
+  on places wherever the FIA countback decides them.
 - **Circuit page (S2):** Marina Bay. Its outline with numbered corners and
   DRS zones, the measured pit loss with its uncertainty, and tyre wear by
   compound, with thin fits marked.
@@ -560,12 +667,35 @@ sprints included; the 2025 standings rebuilt from them match the official
 championship exactly. Each backfilled session also carries its venue
 (`f1-backfill --locations-only`). The VM's retry loop is gone: running a
 season that still has rounds to come always "fails" on those rounds, which
-had stopped 2025 from ever retrying. Still open: archive cards with track
-thumbnails, and the smoke check over every session.
+had stopped 2025 from ever retrying. Archive cards (2026-10-12): each
+shows its circuit's outline, fitted on the server by circuit name (all 26
+circuits match), and no result: the "Winner" line is gone (the API never
+filled it, but the card would have shown it), and session types read
+"Practice 1" rather than `practice_1`. `e2e-real/archive.spec.ts` checks
+both at 390 and 1440 px. Smoke check (2026-10-12): `deploy/smoke_sessions.py`
+opens every session the archive lists against a running API (production by
+default): its detail, laps, circuit and (races and sprints) story, and its
+replay stream until the roster and a lap arrive. Over all 85 sessions of
+2026, 83 passed. The two failures:
+- **Slow story:** stories took 14 to 137 s, every request. A finished
+  race's story is now built once per process (`STORY_CACHE_SIZE` in
+  `f1_api.routes.why`). Measured on the VM: detection 9 s and evidence 5 s
+  for a 20-moment race, about 4x this machine.
+- **Late roster (open):** the 2026 Spanish GP (round 14) was taken in live
+  by a worker that joined after the start. Its store copy has every lap,
+  but its first driver list comes at lap 20, so a replay shows numbers
+  instead of names until then. The backfill holds the whole race, so
+  serving it from there (as for qualifying without Q parts) is the fix to
+  decide.
+
+Not run on 2024 and 2025, and the Spanish GP roster is not being fixed:
+past sessions are test material, and live comes first (your call,
+2026-10-12).
 
 ### W9. SEO
 
-- **S1. Search Console** (you, about 15 minutes):
+- **S1. Search Console** (you, about 15 minutes). **Done by you** (confirmed
+  2026-10-12):
   1. Add a **Domain** property for `fastpitstop.online` and verify it with
      the DNS TXT record Google gives you.
   2. Submit `https://fastpitstop.online/sitemap.xml`.
@@ -602,6 +732,12 @@ thumbnails, and the smoke check over every session.
   this season's and last season's pages are in the sitemap. The home
   page's next race links to it. Checked by `e2e/races.spec.ts` in
   `verify-phase3`.
+- **Analytics (2026-10-12):** Google Analytics 4 (`G-BVQJWG5QPX`) in
+  `app.html`, so every page carries it, loaded only on `fastpitstop.online`
+  itself so local runs and the browser tests send nothing. In-app page
+  changes are counted by GA4's enhanced measurement (checked on production:
+  the home page and a click through to /circuits both arrive as page
+  views). No consent banner yet; that is your call.
 - **S4. Guides:** "How to watch F1 without spoilers", "What is an
   undercut" (with a live example from our data), "Pit stop time loss at
   every circuit".
@@ -629,12 +765,38 @@ Each milestone ships between race weekends and passes W0 before deploy.
 
 | Milestone | Contents | Exit |
 | --- | --- | --- |
-| **M0: now** | No deploys this weekend. You: S1 (Search Console and Bing). | Site verified, sitemap submitted |
+| **M0: now** (done) | No deploys this weekend. You: S1 (Search Console and Bing). | Site verified, sitemap submitted |
 | **M1: Trust** | W0 release gate; W1 Story 2.0; W2 mockups (D6 steps 1–2) | Story meets its eval targets; mockup direction chosen |
 | **M2: Never empty, never thin** | W3 weekend hub; W4 completeness; W8 archive; W2 design system v2 components; S2 circuit pages; S3 Grand Prix pages | No empty states; tower checked against official timing; circuit and Grand Prix pages indexed |
 | **M3: Feel** | W2 screen redesigns and motion; W7 phone glance mode and app; S6 share images | Screens match mockups and pass W0 at all sizes and themes |
 | **M4: Signature** | W5 strategy radar and scorecard; W6 Sync 2.0 | Backtests committed; sync rehearsal passed |
 | **M5: Reach** | S4 guides; S8 launch | Launch posts live; Search Console trend tracked |
+
+### Status (2026-10-12)
+
+- **M0:** done.
+- **M1:** done, with one W0 part still open:
+  - visual baselines.
+  
+  The post-session check was finished 2026-10-12 (see W0). Its first runs
+  found one live gap, next to fix before the baselines. In the Singapore
+  sprint the feed briefly cleared `TyresNotChanged` during safety-car
+  drive-throughs, so the tower counted a stop for Leclerc and #5 that
+  neither made.
+- **M2:** every content item is built, deployed and checked:
+  - W3 weekend hub;
+  - W4 completeness: the tower against official timing, sprints,
+    qualifying, standings, stops, race control on every layout;
+  - W8 archive;
+  - W2 components;
+  - S2 circuit pages;
+  - S3 Grand Prix pages.
+  
+  Mini-sectors were a stretch, to decide after M2. Of the exit, "no empty
+  states" and "tower checked against official timing" are met. "Circuit and
+  Grand Prix pages indexed" is Google's to report, in Search Console's
+  Pages report.
+- **M3 onwards:** not started.
 
 ## Parked (needs a decision)
 

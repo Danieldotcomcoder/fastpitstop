@@ -279,7 +279,7 @@
 			ctx.lineWidth = 2;
 			ctx.lineCap = 'butt';
 			ctx.stroke();
-			ctx.font = '600 10px "IBM Plex Mono", monospace';
+			ctx.font = '600 10px "Geist Mono", monospace';
 			ctx.fillStyle = c.ink ?? '#16191c';
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'middle';
@@ -288,7 +288,7 @@
 
 		// Corner numbers.
 		if (lapLength) {
-			ctx.font = '500 10.5px "IBM Plex Mono", monospace';
+			ctx.font = '500 10.5px "Geist Mono", monospace';
 			ctx.fillStyle = c.muted ?? '#646a6f';
 			for (const corner of circuit?.corners ?? []) {
 				const k = Math.round((corner.distance_m / lapLength) * N);

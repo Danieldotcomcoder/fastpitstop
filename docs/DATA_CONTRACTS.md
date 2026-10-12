@@ -260,6 +260,14 @@ screen showed at the time; a lap deleted after the part ended stays in
 them (four SQ1 times there), while the archive drops it when FastF1 marks
 it deleted.
 
+`LapCompleted` means what it means live: the car crossed the line. The
+archive keeps an untimed row for the lap a car stopped on (2024 Miami's
+Sargeant: 28 rows, 27 laps completed), which the live feed never counts,
+so the adapter emits no `LapCompleted` for an untimed lap beyond the
+results' `Laps` for that driver. That lap's `SectorCompleted`s and pit
+entry or exit are real and still emitted. An untimed lap within the count
+(a gap in the archive's timing) stays.
+
 What historical **cannot** provide (the kernel must not assume it):
 
 - `source_seq` is SYNTHETIC — a dense 0..N emission ordinal, not a wire seq
@@ -319,7 +327,12 @@ Derivations worth knowing before you trust a column:
   lap that ran partly yellow and partly under the safety car be flagged as
   both. Chequered ranks with green: it is an instant, not a restriction.
 - **`stint_number` is null** when the source emitted no `StintStarted`
-  events. Stints are never invented from pit stops.
+  events. Stints are never invented from pit stops. A stint with no
+  `start_lap` (live: the set fitted before the feed counted a lap) covers
+  the session from its start. Live, stints are numbered in the order the
+  sets were fitted, and the feed can open a set twice before the start, so
+  stops are the stints begun after lap 1, not the last stint number less
+  one.
 - **`distance_m` is integrated from the speed channel** — F1's car
   telemetry carries no distance channel — so it drifts slightly over a
   session, and a hole in the stream contributes no distance rather than

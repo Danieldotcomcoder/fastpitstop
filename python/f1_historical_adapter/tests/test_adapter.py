@@ -129,3 +129,32 @@ def test_the_grid_is_emitted_at_the_session_start(synthetic_tables: SessionTable
     ]
 
     assert grid == [("44", 1), ("1", 2), ("18", 3)]
+
+
+def test_the_lap_a_car_stopped_on_is_not_completed(synthetic_tables: SessionTables) -> None:
+    """The archive keeps an untimed row for the lap a car stopped on; the
+    live feed never counts that lap, and neither does the classification.
+    Its pit exit is still real. An untimed lap the car did complete stays."""
+    import pandas as pd
+
+    laps = laps_frame()
+    untimed = (laps["DriverNumber"] == "44") & (laps["LapNumber"] == 3)
+    laps.loc[untimed, "LapTime"] = pd.NaT
+    laps.loc[(laps["DriverNumber"] == "1") & (laps["LapNumber"] == 2), "LapTime"] = pd.NaT
+    results = results_frame().assign(Laps=[3.0, 2.0])
+    tables = SessionTables(
+        session_key=synthetic_tables.session_key,
+        directory=synthetic_tables.directory,
+        tables={"laps": laps, "results": results},
+        session_start_utc=synthetic_tables.session_start_utc,
+    )
+
+    events = _events(tables)
+    completed = {
+        driver: [e.lap_number for e in events if isinstance(e, LapCompleted) and e.driver == driver]
+        for driver in ("1", "44")
+    }
+    exits = [e.lap_number for e in events if isinstance(e, PitExit) and e.driver == "44"]
+
+    assert completed == {"1": [1, 2, 3], "44": [1, 2]}
+    assert exits == [3]

@@ -92,6 +92,7 @@
 	let counted = $derived(rounds.filter((r) => r.round <= (data?.after_round ?? 0)));
 	let last = $derived(counted.at(-1) ?? null);
 	let hidden = $derived(data ? hiddenRounds(rounds, data.after_round) : []);
+	let latestRound = $derived(rounds.at(-1)?.round ?? 0);
 	let drivers = $derived(data?.drivers ?? []);
 	let visibleDrivers = $derived(showAll ? drivers : drivers.slice(0, 12));
 	let leader = $derived(drivers[0]?.points ?? 0);
@@ -114,6 +115,16 @@
 		<div>
 			<p class="kicker">{season} season</p>
 			<h1>Standings</h1>
+			{#if status === 'ready' && data && rounds.length}
+				<p class="after" data-testid="standings-cutoff">
+					{#if last}
+						After <strong>{roundName(last)}</strong>
+						<span class="count">· {counted.length} of {rounds.length} races counted</span>
+					{:else}
+						No race counted yet
+					{/if}
+				</p>
+			{/if}
 			<nav class="seasons" aria-label="Season">
 				{#each seasons as year (year)}
 					<a
@@ -124,57 +135,40 @@
 			</nav>
 		</div>
 
-		{#if status === 'ready' && data}
-			<div class="shield" role="status">
-				<span class="icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" width="18" height="18"
-						><path
-							d="M12 3l7 3v6c0 4.4-3 8-7 9-4-1-7-4.6-7-9V6z"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.8"
-							stroke-linejoin="round"
-						></path></svg
-					>
-				</span>
-				<div>
-					<p class="line">
-						{#if !last}
-							No race counted yet
-						{:else if chosen}
-							As of the last race you watched: {roundName(last)}
-						{:else}
-							As of {roundName(last)}
-						{/if}
-					</p>
-					<p class="sub">
-						{#if hidden.length && !chosen}
-							{hidden.length === 1
-								? 'The latest race stays'
-								: `The ${hidden.length} latest races stay`}
-							hidden until you say you've watched.
-						{:else if hidden.length}
-							{hidden.length === 1 ? 'A later race stays' : `${hidden.length} later races stay`} hidden.
-						{:else if rounds.length}
-							Every race so far is counted.
-						{/if}
-						<label class="change">
-							<span>Count races up to</span>
-							<select
-								value={cutoff ?? 0}
-								onchange={(e) => choose(Number((e.currentTarget as HTMLSelectElement).value))}
-							>
-								<option value={0}>none yet</option>
-								{#each rounds as r (r.round)}
-									<option value={r.round}>{roundName(r)}</option>
-								{/each}
-							</select>
-						</label>
-					</p>
-				</div>
-			</div>
+		{#if status === 'ready' && data && rounds.length}
+			<label class="change">
+				<span>Count races up to</span>
+				<select
+					value={cutoff ?? 0}
+					onchange={(e) => choose(Number((e.currentTarget as HTMLSelectElement).value))}
+				>
+					<option value={0}>none yet</option>
+					{#each rounds as r (r.round)}
+						<option value={r.round}>{roundName(r)}</option>
+					{/each}
+				</select>
+			</label>
 		{/if}
 	</header>
+
+	{#if status === 'ready' && data && hidden.length}
+		<div class="notice" role="status" data-testid="standings-notice">
+			<p>
+				{#if chosen}
+					Counting up to the last race you said you've watched.
+				{:else}
+					Held back in case you haven't watched it yet:
+				{/if}
+				<strong>{hidden.map(roundName).join(', ')}</strong>
+				{hidden.length === 1 ? 'is' : 'are'} not counted.
+			</p>
+			<button type="button" class="count-all" onclick={() => choose(latestRound)}>
+				{hidden.length === 1
+					? `Count ${(hidden[0]!.event_name ?? 'it').replace(/ Grand Prix$/, '')}`
+					: `Count all ${hidden.length} races`}
+			</button>
+		</div>
+	{/if}
 
 	{#if status === 'loading'}
 		<p class="muted" aria-live="polite">Loading the standings…</p>
@@ -334,41 +328,51 @@
 		border-bottom-color: var(--ink);
 	}
 
-	.shield {
-		display: flex;
-		gap: var(--space-3);
-		align-items: flex-start;
-		padding: var(--space-3) var(--space-4);
-		border: 1px solid var(--rule-strong);
-		border-radius: var(--radius-lg);
-		background: var(--board);
-		color: var(--board-ink);
-		max-width: 520px;
+	.after {
+		margin: var(--space-2) 0 0;
+		font-size: var(--font-size-md);
+		color: var(--ink);
 	}
 
-	.shield .icon {
-		color: var(--accent);
-		margin-top: 1px;
-	}
-
-	.shield .line {
-		margin: 0;
-		font-weight: 500;
+	.after .count {
+		color: var(--muted);
 		font-size: var(--font-size-sm);
 	}
 
-	.shield .sub {
-		margin: var(--space-1) 0 0;
+	.notice {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--space-1) var(--space-3);
-		font-size: var(--font-size-xs);
-		color: var(--board-muted);
+		justify-content: space-between;
+		gap: var(--space-3);
+		padding: var(--space-3) var(--space-4);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius-lg);
+		background: var(--accent-wash);
+		color: var(--ink);
+	}
+
+	.notice p {
+		margin: 0;
+		font-size: var(--font-size-sm);
+	}
+
+	.count-all {
+		min-height: 40px;
+		padding: 0 var(--space-4);
+		border: 0;
+		border-radius: var(--radius-md);
+		background: var(--accent);
+		color: var(--accent-ink);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
 	}
 
 	.change {
 		display: inline-flex;
+		font-size: var(--font-size-xs);
+		color: var(--muted);
 		align-items: center;
 		gap: var(--space-2);
 	}

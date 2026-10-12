@@ -472,6 +472,38 @@ def test_a_retirement_after_its_neutralization_card_gets_its_own_card(
     assert select_story(as_told(anomalies, {})) == folded
 
 
+def test_a_car_on_the_grid_that_never_completed_a_lap_stopped_on_lap_one(
+    frames: SessionFrames, report: KernelReport
+) -> None:
+    """The lap a car stopped on has no row, live or replayed, so a lap-1
+    crasher has no laps at all (the 2024 Monaco GP's four): it is found
+    from the grid. A car the grid leaves out (did not start) is not."""
+    found = detect_anomalies(frames, report, AnomalyParams(), grid={**GRID, "8": 8})
+    retired = {a.drivers[0]: a for a in _of(found, AnomalyKind.RETIREMENT)}
+    assert retired["8"].lap_number == 1
+    assert retired["8"].summary["last_completed_lap"] == 0
+    assert retired["8"].summary["position"] == 8
+    assert "9" not in retired
+
+
+def test_a_retirement_is_folded_only_into_a_card_that_is_shown(
+    anomalies: list[Anomaly],
+) -> None:
+    """A one-lap VSC nobody pitted under is not a moment; folded into one,
+    the 2024 Austrian GP's Norris went untold."""
+    from dataclasses import replace
+
+    quiet = [
+        replace(a, summary={**a.summary, "status": "vsc", "laps": 1, "pitted": ""})
+        if a.kind is AnomalyKind.NEUTRALIZATION
+        else a
+        for a in anomalies
+    ]
+    story = select_story(quiet)
+    assert not _of(story, AnomalyKind.NEUTRALIZATION)
+    assert ("3",) in [a.drivers for a in _of(story, AnomalyKind.RETIREMENT)]
+
+
 def test_a_lapped_finisher_is_never_called_retired_at_the_flag() -> None:
     """The flag has fallen and a lapped car has taken it; a car behind it
     on the road comes home later on the lead lap. Live, that last crossing

@@ -96,7 +96,21 @@ def _acquire_one(
     now: Callable[[], datetime],
 ) -> None:
     session = session_loader(key.season, key.round, key.session_type)
-    tables = extract_tables(session)
+    file_session(key, extract_tables(session), out_dir, client, catalog, catalog_path, now)
+
+
+def file_session(
+    key: SessionKey,
+    tables: dict[str, pd.DataFrame],
+    out_dir: Path,
+    client: OpenF1Client,
+    catalog: Catalog,
+    catalog_path: Path,
+    now: Callable[[], datetime],
+) -> None:
+    """Add OpenF1's tables to a session's FastF1 `tables`, write them all and
+    record the session in the catalog: everything after loading, for a
+    caller that loaded the session itself (the post-session check)."""
     sources = ["fastf1"]
 
     openf1_session_key = client.find_session_key(

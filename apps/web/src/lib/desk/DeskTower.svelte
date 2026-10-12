@@ -8,7 +8,7 @@
   rows; nothing here fetches, and the stint bars stop at the viewer's lap.
 -->
 <script lang="ts">
-	import { stintsForBar, type DriverRow } from '$lib/timing-tower';
+	import { stintsForBar, stopsMade, type DriverRow } from '$lib/timing-tower';
 	import { colorForTeam } from '$lib/teams';
 	import { PositionChange, StintBar, Tabs, TyreBadge } from '$lib/ui';
 	import type { FocusPair } from './focus';
@@ -202,10 +202,16 @@
 							class={rowClass(row, index)}
 							data-testid="tower-row"
 							data-driver={row.driver}
+							data-code={row.code}
 							data-lap={row.lapNumber}
 							data-pos={row.position}
 							data-pit={row.inPit}
 							data-down={row.lapsDown}
+							data-last={row.lastLapTimeS}
+							data-best={row.bestLapS}
+							data-compound={row.compound?.toLowerCase()}
+							data-stops={stopsMade(row)}
+							data-retired={row.retired}
 							onclick={() => onFocus(row.driver)}
 						>
 							<td class="pos"
@@ -248,8 +254,7 @@
 								<td class="col-stints"
 									><StintBar stints={stintsForBar(row)} {currentLap} {totalLaps} /></td
 								>
-								<td class="num col-stops">{row.stintNumber !== null ? row.stintNumber - 1 : '—'}</td
-								>
+								<td class="num col-stops">{stopsMade(row) ?? '—'}</td>
 							{:else}
 								{#each [0, 1, 2] as i (i)}
 									{@const time = row.lastSectorsS?.[i] ?? null}

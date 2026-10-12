@@ -192,3 +192,21 @@ def test_a_race_the_store_serves_still_counts(
     monkeypatch.setattr(sessions_module, "_store_source", fake_store)
     body = _client(tmp_path).get("/standings", params={"season": 2024}).json()
     assert [r["round"] for r in body["rounds"]] == [1, 2]
+
+
+def test_a_tie_on_no_points_goes_by_the_full_finishing_order() -> None:
+    """After 2026 round 1 five drivers had 0 points and no classified
+    finish: level under the FIA countback. They are shown in the order they
+    dropped out, not alphabetically."""
+    race = pd.DataFrame(
+        {
+            "Abbreviation": ["AAA", "ZZZ", "MMM"],
+            "LastName": ["Aaa", "Zzz", "Mmm"],
+            "TeamName": ["A", "Z", "M"],
+            "Position": [19.0, 17.0, 18.0],
+            "ClassifiedPosition": ["R", "R", "R"],
+            "Points": [0.0, 0.0, 0.0],
+        }
+    )
+    standings = compute_standings([RoundResults(1, None, race)])
+    assert [d.code for d in standings.drivers] == ["ZZZ", "MMM", "AAA"]
