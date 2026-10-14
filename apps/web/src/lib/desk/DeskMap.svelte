@@ -61,6 +61,9 @@
 		 * Off in qualifying, where the timing screen's order and gaps say
 		 * nothing about where a car is on track. */
 		estimate?: boolean;
+		/** One line on the field (`fieldLine`): who leads, by how much, how
+		 * spread the lead lap is. Falls back to naming the leader. */
+		fieldNote?: string | null;
 	}
 
 	let {
@@ -71,7 +74,8 @@
 		pair,
 		codes,
 		timeScale,
-		estimate = true
+		estimate = true,
+		fieldNote = null
 	}: Props = $props();
 
 	const N = 720;
@@ -442,8 +446,10 @@
 			<canvas bind:this={canvas} aria-hidden="true"></canvas>
 		</div>
 		<div class="map-summary">
-			{#if leader && (estimate || !estimated)}{codes[leader.driver] ?? leader.driver} leads{#if pitCodes.length}
-					· In the pit lane: {pitCodes.join(', ')}{/if}.{/if}
+			{#if leader && (estimate || !estimated)}<span class="field-note" data-testid="field-note"
+					>{fieldNote ?? `${codes[leader.driver] ?? leader.driver} leads.`}{#if pitCodes.length}
+						In the pit lane: {pitCodes.join(', ')}.{/if}</span
+				>{/if}
 			{#if estimated && !estimate}No measured positions for this session yet, and qualifying’s
 				timing screen cannot place the cars, so none are drawn.{:else if estimated}Positions are
 				estimated from the leader’s lap timing and each car’s gap on the timing screen; the feed

@@ -436,6 +436,7 @@
 .desk-page .p-undercut {
 	order: 4;
 }
+.desk-page .p-ribbon,
 .desk-page .p-analytics {
 	order: 5;
 }
@@ -447,7 +448,7 @@
 	.desk-page[data-tab='race'] .desk > :not(.p-glance),
 	.desk-page[data-tab='battle'] .desk > :not(.p-undercut),
 	.desk-page[data-tab='map'] .desk > :not(.p-map),
-	.desk-page[data-tab='strategy'] .desk > :not(.p-tower, .p-analytics),
+	.desk-page[data-tab='strategy'] .desk > :not(.p-tower, .p-ribbon, .p-analytics),
 	.desk-page[data-tab='story'] .desk > :not(.p-why, .p-radio) {
 		display: none;
 	}
@@ -505,33 +506,42 @@
 		--gutter: 20px;
 		--gap: 14px;
 	}
+	/* Mockup A (ROADMAP W2): the battle leads, the race ribbon and the map
+	   under it, the tower beside them. */
 	.desk-page .desk {
 		/* Wide enough for the tower's stint bars beside its timing columns. */
 		grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
+		grid-template-areas:
+			'tower battle'
+			'tower undercut'
+			'tower ribbon'
+			'radio map'
+			'why analytics';
+		align-items: start;
 	}
 	.desk-page .p-tower {
-		grid-column: 1;
-		grid-row: 1 / span 3;
+		grid-area: tower;
 	}
-	.desk-page .p-map {
-		grid-column: 2;
-		grid-row: 1;
+	.desk-page .p-battle {
+		grid-area: battle;
 	}
 	.desk-page .p-undercut {
-		grid-column: 2;
-		grid-row: 2;
+		grid-area: undercut;
+	}
+	.desk-page .p-ribbon {
+		grid-area: ribbon;
+	}
+	.desk-page .p-map {
+		grid-area: map;
 	}
 	.desk-page .p-analytics {
-		grid-column: 2;
-		grid-row: 3;
+		grid-area: analytics;
 	}
 	.desk-page .p-why {
-		grid-column: 1;
-		grid-row: 4;
+		grid-area: why;
 	}
 	.desk-page .p-radio {
-		grid-column: 2;
-		grid-row: 4;
+		grid-area: radio;
 	}
 	.desk-page .tower-more {
 		display: none !important;
@@ -541,33 +551,21 @@
 	}
 }
 @media (min-width: 1320px) {
+	/* Three columns, as drawn: the tower; the battle, ribbon and map; what
+	   could happen next and the story so far. */
 	.desk-page .desk {
 		grid-template-columns: minmax(330px, 370px) minmax(0, 1fr) minmax(300px, 370px);
+		grid-template-areas:
+			'tower battle undercut'
+			'tower ribbon undercut'
+			'tower ribbon why'
+			'tower map why'
+			'radio analytics why';
 		align-items: stretch;
 	}
-	.desk-page .p-tower {
-		grid-column: 1;
-		grid-row: 1 / span 3;
-	}
-	.desk-page .p-map {
-		grid-column: 2;
-		grid-row: 1;
-	}
-	.desk-page .p-undercut {
-		grid-column: 2;
-		grid-row: 2;
-	}
-	.desk-page .p-analytics {
-		grid-column: 2;
-		grid-row: 3;
-	}
-	.desk-page .p-why {
-		grid-column: 3;
-		grid-row: 1 / span 2;
-	}
-	.desk-page .p-radio {
-		grid-column: 3;
-		grid-row: 3;
+	.desk-page .p-battle,
+	.desk-page .p-ribbon {
+		align-self: start;
 	}
 	.desk-page .lane-scroll {
 		position: absolute;
@@ -1721,5 +1719,104 @@
 	.desk-page .desk.q-desk > .p-radio {
 		grid-column: 1 / -1;
 		grid-row: 3;
+	}
+}
+
+/* --- W2: the desktop desk per mockup A ------------------------------------ */
+.desk-page .board-record {
+	margin: 10px 0 0;
+	padding-top: 10px;
+	border-top: 1px solid var(--board-rule);
+	font-size: 12px;
+	color: var(--board-muted);
+}
+.desk-page .field-note {
+	display: block;
+	margin-bottom: 4px;
+	font: 500 15px / 1.35 var(--f-display);
+	color: var(--ink);
+}
+/* A fastest lap flashes purple once, as it arrives (W2 D4). */
+.desk-page .lap-val {
+	display: inline-block;
+	border-radius: 4px;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.desk-page .lap-val.flash {
+		animation: fastest-flash var(--duration-flash) var(--ease-out);
+	}
+	.desk-page .flag-sweep {
+		animation: flag-sweep var(--duration-sweep) var(--ease-in-out) forwards;
+	}
+}
+@keyframes fastest-flash {
+	from {
+		background: color-mix(in srgb, var(--fastest) 45%, transparent);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--fastest) 45%, transparent);
+	}
+	to {
+		background: transparent;
+		box-shadow: 0 0 0 3px transparent;
+	}
+}
+/* A flag change sweeps across the strip, left to right, in the new
+   colour; the strip's own tint is already the new state underneath. */
+.desk-page .flag-sweep {
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	transform-origin: left;
+	transform: scaleX(0);
+	opacity: 0;
+}
+.desk-page .flag-sweep.sc,
+.desk-page .flag-sweep.vsc {
+	background: color-mix(in srgb, var(--status-sc) 45%, transparent);
+}
+.desk-page .flag-sweep.yellow {
+	background: color-mix(in srgb, var(--status-yellow) 45%, transparent);
+}
+.desk-page .flag-sweep.red {
+	background: color-mix(in srgb, var(--status-red) 40%, transparent);
+}
+.desk-page .flag-sweep.green {
+	background: color-mix(in srgb, var(--status-green) 30%, transparent);
+}
+.desk-page .flag-sweep.chequered {
+	background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+@keyframes flag-sweep {
+	0% {
+		transform: scaleX(0);
+		opacity: 1;
+	}
+	60% {
+		transform: scaleX(1);
+		opacity: 1;
+	}
+	100% {
+		transform: scaleX(1);
+		opacity: 0;
+	}
+}
+/* The next call sits in the narrow right column on wide screens (mockup
+   A): there, its interval chart and its numbers stack instead of sharing
+   a row, so no figure wraps its unit onto a line of its own. */
+.desk-page .p-undercut {
+	container-type: inline-size;
+}
+@container (max-width: 520px) {
+	.desk-page .board-grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.desk-page .p-undercut .headline {
+		font-size: 30px;
+	}
+}
+/* Toasts clear the phone and tablet tab bar. */
+@media (max-width: 899px) {
+	.desk-page div.toaster {
+		bottom: calc(68px + env(safe-area-inset-bottom, 0px));
 	}
 }

@@ -10,7 +10,9 @@
 <script lang="ts">
 	import { stintsForBar, stopsMade, type DriverRow } from '$lib/timing-tower';
 	import { colorForTeam } from '$lib/teams';
+	import { flip } from 'svelte/animate';
 	import { PositionChange, StintBar, Tabs, TyreBadge } from '$lib/ui';
+	import RollNumber from '$lib/ui/RollNumber.svelte';
 	import type { FocusPair } from './focus';
 	import { fmtLap, surname } from './format';
 
@@ -42,6 +44,12 @@
 	}: Props = $props();
 
 	let expanded = $state(false);
+
+	/** An overtake slides the rows into their new order (W2 D4); with
+	 * reduced motion they simply swap. */
+	const reduceMotion =
+		typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	const FLIP_MS = reduceMotion ? 0 : 240;
 	let view = $state<'timing' | 'sectors'>('timing');
 	let gapMode = $state<'interval' | 'leader'>('interval');
 
@@ -199,6 +207,7 @@
 					{#each rows as row, index (row.driver)}
 						{@const name = names[row.driver] ?? row.name ?? row.driver}
 						<tr
+							animate:flip={{ duration: FLIP_MS }}
 							class={rowClass(row, index)}
 							data-testid="tower-row"
 							data-driver={row.driver}
@@ -245,10 +254,15 @@
 									{#if row.inPit}<span class="pitchip">PIT</span>{:else if row.position === 1}<span
 											class="caps"
 											style="font-size:10.5px">Leader</span
-										>{:else if gapMode === 'interval'}{interval(row)}{:else}{gap(row)}{/if}
+										>{:else}<RollNumber
+											value={gapMode === 'interval' ? interval(row) : gap(row)}
+										/>{/if}
 								</td>
 								<td class="num t-last {lastClass}" title={LAP_TITLE[lastClass]}
-									>{fmtLap(row.lastLapTimeS)}</td
+									>{#key row.lastLapTimeS}<span
+											class="lap-val"
+											class:flash={lastClass === 'fastest'}>{fmtLap(row.lastLapTimeS)}</span
+										>{/key}</td
 								>
 								<td><TyreBadge compound={row.compound} age={row.tyreAge} /></td>
 								<td class="col-stints"

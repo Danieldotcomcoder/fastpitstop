@@ -76,8 +76,8 @@
 <section class="panel p-why" aria-labelledby="whyTitle" data-testid="desk-why">
 	<div class="panel-head">
 		<div>
-			<h2 class="panel-title" id="whyTitle">Why it happened</h2>
-			<p class="panel-sub">One grounded sentence per moment, with its sources</p>
+			<h2 class="panel-title" id="whyTitle">The story so far</h2>
+			<p class="panel-sub">Each moment once your clock reaches it, with its sources</p>
 		</div>
 	</div>
 	<div class="lane-wrap">

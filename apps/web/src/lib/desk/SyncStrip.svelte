@@ -41,6 +41,15 @@
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
+	/** Bumps on every flag change after the first, to sweep it in (W2 D4). */
+	let sweep = $state(0);
+	let lastTone: string | null = null;
+	$effect(() => {
+		const tone = status.tone;
+		if (lastTone !== null && tone !== lastTone) sweep++;
+		lastTone = tone;
+	});
+
 	let clock = $state('');
 	$effect(() => {
 		const tick = () => {
@@ -69,6 +78,8 @@
 </script>
 
 <section class="sync flag-{status.tone}" class:open aria-label="Delay Sync">
+	{#if sweep > 0}{#key sweep}<span class="flag-sweep {status.tone}" aria-hidden="true"
+			></span>{/key}{/if}
 	<div class="shield">
 		<span class="shield-icon"><svg width="16" height="16"><use href="#i-shield" /></svg></span>
 		<div class="shield-text">

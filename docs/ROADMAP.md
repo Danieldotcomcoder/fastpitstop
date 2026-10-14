@@ -348,6 +348,58 @@ search):
 
 No screen uses these components yet: the screens are W3, W4 and M3.
 
+**Race desk on desktop (2026-10-14), per mockup A.** Shared by `/live`
+and replays. What it adds that the desk lacked:
+- **The battle leads** (`$lib/desk/BattleHero.svelte`): the two cars, the
+  gap as they last crossed the line, its trend over eight laps with
+  safety-car, VSC and red-flag laps shaded, and one sentence on it ("Down
+  from 2.7 s on lap 26, most of it behind the safety car (shaded)"; "Same
+  tyres, same age: this one is on pace alone" only when nothing was
+  neutralised).
+- **The race ribbon, "How the top ten got here"**
+  (`RaceRibbon.svelte`): every current top-ten car's place at the end of
+  each lap, pit stops marked, neutralised laps shaded, teammates dashed by
+  car number. It runs to the race distance only when the feed announced
+  it; otherwise it ends at the lap reached, so a replay never gives a
+  shortened race away.
+- **One line on the field** beside the map: who leads by how much, how
+  many cars are on the lead lap and how spread out they are.
+- **What could happen next** keeps the undercut board and quotes the
+  model's held-out record (85.7% of 70 high-confidence calls, 10 races
+  of 2025). `model-record.test.ts` checks it against the committed
+  report. This race's own scorecard is W5, not built.
+- **Layout:** three columns at 1320 px and up (tower; battle, ribbon,
+  map; next call and the story), two below that.
+- **Motion:**
+  - tower rows slide to their new order on an overtake;
+  - gaps roll to new values, and the battle's gap rolls once a lap;
+  - a fastest lap flashes purple;
+  - a flag change sweeps across the strip;
+  - a newly released moment arrives as a toast. A late join's backlog is
+    never toasted, and a burst at full replay speed toasts only the
+    newest.
+
+  All of it is off under reduced motion.
+
+All of it folds the released log (`race-history.ts`), so it grows live
+with no REST call and holds nothing past the viewer's clock. Replays carry
+no track-status stream, so neutralised laps come from race control there,
+read as `f1_kernel.status` reads it. A lap's gap is the one sent as the
+car crossed the line, not later sector updates.
+
+The phone glance now draws its gap trend from the same history (it read
+kernel snapshots, which are sparse) on an axis from zero, and the ribbon
+sits in its Strategy tab.
+
+Checks:
+- unit tests, including a property test that the ribbon never holds a
+  lap the released log has not completed;
+- `e2e/desk.spec.ts`, now in `verify-phase3`: nothing before the delay,
+  the ribbon never ahead of the lap counter, the three columns at 1440,
+  and no overflow at 390, 768, 1024 and 1440.
+
+The race-desk visual baselines change and need re-approval.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 

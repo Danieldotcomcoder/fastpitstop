@@ -13,35 +13,42 @@
 	import { anomalyKindLabel, type ExplanationView } from '$lib/why/view';
 	import ConfBadge from './ConfBadge.svelte';
 	import { compoundLetter, surname } from './format';
-	import { battleLine, gapTrend } from './glance';
+	import { battleVerdict, type BattleTrend } from './hero';
 	import type { BoardDriver, BoardModel } from './pit-board';
-	import type { SparkPoint } from './snapshot-history';
 
 	interface Props {
 		rows: readonly DriverRow[];
 		model: BoardModel;
-		spark: readonly SparkPoint[];
+		/** The pair's gap lap by lap, the same trend the desktop's battle
+		 * card draws (`battleTrend`). */
+		trend: BattleTrend | null;
 		names: Record<string, string>;
 		explanations: readonly ExplanationView[];
 		onFocus: (driver: string) => void;
 		onAll: () => void;
 	}
 
-	let { rows, model, spark, names, explanations, onFocus, onAll }: Props = $props();
+	let { rows, model, trend, names, explanations, onFocus, onAll }: Props = $props();
 
 	const TOP = 5;
 
 	let a = $derived(model.attacker);
 	let b = $derived(model.defender);
-	let trend = $derived(gapTrend(spark));
-	let line = $derived(battleLine(trend, model));
-	let trendValues = $derived(
-		spark.filter((p) => trend === null || p.lap >= trend.fromLap).map((p) => p.gapS)
+	let trendValues = $derived(trend?.points.map((p) => p.gapS) ?? []);
+	/** From zero, as the desktop's battle card draws it: a gap holding at
+	 * 3 s must not look like it swings because the axis zoomed in. */
+	let trendDomain = $derived([0, Math.max(0.5, ...trendValues) * 1.08] as const);
+	/** Neutralised laps, shaded under the line (index ranges). */
+	let trendBands = $derived(
+		(trend?.points ?? []).flatMap((p, i) =>
+			i > 0 && p.neutral !== null ? [[i - 1, i] as const] : []
+		)
 	);
 	let top = $derived(rows.filter((r) => r.position !== null).slice(0, TOP));
 	let latest = $derived([...explanations].reverse().find((e) => e.grounded) ?? null);
 
 	const who = (d: BoardDriver) => surname(names[d.driver]) ?? d.code;
+	let line = $derived(a && b ? battleVerdict(trend, a, b, who(a), who(b)) : '');
 	const tyre = (d: BoardDriver) =>
 		[d.position !== null ? `P${d.position}` : null, d.compound ? compoundLetter(d.compound) : null]
 			.filter(Boolean)
@@ -85,9 +92,11 @@
 			</div>
 		</div>
 		<div class="trend">
-			{#if a && b && trendValues.filter((v) => v !== null).length >= 2}
+			{#if a && b && trendValues.length >= 2}
 				<Sparkline
 					values={trendValues}
+					domain={trendDomain}
+					bands={trendBands}
 					label="The gap between them, lap by lap"
 					width={320}
 					height={56}

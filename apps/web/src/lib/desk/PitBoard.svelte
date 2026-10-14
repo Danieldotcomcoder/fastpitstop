@@ -7,6 +7,7 @@
 	import { colorForTeam } from '$lib/teams';
 	import ConfBadge from './ConfBadge.svelte';
 	import { sgn, surname } from './format';
+	import { modelRecordLine } from './model-record';
 	import { tyresLine, type BoardModel } from './pit-board';
 	import type { SparkPoint } from './snapshot-history';
 	import { hideTip, showTip } from './tooltip';
@@ -157,7 +158,7 @@
 	data-testid="undercut-panel"
 >
 	<div class="board-top">
-		<h2 class="caps" id="ucTitle" style="margin:0">Undercut watch</h2>
+		<h2 class="caps" id="ucTitle" style="margin:0">What could happen next</h2>
 		{#if model.confidence && hasNumbers}<ConfBadge level={model.confidence} />{/if}
 	</div>
 	{#if a && b}
@@ -420,4 +421,5 @@
 				? ' '
 				: ''}Tap any driver in Timing to follow their battle.{/if}
 	</p>
+	<p class="board-record" data-testid="model-record">{modelRecordLine()}</p>
 </section>
