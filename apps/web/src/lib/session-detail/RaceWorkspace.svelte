@@ -42,6 +42,7 @@
 	import DeskTooltip from '$lib/desk/DeskTooltip.svelte';
 	import DeskTower from '$lib/desk/DeskTower.svelte';
 	import FeedLane from '$lib/desk/FeedLane.svelte';
+	import PhoneGlance from '$lib/desk/PhoneGlance.svelte';
 	import PitBoard from '$lib/desk/PitBoard.svelte';
 	import SyncStrip from '$lib/desk/SyncStrip.svelte';
 	import WhyLane from '$lib/desk/WhyLane.svelte';
@@ -51,6 +52,7 @@
 	import { RaceFeedReducer, trackStatusChip } from '$lib/desk/race-feed';
 	import { SnapshotHistory } from '$lib/desk/snapshot-history';
 	import { latestWeather, weatherReadings } from '$lib/desk/weather';
+	import BottomNav from '$lib/ui/BottomNav.svelte';
 
 	type Session = components['schemas']['SessionSummaryOut'];
 	type Lap = components['schemas']['LapRowOut'];
@@ -87,6 +89,47 @@
 	let circuitStatus = $state<'loading' | 'ready' | 'missing'>('loading');
 	let focus = $state<string | null>(null);
 	let feedFilter = $state<'all' | 'radio' | 'rc'>('all');
+
+	/** The phone's tabs (ROADMAP W7): below 900px the desk shows one view
+	 * at a time, picked from the bottom bar; wider screens show them all
+	 * and ignore this. */
+	const PHONE_TABS = [
+		{ id: 'race', label: 'Race', icon: 'M4 6h16M4 12h16M4 18h10' },
+		{ id: 'battle', label: 'Battle', icon: 'M7 17 17 7M9 7h8v8' },
+		{
+			id: 'map',
+			label: 'Map',
+			icon: 'M7 4c3 0 3 4 6 4s3-4 6-2v10c0 3-3 4-5 2s-3-2-5 0-6 1-6-2V7c0-2 2-3 4-3z'
+		},
+		{ id: 'strategy', label: 'Strategy', icon: 'M4 20h16M7 16v-5M12 16V7M17 16v-3' },
+		{ id: 'story', label: 'Story', icon: 'M6 4h12v16l-6-4-6 4z' }
+	] as const;
+	let phoneTab = $state<string>('race');
+	let deskEl: HTMLElement | undefined = $state();
+
+	/** On a phone a tab's panels are mounted the first time it is opened, and
+	 * then kept (so the tower's Int/Gap choice or the map survive a switch).
+	 * Mounting every panel up front, hidden, cost the phone's first paint
+	 * the whole desk's work (ROADMAP W7's load-time target). */
+	const PHONE_QUERY = '(max-width: 899px)';
+	let isPhone = $state(typeof window !== 'undefined' && window.matchMedia(PHONE_QUERY).matches);
+	let opened = $state<Record<string, true>>({ race: true });
+	const shows = (tab: string) => !isPhone || opened[tab] === true;
+	$effect(() => {
+		const query = window.matchMedia(PHONE_QUERY);
+		const update = () => (isPhone = query.matches);
+		query.addEventListener('change', update);
+		return () => query.removeEventListener('change', update);
+	});
+
+	function selectTab(id: string): void {
+		opened[id] = true;
+		phoneTab = id;
+		// A new tab starts at its top, not wherever the last one was scrolled.
+		if (deskEl && deskEl.getBoundingClientRect().top < 0) {
+			deskEl.scrollIntoView({ block: 'start' });
+		}
+	}
 
 	let socket: SessionStream | null = null;
 	let timer: ReturnType<typeof setInterval> | null = null;
@@ -439,7 +482,7 @@
 	});
 </script>
 
-<div class="wide-dashboard desk-page">
+<div class="wide-dashboard desk-page" data-tab={qualiBoard ? undefined : phoneTab}>
 	<DeskIcons />
 	<header class="masthead">
 		<div class="brand">
@@ -511,53 +554,82 @@
 			/>
 		</main>
 	{:else}
-		<main class="desk">
-			<DeskTower
-				{rows}
-				{focus}
-				{pair}
-				{names}
-				currentLap={lap.current}
-				{totalLaps}
-				{lastLapClass}
-				{sectorClass}
-				onFocus={(d) => (focus = d)}
-			/>
-			<WhyLane {explanations} {codes} {teams} />
-			<DeskMap
-				{controller}
-				{circuit}
-				{circuitStatus}
-				{rows}
-				{pair}
-				{codes}
-				timeScale={isLive ? 1 : speed > 0 ? speed : 1}
-			/>
-			<PitBoard
-				model={board}
-				{spark}
-				focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
-			/>
-			<DeskAnalytics
-				apiKey={session.key}
-				laps={revealedLaps}
-				{pair}
-				{crossover}
-				{codes}
-				{names}
-				{teams}
-				{totalLaps}
-				isStintRevealed={(driver, stint) => reveal.isStintRevealed(driver, stint)}
-				{revision}
-			/>
-			<FeedLane
-				items={feedItems}
-				filter={feedFilter}
-				{codes}
-				{teams}
-				onFilter={(f) => (feedFilter = f)}
-			/>
+		<main class="desk" bind:this={deskEl}>
+			{#if isPhone}
+				<PhoneGlance
+					{rows}
+					model={board}
+					{spark}
+					{names}
+					{explanations}
+					onFocus={(d) => (focus = d)}
+					onAll={() => selectTab('strategy')}
+				/>
+			{/if}
+			{#if shows('strategy')}
+				<DeskTower
+					{rows}
+					{focus}
+					{pair}
+					{names}
+					currentLap={lap.current}
+					{totalLaps}
+					{lastLapClass}
+					{sectorClass}
+					onFocus={(d) => (focus = d)}
+				/>
+			{/if}
+			{#if shows('story')}
+				<WhyLane {explanations} {codes} {teams} />
+			{/if}
+			{#if shows('map')}
+				<DeskMap
+					{controller}
+					{circuit}
+					{circuitStatus}
+					{rows}
+					{pair}
+					{codes}
+					timeScale={isLive ? 1 : speed > 0 ? speed : 1}
+				/>
+			{/if}
+			{#if shows('battle')}
+				<PitBoard
+					model={board}
+					{spark}
+					focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
+				/>
+			{/if}
+			{#if shows('strategy')}
+				<DeskAnalytics
+					apiKey={session.key}
+					laps={revealedLaps}
+					{pair}
+					{crossover}
+					{codes}
+					{names}
+					{teams}
+					{totalLaps}
+					isStintRevealed={(driver, stint) => reveal.isStintRevealed(driver, stint)}
+					{revision}
+				/>
+			{/if}
+			{#if shows('story')}
+				<FeedLane
+					items={feedItems}
+					filter={feedFilter}
+					{codes}
+					{teams}
+					onFilter={(f) => (feedFilter = f)}
+				/>
+			{/if}
 		</main>
+	{/if}
+
+	{#if !qualiBoard}
+		<div class="phone-nav">
+			<BottomNav items={PHONE_TABS} selected={phoneTab} label="Race views" onSelect={selectTab} />
+		</div>
 	{/if}
 
 	<footer class="site-foot">

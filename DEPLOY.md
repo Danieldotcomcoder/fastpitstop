@@ -362,3 +362,16 @@ job greps the built frontend bundle for anything resembling a key
 private-key headers) and fails the build if it finds one — the frontend
 must ship with zero secrets, by construction (everything it uses is either
 public config or fetched from `f1_api` at runtime).
+
+## Changing the Caddyfile
+
+`just deploy-host` copies `deploy/Caddyfile` to the VM, but the proxy
+container keeps the old file: Docker mounts a single file by inode, and the
+copy replaces it. `caddy reload` then reloads the OLD file. After changing
+it, recreate only the proxy (a few seconds offline; certificates live on a
+volume):
+
+    docker compose -f compose.yml -f compose.prod.yml up -d --no-deps --force-recreate proxy
+
+Check with `docker exec pitwall-proxy-1 cat /etc/caddy/Caddyfile`.
+

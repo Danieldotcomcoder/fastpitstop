@@ -27,6 +27,13 @@ for (const layout of LAYOUTS) {
 		await page.goto('/sessions/2024/1?speed=0');
 		await expect(page.locator('.lapcount .caps')).toHaveText('Finished', { timeout: 150_000 });
 
+		// The phone shows one view at a time: the feed is on the Story tab.
+		if (layout.width < 900) {
+			await page
+				.getByRole('navigation', { name: 'Race views' })
+				.getByRole('button', { name: 'Story' })
+				.click();
+		}
 		const feed = page.getByTestId('desk-feed');
 		await feed.scrollIntoViewIfNeeded();
 		await expect(feed).toBeVisible();

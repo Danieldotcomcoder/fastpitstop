@@ -702,6 +702,20 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   (`f1_api.sessions._store_lacks_qualifying`), and standings and circuit
   strategy read the backfill's own catalog and tables, whichever source
   serves the session (a race ingested live is backfilled too).
+- Phone glance (2026-10-13, ROADMAP W7): below 900px the race desk is
+  five bottom tabs (Race · Battle · Map · Strategy · Story, `data-tab` on
+  `.desk-page`, CSS in desk.css); Race is `$lib/desk/PhoneGlance.svelte`,
+  which reserves every block's size from first paint (CLS). The delay
+  strip folds behind "Adjust". `$lib/wake-lock.ts` keeps the screen on.
+  `src/service-worker.ts` is the offline shell: app code and static files
+  only, NEVER race data or API responses (a cached answer can spoil).
+  Load time (LCP under 2.5 s on Lighthouse's mobile profile) rests on:
+  - first data sent inside the HTML (`+page.server.ts`);
+  - stale-while-refreshing server copies (`$lib/server/`);
+  - Caddy compression;
+  - phone tabs mounted on first open;
+  - `/live` lazy-loading the desk;
+  - `f1_api.response_cache` for `/laps` and `/circuit`.
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.

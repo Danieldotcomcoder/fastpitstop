@@ -158,6 +158,24 @@ for (const session of REAL_SESSIONS) {
 			const offset = Number(await page.getByTestId('session-clock-offset').textContent());
 			expect(offset, `clock correction ${offset} ms`).toBeLessThanOrEqual(0);
 
+			// The phone opens on the glance (W7): the battle, what could happen
+			// next and the top five, one thumb from every other view.
+			if (viewport.mobile) {
+				const glance = page.getByTestId('desk-glance');
+				await expect(glance).toBeVisible();
+				await expect(glance.getByRole('listitem')).toHaveCount(5);
+				const tabs = page.getByRole('navigation', { name: 'Race views' }).getByRole('button');
+				await expect(tabs).toHaveCount(5);
+				for (const box of await Promise.all((await tabs.all()).map((tab) => tab.boundingBox()))) {
+					expect(box!.height, 'tab target height').toBeGreaterThanOrEqual(44);
+				}
+				await expect(page.getByTestId('timing-tower')).toBeHidden();
+				await page
+					.getByRole('navigation', { name: 'Race views' })
+					.getByRole('button', { name: 'Strategy' })
+					.click();
+			}
+
 			// The race is on screen, and every story card explains its moment.
 			await expect(page.getByTestId('tower-row').first()).toBeVisible();
 			expect(await page.getByTestId('tower-row').count()).toBeGreaterThanOrEqual(15);

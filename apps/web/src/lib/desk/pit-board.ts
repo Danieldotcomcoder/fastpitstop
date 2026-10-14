@@ -198,7 +198,9 @@ export function buildBoard(
 
 	const margin = crossover?.projected_gap_if_covered_s ?? null;
 	if (crossover === null || crossover.window === 'unknown' || margin === null) {
-		const reason = crossover?.reasons?.[0];
+		// The kernel's reasons are lower-case clauses; here one starts a sentence.
+		const raw = crossover?.reasons?.[0];
+		const reason = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw;
 		return {
 			...base,
 			state: 'unknown',

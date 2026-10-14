@@ -10,6 +10,8 @@
 
 	type Session = components['schemas']['SessionSummaryOut'];
 
+	let { data } = $props();
+
 	let session = $state<Session | null>(null);
 	/** Every session held at this round, for the links between them. */
 	let weekend = $state<Session[]>([]);
@@ -21,15 +23,41 @@
 	const round = $derived(Number(page.params.round));
 	const wantedSession = $derived(page.url.searchParams.get('session'));
 
-	// A different round, or another session at the same one, reloads.
+	// A different round, or another session at the same one, reloads. The
+	// server sends the round's sessions with the page (`+page.server.ts`),
+	// so the desk opens at once; the catalog is still read afterwards, in
+	// case the server's copy (cached for seconds) missed a session going
+	// live.
 	$effect(() => {
 		void [year, round, wantedSession];
-		void load();
+		const sent = data.weekend.filter(
+			(s) => s.session_key.year === year && s.session_key.round === round
+		);
+		void load(sent.length > 0 && pick(sent));
 	});
 
-	async function load(): Promise<void> {
+	/** `?session=qualifying` picks that session; otherwise the race, the
+	 * headline of a weekend, with anything else at that round a fallback
+	 * rather than a 404. Shows it and says whether there was one. */
+	function pick(matches: Session[]): boolean {
+		const wanted = page.url.searchParams.get('session') ?? 'race';
+		const found =
+			matches.find((s) => s.session_key.session_type === wanted) ??
+			matches.find((s) => s.session_key.session_type === 'race') ??
+			matches[0] ??
+			null;
+		if (!found) return false;
+		// Keep the same object when nothing changed, so the desk is not torn
+		// down and reconnected by the background refresh.
+		if (session?.key !== found.key || session.live !== found.live) session = found;
+		weekend = matches;
+		status = 'ready';
+		return true;
+	}
+
+	async function load(quietly: boolean): Promise<void> {
 		const own = ++generation;
-		status = 'loading';
+		if (!quietly) status = 'loading';
 		try {
 			const result = await api.GET('/sessions');
 			if (own !== generation) return;
@@ -37,20 +65,11 @@
 			const matches = result.data.filter(
 				(s) => s.session_key.year === year && s.session_key.round === round
 			);
-			// `?session=qualifying` picks that session; otherwise the race, the
-			// headline of a weekend, with anything else at that round a
-			// fallback rather than a 404.
-			const wanted = page.url.searchParams.get('session') ?? 'race';
-			const found =
-				matches.find((s) => s.session_key.session_type === wanted) ??
-				matches.find((s) => s.session_key.session_type === 'race') ??
-				matches[0] ??
-				null;
-			if (!found) throw new Error('This session is not available.');
-			session = found;
-			weekend = matches;
-			status = 'ready';
+			if (!pick(matches)) throw new Error('This session is not available.');
 		} catch (e) {
+			// The page is already showing the race the server sent: a failed
+			// refresh changes nothing.
+			if (quietly) return;
 			if (own !== generation) return;
 			error = e instanceof Error ? e.message : 'Could not connect.';
 			status = 'error';
@@ -74,9 +93,9 @@
 {:else if status === 'error'}
 	<h1>Could not open the race</h1>
 	<p>{error}</p>
-	<button onclick={() => void load()}>Try again</button>
+	<button onclick={() => void load(false)}>Try again</button>
 {:else if session}
-	{#key session.key}
+	{#key `${session.key}:${session.live}`}
 		<RaceWorkspace {session} {weekend} />
 	{/key}
 {/if}

@@ -25,12 +25,12 @@ export default defineConfig({
 	timeout: 120_000,
 	expect: {
 		timeout: 15_000,
-		// Measured 2026-10-12: identical runs differ by up to 98 pixels,
-		// all inside large display-font glyphs; 2 px more padding on the
-		// archive's cards moved about 5,500 on every screen. 300 sits well
-		// between. (A ratio allowance would have let a whole card through on
-		// a long page.)
-		toHaveScreenshot: { maxDiffPixels: 300, animations: 'disabled' }
+		// Measured: identical runs differ by up to 98 pixels (2026-10-12) and
+		// once 384 (2026-10-13, the circuits page), all inside display-font
+		// glyphs; 2 px more padding on the archive's cards moved about 5,500
+		// on every screen. 500 sits well between. (A ratio allowance would
+		// have let a whole card through on a long page.)
+		toHaveScreenshot: { maxDiffPixels: 500, animations: 'disabled' }
 	},
 	snapshotPathTemplate: '{testDir}/baselines/{arg}{ext}',
 	use: { baseURL: WEB_BASE_URL, trace: 'retain-on-failure' },

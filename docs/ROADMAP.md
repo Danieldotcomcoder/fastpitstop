@@ -654,6 +654,70 @@ resume and catch-up on a recorded race played as live.
 - largest contentful paint is under 2.5 s on a mid-range phone profile;
 - it passes W0.
 
+Status (2026-10-14): done and deployed. Every "done when" is met.
+- **Tabs:** below 900 px the race desk shows one view at a time:
+  - **Race:** the glance (`$lib/desk/PhoneGlance.svelte`, helpers in
+    `glance.ts`): the focused battle with its gap trend, what could
+    happen next, the top five (a tap makes a car the battle) and the
+    latest explained moment;
+  - **Battle:** the undercut watch;
+  - **Map;**
+  - **Strategy:** the full tower, the analytics and the weather;
+  - **Story:** why it happened, plus radio and race control.
+
+  The bar is fixed at the bottom of the screen. Qualifying keeps its
+  single board.
+- **Delay strip:** on a phone it folds to one line: the shield, the flag
+  and Adjust. Adjust opens the delay, tap-to-sync, speed and the wake
+  toggle.
+- **Glance layout:** every block keeps its size from the first paint.
+  Filling in as the race was released, it measured 0.25 layout shift.
+- **Keep screen on:** `$lib/wake-lock.ts` takes the lock again whenever
+  the page comes back, and the choice is remembered on the device. It is
+  hidden where the browser has no Wake Lock API.
+- **Installable:** `src/service-worker.ts` keeps the app's own code and
+  static files, and serves `static/offline.html` for a page asked for
+  offline. It never stores race data or API responses: a cached answer
+  could hold more of a race than the viewer has reached. The manifest
+  gained an `id` and shortcuts to Live, Sessions and Standings.
+- **Tablets:**
+  - landscape (1024 and 1180 px wide) uses the desk's own grid;
+  - portrait (768 to 899 px) gets the tabs with a two-column glance.
+- **Checks:**
+  - `e2e-real` asserts the glance, its five rows, 44 px tabs, and that
+    the tower sits behind Strategy on every phone run;
+  - the visual baselines for the race desk were re-approved after review
+    (allowance raised to 500 pixels: glyph noise once reached 384).
+- **Load time** (largest contentful paint on Lighthouse's mobile profile:
+  4x CPU, Slow 4G, 150 ms round trip):
+  - Before: replay desk 3.0 to 3.7 s; `/live` 2.8 s. Under load, 4.3 to
+    6.4 s.
+  - After, measured 2026-10-14:
+    - **On the exact profile** (a local production build, so the 150 ms
+      is the whole round trip): replay desk 2.11 s median, `/live` 1.98 s.
+    - **Against production** from a connection worse than the profile
+      (380 ms round trip), five runs back to back: desk 2.33 to 2.49 s,
+      `/live` 2.24 to 2.26 s.
+  - What changed:
+    - **First data in the page:** the replay page and `/live` get their
+      first data from the web server inside the HTML (`+page.server.ts`),
+      not from the API after the JavaScript runs.
+    - **Stale while refreshing:** the web server's copies of the session
+      list and the next race are served at once even when expired, and
+      refreshed behind them (`$lib/server/sessions.ts`, `schedule.ts`), so
+      HTML never waits on a busy API.
+    - **Compression:** Caddy compresses responses (`encode zstd gzip`).
+      The session catalog went from 58 KB to 2.5 KB.
+    - **Phone panels:** a tab's panels are mounted the first time it is
+      opened, not all of them up front behind CSS.
+    - **Lazy desk on `/live`:** an idle `/live` no longer downloads the
+      race desk's code (107 KB).
+    - **API cache:** `/laps` and `/circuit` are computed once per finished
+      session per process (`f1_api.response_cache`); a running session's
+      are reused for 15 s. Requests arriving during the computation wait
+      for that one computation. They had taken 15 to 18 s on every
+      replay open, starving every other request.
+
 ### W8. Archive depth
 
 - Backfill every 2026 round to date, plus qualifying and sprints for 2025
@@ -816,7 +880,9 @@ Each milestone ships between race weekends and passes W0 before deploy.
   states" and "tower checked against official timing" are met. "Circuit and
   Grand Prix pages indexed" is Google's to report, in Search Console's
   Pages report.
-- **M3 onwards:** not started.
+- **M3:** W7 done (see W7's status). W2 screen redesigns and S6 share
+  images are next.
+- **M4 onwards:** not started.
 
 ## Parked (needs a decision)
 

@@ -18,14 +18,13 @@
 	 * instead by `live-session-picker.test.ts`'s pure-logic test of
 	 * `pickLiveSession`. The idle branch (no session live) is the common case
 	 * and stays the primary thing a visitor sees. */
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { seoFor, toSeoSession } from '$lib/seo';
 	import { api, type components } from '$lib/api/client';
 	import { pickLiveSession } from '$lib/live-session-picker';
 	import NextRace from '$lib/home/NextRace.svelte';
 	import { loadNextRace, type NextRaceView } from '$lib/home/load';
-	import RaceWorkspace from '$lib/session-detail/RaceWorkspace.svelte';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
 
@@ -40,10 +39,15 @@
 
 	type Status = 'checking' | 'ready' | 'unreachable';
 
-	let liveSession = $state<SessionSummary | null>(null);
-	let status = $state<Status>('checking');
-	let sessions = $state<SessionSummary[]>([]);
-	let next = $state<NextRaceView | null>(null);
+	let { data } = $props();
+
+	// Start from what the server sent with the page; the polls below keep
+	// it current.
+	const initial = untrack(() => data);
+	let liveSession = $state<SessionSummary | null>(pickLiveSession(initial.sessions));
+	let status = $state<Status>(initial.sessions.length > 0 ? 'ready' : 'checking');
+	let sessions = $state<SessionSummary[]>(initial.sessions);
+	let next = $state<NextRaceView | null>(initial.next);
 
 	/** The latest finished race, for "watch from the start" between sessions. */
 	let lastRace = $derived.by(() => {
@@ -82,9 +86,11 @@
 
 	onMount(() => {
 		void poll();
-		void loadNextRace(AbortSignal.timeout(POLL_TIMEOUT_MS))
-			.then((view) => (next = view))
-			.catch(() => (next = null));
+		if (next === null) {
+			void loadNextRace(AbortSignal.timeout(POLL_TIMEOUT_MS))
+				.then((view) => (next = view))
+				.catch(() => (next = null));
+		}
 		pollHandle = setInterval(() => void poll(), POLL_INTERVAL_MS);
 	});
 
@@ -98,9 +104,13 @@
 </svelte:head>
 
 {#if liveSession}
-	{#key liveSession.key}
-		<RaceWorkspace session={liveSession} showBackLink={false} />
-	{/key}
+	<!-- The desk's code is fetched only when a session is running: an idle
+	     page, the common case, paints without it (ROADMAP W7's load time). -->
+	{#await import('$lib/session-detail/RaceWorkspace.svelte') then { default: RaceWorkspace }}
+		{#key liveSession.key}
+			<RaceWorkspace session={liveSession} showBackLink={false} />
+		{/key}
+	{/await}
 {:else}
 	<section class="idle wide-dashboard">
 		<h1 class="visually-hidden">Live</h1>

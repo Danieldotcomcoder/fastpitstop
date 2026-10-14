@@ -21,6 +21,7 @@ from f1_api.convert import (
     session_summary,
 )
 from f1_api.geometry import session_positions
+from f1_api.response_cache import ResponseCache
 from f1_api.schemas import (
     BrakingPointRowOut,
     CircuitOut,
@@ -47,6 +48,32 @@ from f1_kernel import (
 )
 
 router = APIRouter(tags=["sessions"])
+
+SESSION_CACHE_SIZE = 32
+"""Finished sessions whose laps and circuit are kept per process (see
+`f1_api.response_cache`). A race's annotated laps are well under a
+megabyte."""
+LIVE_CACHE_TTL_S = 15.0
+"""How long a running session's laps and circuit are reused: a viewer
+reads `/laps` once, when the desk opens, so this only merges the viewers
+who open it within the same few seconds."""
+
+laps_cache: ResponseCache[list[LapRowOut]] = ResponseCache(SESSION_CACHE_SIZE, LIVE_CACHE_TTL_S)
+circuit_cache: ResponseCache[CircuitOut | None] = ResponseCache(
+    SESSION_CACHE_SIZE, LIVE_CACHE_TTL_S
+)
+
+
+def _cache_key(settings: Settings, resolved: ResolvedSession) -> tuple[str, str | None, str, str]:
+    """Where the answer came from, as well as which session: the same key
+    can be served by the store or the backfill, and tests point each app at
+    its own fixture."""
+    return (
+        str(settings.historical_root),
+        settings.store_dsn,
+        _session_key_path(resolved.entry.session_key),
+        resolved.entry.provenance,
+    )
 
 
 def get_session_key(key: str) -> SessionKey:
@@ -121,15 +148,22 @@ def get_laps(session_key: SessionKeyDep, settings: SettingsDep) -> list[LapRowOu
     with resolve_session(settings, session_key) as resolved:
         if resolved is None:
             raise _not_found(session_key)
-        laps = lap_frame(resolved.source, session_key)
-        params = KernelParams()
-        annotated = annotate_laps(laps, params)
-        # The race distance the live kernel uses too (`race_distance_laps`):
-        # the feed's own lap counter when there is one, else the furthest lap.
-        distance = race_distance_laps(
-            resolved.source.events(session_key, kinds=["lap_counter_updated", "lap_completed"])
+        source = resolved.source
+
+        def compute() -> list[LapRowOut]:
+            laps = lap_frame(source, session_key)
+            params = KernelParams()
+            annotated = annotate_laps(laps, params)
+            # The race distance the live kernel uses too (`race_distance_laps`):
+            # the feed's own lap counter when there is one, else the furthest lap.
+            distance = race_distance_laps(
+                source.events(session_key, kinds=["lap_counter_updated", "lap_completed"])
+            )
+            return lap_rows(fuel_correct(annotated, params, total_laps=distance))
+
+        return laps_cache.get(
+            _cache_key(settings, resolved), live=resolved.entry.live, compute=compute
         )
-        return lap_rows(fuel_correct(annotated, params, total_laps=distance))
 
 
 @router.get("/sessions/{key}/degradation", response_model=list[DegradationFitOut])
@@ -173,14 +207,22 @@ def get_circuit(session_key: SessionKeyDep, settings: SettingsDep) -> CircuitOut
     with resolve_session(settings, session_key) as resolved:
         if resolved is None:
             raise _not_found(session_key)
-        frames = session_frames(resolved.source, session_key, event_name=resolved.entry.event_name)
-        if frames.circuit is None:
-            return None
-        # The same geometry the stream draws its dots against: the circuit
-        # file's lines, or this session's own when those do not fit it
-        # (f1_api.geometry).
-        geometry, _ = session_positions(settings, resolved.source, session_key, frames.circuit)
-        return circuit_out(frames.circuit, geometry)
+        source = resolved.source
+        event_name = resolved.entry.event_name
+
+        def compute() -> CircuitOut | None:
+            frames = session_frames(source, session_key, event_name=event_name)
+            if frames.circuit is None:
+                return None
+            # The same geometry the stream draws its dots against: the circuit
+            # file's lines, or this session's own when those do not fit it
+            # (f1_api.geometry).
+            geometry, _ = session_positions(settings, source, session_key, frames.circuit)
+            return circuit_out(frames.circuit, geometry)
+
+        return circuit_cache.get(
+            _cache_key(settings, resolved), live=resolved.entry.live, compute=compute
+        )
 
 
 @router.get("/sessions/{key}/telemetry/{driver}", response_model=list[BrakingPointRowOut])

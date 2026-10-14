@@ -51,7 +51,16 @@ function ratio(a: string, b: string): number {
 }
 
 const SURFACES = ['--paper', '--panel', '--panel-sunk'];
-const TEXT = ['--ink', '--ink-2', '--muted', '--accent', '--fastest', '--pb', '--flag-red'];
+const TEXT = [
+	'--ink',
+	'--ink-2',
+	'--muted',
+	'--accent',
+	'--fastest',
+	'--pb',
+	'--flag-red',
+	'--timing-yellow'
+];
 /** Text set on a filled object, with the fill it sits on. */
 const ON_FILL: [string, string][] = [
 	['--status-yellow-ink', '--status-yellow'],

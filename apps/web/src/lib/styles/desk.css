@@ -273,6 +273,10 @@
 .desk-page .btn.primary:hover {
 	filter: brightness(1.08);
 }
+.desk-page .btn[aria-pressed='true'] {
+	border-color: var(--accent);
+	color: var(--ink);
+}
 .desk-page .btn svg {
 	width: 14px;
 	height: 14px;
@@ -437,6 +441,64 @@
 }
 .desk-page .p-radio {
 	order: 6;
+}
+/* The phone (ROADMAP W7): one view at a time, picked from the bottom bar. */
+@media (max-width: 899px) {
+	.desk-page[data-tab='race'] .desk > :not(.p-glance),
+	.desk-page[data-tab='battle'] .desk > :not(.p-undercut),
+	.desk-page[data-tab='map'] .desk > :not(.p-map),
+	.desk-page[data-tab='strategy'] .desk > :not(.p-tower, .p-analytics),
+	.desk-page[data-tab='story'] .desk > :not(.p-why, .p-radio) {
+		display: none;
+	}
+	.desk-page[data-tab='strategy'] .tower-more {
+		display: none !important;
+	}
+	.desk-page[data-tab='strategy'] .tower-body tr.extra {
+		display: table-row !important;
+	}
+	/* Every control a thumb can hit (W7: 44px targets). */
+	.desk-page .sync .btn,
+	.desk-page .sync .seg button {
+		min-height: 44px;
+	}
+	.desk-page .sync .seg button {
+		min-width: 44px;
+	}
+	/* The strip folds to one line: the shield, the flag, and Adjust. */
+	.desk-page .sync:not(.open) .delay-ctl,
+	.desk-page .sync:not(.open) .sync-meta > :not(.status-chip) {
+		display: none;
+	}
+	.desk-page .sync .sync-toggle {
+		min-height: 44px;
+		order: 4;
+	}
+	.desk-page .sync .shield {
+		flex: 1;
+		min-width: 0;
+	}
+	/* Conditions sit with the strategy, not on top of the glance. */
+	.desk-page[data-tab]:not([data-tab='strategy']) .weather {
+		display: none;
+	}
+	.desk-page .phone-nav {
+		position: fixed;
+		inset: auto 0 0;
+		z-index: 20;
+	}
+	/* Room under the page for the bar, so nothing ends up behind it. */
+	body:has(.desk-page[data-tab]) {
+		padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+	}
+}
+@media (min-width: 900px) {
+	/* Specific enough to beat the components' own display rules. */
+	.desk-page .desk > .p-glance,
+	.desk-page .phone-nav,
+	.desk-page .sync .sync-toggle {
+		display: none;
+	}
 }
 @media (min-width: 900px) {
 	.desk-page {

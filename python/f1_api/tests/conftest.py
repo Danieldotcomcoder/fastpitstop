@@ -21,6 +21,15 @@ from api_fixture import HISTORICAL_ROOT  # noqa: E402
 
 from f1_api.config import Settings  # noqa: E402
 from f1_api.main import create_app  # noqa: E402
+from f1_api.routes import sessions as session_routes  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def empty_response_caches() -> None:
+    """Every test starts with nothing cached, so one test's answers (or a
+    test that counts computations) never depend on another's."""
+    session_routes.laps_cache.clear()
+    session_routes.circuit_cache.clear()
 
 
 @pytest.fixture

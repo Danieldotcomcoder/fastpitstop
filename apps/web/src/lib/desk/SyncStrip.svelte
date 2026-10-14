@@ -13,6 +13,7 @@
 		type DelayState
 	} from '$lib/delay-sync';
 	import type { TrackStatusChip } from './race-feed';
+	import WakeToggle from './WakeToggle.svelte';
 
 	interface Props {
 		controller: DelaySyncController;
@@ -33,6 +34,10 @@
 	$effect(() => controller.delayState.subscribe((value) => (delay = value)));
 
 	let fromTap = $state(false);
+	/** Phones show the shield and the flag on one line; the controls open
+	 * on demand so the race, not the strip, fills the screen (W7). Wider
+	 * screens always show them. */
+	let open = $state(false);
 	let toast = $state('');
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -63,7 +68,7 @@
 	}
 </script>
 
-<section class="sync flag-{status.tone}" aria-label="Delay Sync">
+<section class="sync flag-{status.tone}" class:open aria-label="Delay Sync">
 	<div class="shield">
 		<span class="shield-icon"><svg width="16" height="16"><use href="#i-shield" /></svg></span>
 		<div class="shield-text">
@@ -74,7 +79,14 @@
 			>
 		</div>
 	</div>
-	<div class="delay-ctl">
+	<button
+		class="btn sync-toggle"
+		type="button"
+		aria-expanded={open}
+		aria-controls="sync-controls"
+		onclick={() => (open = !open)}>{open ? 'Done' : 'Adjust'}</button
+	>
+	<div class="delay-ctl" id="sync-controls">
 		<label for="delay" class="caps">Delay</label>
 		<input
 			type="range"
@@ -100,6 +112,7 @@
 			><i></i><span>{status.label}</span></span
 		>
 		<div class="clock"><span class="caps">Your clock</span><span class="num">{clock}</span></div>
+		<WakeToggle />
 		{#if !isLive}
 			<div class="seg" role="group" aria-label="Replay speed">
 				{#each SPEEDS as option (option)}

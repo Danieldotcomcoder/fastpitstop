@@ -164,6 +164,19 @@ describe('pit board', () => {
 		expect(board.marginS).toBeNull();
 	});
 
+	it("starts the kernel's lower-case reason as a sentence", () => {
+		const board = buildBoard(
+			rows,
+			{ a: '4', b: '1' },
+			crossover({
+				window: 'unknown',
+				reasons: ['race ends before a covered stop cycle completes']
+			}),
+			codes
+		);
+		expect(board.sub.before).toMatch(/^Race ends before a covered stop cycle completes\. The/);
+	});
+
 	it('shows the pit lane instead of a stale call while either car is stopping', () => {
 		const pitting = rows.map((r) => (r.driver === '4' ? { ...r, inPit: true } : r));
 		const board = buildBoard(pitting, { a: '4', b: '1' }, crossover(), codes);

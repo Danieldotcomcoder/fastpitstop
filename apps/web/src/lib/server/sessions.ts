@@ -4,7 +4,9 @@
  * Cached briefly and bounded by a short timeout: this runs before a page's
  * HTML is sent, and a slow or unreachable API must cost a page its rich
  * title, never its load. On failure the last good list (or an empty one)
- * is returned. */
+ * is returned. Once there is a list, an expired one is still served at
+ * once while a fresh one is fetched behind it: a page's HTML waited up to
+ * 2 s on a busy API every time the copy expired (ROADMAP W7). */
 
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
@@ -30,7 +32,7 @@ function apiBase(): string {
 
 export async function sessionRows(): Promise<SessionRow[]> {
 	if (cached && Date.now() - cached.at < TTL_MS) return cached.rows;
-	inflight ??= (async () => {
+	const refresh = (inflight ??= (async () => {
 		try {
 			const response = await fetch(`${apiBase()}/sessions`, {
 				signal: AbortSignal.timeout(TIMEOUT_MS)
@@ -44,8 +46,8 @@ export async function sessionRows(): Promise<SessionRow[]> {
 		} finally {
 			inflight = null;
 		}
-	})();
-	return inflight;
+	})());
+	return cached ? cached.rows : refresh;
 }
 
 export async function seoSessions(): Promise<SeoSession[]> {

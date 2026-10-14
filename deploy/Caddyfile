@@ -11,6 +11,12 @@
 # automatic in Caddy's reverse_proxy: it forwards the Connection/Upgrade
 # headers as-is, no special config.
 {$DOMAIN} {
+	# Compress what goes out. The API answered JSON uncompressed: the
+	# session catalog alone was 58 KB, a race's laps far more, slow on a
+	# phone's connection (ROADMAP W7's load-time target). Upgraded
+	# WebSocket connections are not touched.
+	encode zstd gzip
+
 	handle_path /api/* {
 		reverse_proxy api:8000
 	}

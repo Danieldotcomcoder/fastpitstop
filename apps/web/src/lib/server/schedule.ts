@@ -54,9 +54,11 @@ async function outlineFor(circuitId: string | null): Promise<Point[] | null> {
 	}
 }
 
+/** Like `./sessions`, an expired copy is served at once while a fresh one
+ * is fetched behind it, so a page never waits on a busy API for it. */
 export async function nextRace(): Promise<NextRace | null> {
 	if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
-	inflight ??= (async () => {
+	const refresh = (inflight ??= (async () => {
 		try {
 			const event = await getJson<ScheduleEvent | null>('/schedule/next');
 			const value = event ? { event, outline: await outlineFor(event.circuit_id) } : null;
@@ -67,8 +69,8 @@ export async function nextRace(): Promise<NextRace | null> {
 		} finally {
 			inflight = null;
 		}
-	})();
-	return inflight;
+	})());
+	return cached ? cached.value : refresh;
 }
 
 const seasons = new Map<number, { at: number; events: ScheduleEvent[] }>();
