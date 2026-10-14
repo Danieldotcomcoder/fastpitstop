@@ -381,13 +381,17 @@ Check with `docker exec pitwall-proxy-1 cat /etc/caddy/Caddyfile`.
 For work done away from the desktop (a Claude Code web session, say), which
 has neither the SSH key nor `data/`.
 
-- `.github/workflows/ci.yml` runs on every push and pull request: `just
-  check`, `just web-check` and `just web-test`, against the checked-in
-  fixtures only.
+- `.github/workflows/ci.yml` runs on every push and pull request: the
+  checks of `just check`, `just web-check` and `just web-test`, against the
+  checked-in fixtures only, as four jobs side by side.
 - `.github/workflows/deploy.yml` deploys production. Start it by hand:
   Actions, then Deploy, then Run workflow, on `main`.
-  - It runs the same gate first, then `deploy/deploy_host.py`, then checks
-    that `/`, `/live`, `/api/health` and `/api/sessions` answer 200.
+  - It does not run the tests again. It checks that CI passed for the
+    exact commit it ships (seconds), then runs `deploy/deploy_host.py`,
+    then checks that `/`, `/live`, `/api/health` and `/api/sessions`
+    answer 200. Most of its time is the image build on the VM.
+  - The `skip_ci_check` box ships a commit CI has not passed. It is for
+    emergencies only.
   - It refuses from 12 hours before a Grand Prix weekend's first session
     to 6 hours after its last, read from `/api/schedule/next`. The
     `race_weekend_override` box is for emergencies only.

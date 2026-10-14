@@ -26,6 +26,9 @@ htmlcov/
 
 # --- Parquet / misc data files anywhere in the tree ---
 *.parquet
+# ...except the small synthetic fixtures the test suites are built on
+# (no real F1 data; 370 KB together). CI cannot run without them.
+!python/*/tests/fixtures/**/*.parquet
 
 # --- Node / pnpm ---
 node_modules/

@@ -1,7 +1,6 @@
-# The release gate that needs no F1 data: lint, types, tests and the
-# browser suites against the checked-in fixtures (`just check`), plus the
-# web app's own checks and unit tests. Runs on every push and pull request,
-# and is the first job of every deploy (deploy.yml).
+# The release gate that needs no F1 data, on every push and pull request, as
+# four jobs that run side by side. A deploy (deploy.yml) does not run it
+# again: it only checks that this workflow passed for the commit it ships.
 #
 # Not here, by design (DEPLOY.md, "Deploying from GitHub"):
 # - `just verify-real` needs `data/` (real races, gitignored), so it is run
@@ -13,47 +12,50 @@ name: CI
 on:
   push:
   pull_request:
-  workflow_call:
 
-# A newer push supersedes an older run of the same branch. Inside a deploy
-# (workflow_call) `github.workflow` is the caller's name, so a push can never
-# cancel the gate a deploy is waiting on.
+# A newer push supersedes an older run of the same branch.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  gate:
+  python:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: just lint
+      - run: just typecheck
+      - run: just test
 
-      - uses: astral-sh/setup-uv@v6
+  phases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: just verify-phase0 verify-phase1 verify-phase2
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
         with:
-          python-version: '3.12'
-          enable-cache: true
+          python: 'false'
+          web: 'true'
+      - run: just web-check
+      - run: just web-test
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: extractions/setup-just@v2
-
-      - name: Install dependencies
-        run: |
-          uv sync --locked
-          pnpm install --frozen-lockfile
-          pnpm --filter @pitwall/web exec playwright install --with-deps chromium
-
-      - name: Lint, types, tests and fixture browser suites
-        run: just check
-
-      - name: Web app checks
-        run: just web-check
-
-      - name: Web app unit tests
-        run: just web-test
+          web: 'true'
+          browser: 'true'
+      - run: just verify-phase3 verify-phase4 verify-phase5

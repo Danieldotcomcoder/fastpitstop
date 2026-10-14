@@ -1,0 +1,45 @@
+name: Set up the workspace
+description: Python (uv) and/or the web app (pnpm), with caches.
+
+inputs:
+  python:
+    description: Install the uv workspace
+    default: 'true'
+  web:
+    description: Install the pnpm workspace
+    default: 'false'
+  browser:
+    description: Install Playwright's Chromium (needs web)
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - if: inputs.python == 'true'
+      uses: astral-sh/setup-uv@v6
+      with:
+        python-version: '3.12'
+        enable-cache: true
+
+    - if: inputs.python == 'true'
+      shell: bash
+      run: uv sync --locked
+
+    - if: inputs.web == 'true'
+      uses: pnpm/action-setup@v4
+
+    - if: inputs.web == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - if: inputs.web == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - if: inputs.browser == 'true'
+      shell: bash
+      run: pnpm --filter @pitwall/web exec playwright install --with-deps chromium
+
+    - uses: extractions/setup-just@v2

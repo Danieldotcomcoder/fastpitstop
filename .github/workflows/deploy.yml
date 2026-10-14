@@ -3,6 +3,10 @@
 # checkout to the VM, build there, bring the stack up, migrate. Setup and the
 # secrets it needs: DEPLOY.md, "Deploying from GitHub".
 #
+# It does not run the tests: CI (ci.yml) already ran them on the push, so
+# this only checks that CI passed for the exact commit being shipped, which
+# takes seconds. The deploy itself is the build on the VM.
+#
 # Unlike a deploy from a desktop, it sends no `.env`: the VM keeps its own.
 name: Deploy
 
@@ -13,6 +17,14 @@ on:
         description: Deploy even though a Grand Prix weekend is under way (emergencies only)
         type: boolean
         default: false
+      skip_ci_check:
+        description: Deploy even if CI has not passed for this commit (emergencies only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
 
 # One deploy at a time, and never cancel one half-way through.
 concurrency:
@@ -20,21 +32,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  gate:
-    if: github.ref == 'refs/heads/main'
-    uses: ./.github/workflows/ci.yml
-
   deploy:
-    needs: gate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/pitwall' }}
       SITE: https://fastpitstop.online
     steps:
+      - name: CI passed for this commit
+        if: ${{ !inputs.skip_ci_check }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml \
+            --commit "$GITHUB_SHA" --event push --limit 1 \
+            --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+          echo "CI for ${GITHUB_SHA::7}: ${state:-no run}"
+          if [ "$state" != "completed success" ]; then
+            echo "Deploy only a commit CI has passed: wait for CI, or fix it."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       # Never during a Grand Prix weekend: from 12 hours before its first
