@@ -1,0 +1,59 @@
+# The release gate that needs no F1 data: lint, types, tests and the
+# browser suites against the checked-in fixtures (`just check`), plus the
+# web app's own checks and unit tests. Runs on every push and pull request,
+# and is the first job of every deploy (deploy.yml).
+#
+# Not here, by design (DEPLOY.md, "Deploying from GitHub"):
+# - `just verify-real` needs `data/` (real races, gitignored), so it is run
+#   on a machine that has it before merging;
+# - `just verify-visual` compares against baselines rendered on Windows,
+#   which a Linux runner draws differently.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+# A newer push supersedes an older run of the same branch. Inside a deploy
+# (workflow_call) `github.workflow` is the caller's name, so a push can never
+# cancel the gate a deploy is waiting on.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: extractions/setup-just@v2
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked
+          pnpm install --frozen-lockfile
+          pnpm --filter @pitwall/web exec playwright install --with-deps chromium
+
+      - name: Lint, types, tests and fixture browser suites
+        run: just check
+
+      - name: Web app checks
+        run: just web-check
+
+      - name: Web app unit tests
+        run: just web-test

@@ -375,3 +375,53 @@ volume):
 
 Check with `docker exec pitwall-proxy-1 cat /etc/caddy/Caddyfile`.
 
+
+## Deploying from GitHub
+
+For work done away from the desktop (a Claude Code web session, say), which
+has neither the SSH key nor `data/`.
+
+- `.github/workflows/ci.yml` runs on every push and pull request: `just
+  check`, `just web-check` and `just web-test`, against the checked-in
+  fixtures only.
+- `.github/workflows/deploy.yml` deploys production. Start it by hand:
+  Actions, then Deploy, then Run workflow, on `main`.
+  - It runs the same gate first, then `deploy/deploy_host.py`, then checks
+    that `/`, `/live`, `/api/health` and `/api/sessions` answer 200.
+  - It refuses from 12 hours before a Grand Prix weekend's first session
+    to 6 hours after its last, read from `/api/schedule/next`. The
+    `race_weekend_override` box is for emergencies only.
+  - It sends no `.env`: the VM keeps its own. To change a production
+    setting, edit `/opt/pitwall/.env` on the VM, or deploy from the
+    desktop, which does send its `.env`.
+
+Two checks stay with a machine that has the data:
+- `just verify-real` needs `data/` (real races, gitignored). On GitHub it
+  would skip itself, so run it before merging.
+- `just verify-visual` compares against baselines rendered on Windows, and
+  Linux draws text differently. Run it on Windows too.
+
+### One-time setup
+
+1. **A deploy-only key on the VM.** It is separate from anyone's personal
+   key, so it can be revoked alone. Run as root on the VM:
+
+       ssh-keygen -t ed25519 -N '' -C github-deploy -f /root/github-deploy
+       echo "no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty $(cat /root/github-deploy.pub)" >> /root/.ssh/authorized_keys
+
+2. **Repository secrets** (GitHub: Settings, Secrets and variables,
+   Actions, New repository secret):
+   - `DEPLOY_HOST`: the VM's address, `206.183.130.77`.
+   - `DEPLOY_SSH_KEY`: the whole private key, printed by
+     `cat /root/github-deploy` on the VM. After pasting it, delete both
+     files there: `rm /root/github-deploy /root/github-deploy.pub`.
+   - `DEPLOY_KNOWN_HOSTS`: the VM's host key, so the workflow can tell
+     it is talking to the real VM. Take it from a machine that already
+     trusts the VM, with `ssh-keygen -F 206.183.130.77`; paste the lines
+     that do not start with `#`.
+
+   `DEPLOY_USER` (`root`) and `DEPLOY_PATH` (`/opt/pitwall`) are the
+   defaults; set them as repository variables only to change them.
+
+To revoke: delete the `github-deploy` line from `/root/.ssh/authorized_keys`
+on the VM.
