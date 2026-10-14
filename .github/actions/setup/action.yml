@@ -38,6 +38,12 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
+    # Generates apps/web/.svelte-kit, which tsconfig.json extends; Playwright
+    # cannot load the config without it.
+    - if: inputs.web == 'true'
+      shell: bash
+      run: pnpm --filter @pitwall/web exec svelte-kit sync
+
     - if: inputs.browser == 'true'
       shell: bash
       run: pnpm --filter @pitwall/web exec playwright install --with-deps chromium
