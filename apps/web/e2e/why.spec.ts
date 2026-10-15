@@ -22,9 +22,7 @@ import {
 } from './why-fixtures';
 
 test.describe('why-engine timeline lane', () => {
-	test('explanations stay gated until the delay elapses, then show the race', async ({
-		page
-	}) => {
+	test('explanations stay gated until the delay elapses, then show the race', async ({ page }) => {
 		test.setTimeout(60_000);
 		await page.goto(whyRaceUrl());
 
@@ -75,6 +73,19 @@ test.describe('race story view', () => {
 		test.setTimeout(60_000);
 		await page.goto(whyStoryUrl());
 
+		// Held back until the viewer says how far they are (ROADMAP W2), and
+		// the heading says so.
+		await expect(page.getByTestId('story-heading')).toContainText('held back to the start', {
+			timeout: 30_000
+		});
+		await expect(page.getByTestId('explanation-card')).toHaveCount(0);
+		await page.getByTestId('story-upto').fill('17');
+		await page.getByTestId('story-upto').press('Enter');
+		await expect(page.getByTestId('story-heading')).toContainText('to lap 17');
+		await expect(page.getByText(WHY_SAFETY_CAR_TEXT)).toHaveCount(0);
+		await expect(page.getByText(WHY_FINISH_TEXT)).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'The whole race' }).click();
 		const story = page.getByTestId('race-story');
 		await expect(story).toBeVisible({ timeout: 30_000 });
 		const cards = story.getByTestId('explanation-card');

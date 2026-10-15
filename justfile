@@ -76,7 +76,7 @@ verify-phase2:
 # Scoped to its own spec files (not the whole apps/web/e2e/ directory) so it
 # stays independent of verify-phase4's separate radio fixture/webServer pair.
 verify-phase3:
-    pnpm --filter @pitwall/web exec playwright test dashboard.spec.ts track-map-animation.spec.ts weekend.spec.ts circuits.spec.ts races.spec.ts standings.spec.ts
+    pnpm --filter @pitwall/web exec playwright test dashboard.spec.ts desk.spec.ts archive.spec.ts track-map-animation.spec.ts weekend.spec.ts circuits.spec.ts races.spec.ts standings.spec.ts
 
 # Phase 4.5 verification harness: Playwright boots a SECOND, independent
 # f1_api + frontend pair (apps/web/playwright.config.ts's own webServer

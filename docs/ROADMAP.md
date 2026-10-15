@@ -348,6 +348,151 @@ search):
 
 No screen uses these components yet: the screens are W3, W4 and M3.
 
+**Race desk on desktop (2026-10-14), per mockup A.** Shared by `/live`
+and replays. What it adds that the desk lacked:
+- **The battle leads** (`$lib/desk/BattleHero.svelte`): the two cars, the
+  gap as they last crossed the line, its trend over eight laps with
+  safety-car, VSC and red-flag laps shaded, and one sentence on it ("Down
+  from 2.7 s on lap 26, most of it behind the safety car (shaded)"; "Same
+  tyres, same age: this one is on pace alone" only when nothing was
+  neutralised).
+- **The race ribbon, "How the top ten got here"**
+  (`RaceRibbon.svelte`): every current top-ten car's place at the end of
+  each lap, pit stops marked, neutralised laps shaded, teammates dashed by
+  car number. It runs to the race distance only when the feed announced
+  it; otherwise it ends at the lap reached, so a replay never gives a
+  shortened race away.
+- **One line on the field** beside the map: who leads by how much, how
+  many cars are on the lead lap and how spread out they are.
+- **What could happen next** keeps the undercut board and quotes the
+  model's held-out record (85.7% of 70 high-confidence calls, 10 races
+  of 2025). `model-record.test.ts` checks it against the committed
+  report. This race's own scorecard is W5, not built.
+- **Layout:** three columns at 1320 px and up (tower; battle, ribbon,
+  map; next call and the story), two below that.
+- **Motion:**
+  - tower rows slide to their new order on an overtake;
+  - gaps roll to new values, and the battle's gap rolls once a lap;
+  - a fastest lap flashes purple;
+  - a flag change sweeps across the strip;
+  - a newly released moment arrives as a toast. A late join's backlog is
+    never toasted, and a burst at full replay speed toasts only the
+    newest.
+
+  All of it is off under reduced motion.
+
+All of it folds the released log (`race-history.ts`), so it grows live
+with no REST call and holds nothing past the viewer's clock. Replays carry
+no track-status stream, so neutralised laps come from race control there,
+read as `f1_kernel.status` reads it. A lap's gap is the one sent as the
+car crossed the line, not later sector updates.
+
+The phone glance now draws its gap trend from the same history (it read
+kernel snapshots, which are sparse) on an axis from zero, and the ribbon
+sits in its Strategy tab.
+
+Checks:
+- unit tests, including a property test that the ribbon never holds a
+  lap the released log has not completed;
+- `e2e/desk.spec.ts`, now in `verify-phase3`: nothing before the delay,
+  the ribbon never ahead of the lap counter, the three columns at 1440,
+  and no overflow at 390, 768, 1024 and 1440.
+
+The race-desk visual baselines change and need re-approval.
+
+Layout shift, measured here on a 16x replay with a 5 s delay, the first
+25 s:
+
+| Desk | 1440 px | 1440 px, Focus | 1024 px | 390 px |
+| --- | --- | --- | --- | --- |
+| Before W2 | 0.039 to 0.051 | n/a | n/a | n/a |
+| After W2 | 0.022 to 0.047 | 0.005 | 0.010 | 0.010 |
+
+The early part, about 0.04, is a load-time reflow of the sync strip.
+The old desk has it too; on your desktop the whole figure measured 0.02
+(W0).
+
+To stay inside W0's 0.05 budget:
+- every new block keeps its size from the first paint;
+- the battle's gap sits in a column of fixed width;
+- at 1320 px and up, the next call fills the slot beside the battle and
+  the ribbon without sizing it, and scrolls on the rare lap it needs
+  more room.
+
+The ribbon and the trend are recomputed only when a place, a lap's gap
+or a stop changes, not on every released event.
+
+**Home (2026-10-14), per A-Home.** It already had the next race, its
+countdown and sessions, the circuit drawing itself, and the last race
+behind the shield. It gains the mockup's three points under them:
+- never ahead of your TV;
+- says what just happened;
+- calls the strategy, with the model's held-out record.
+
+One departure for honesty: the mockup's "and keeps score" reads "and
+shows its record". A per-race scorecard is W5, not built yet.
+
+The search text, recent races and questions stay below, unchanged. The
+home visual baselines change.
+
+**The other D5 screens (2026-10-15).** Mockup A drew none of them, so ten
+new boards came first, on the same design canvas, in direction A and
+from real figures (two rows under the M2 ones): `/live` off week,
+pre-session and post-session (pre-session also at phone width), the
+archive and story (also at phone width), about, and the desk's Focus
+density. You asked me not to wait, so they were built before your
+approval. Each leads with something the screen lacked:
+- **`/live` between sessions** (`$lib/live`):
+  - *Pre-session:* a countdown to the next session is the hero, then the
+    weekend's earlier sessions offered from the start, and how to get set.
+  - *Post-session:* the session just finished, offered from its start
+    with the result hidden, then the next one.
+  - *Off week:* the next Grand Prix.
+
+  Every state ends with "Before the weekend": what a stop costs at the
+  circuit, on the scale of every measured circuit; tyre wear per
+  compound, thin fits drawn as outlines; and the lap. All of it comes
+  from past races. `idleState` picks the screen from the calendar, the
+  catalog and the clock (unit-tested). Pre-session weather is still not
+  built: the feed sends none.
+- **Archive:** one card per weekend, every session it holds in running
+  order. Above them, the season as a strip of circuit outlines: rounds
+  run, the next one marked, later ones faint, and a run round with no
+  replay marked "no replay". The "include qualifying & practice" switch
+  is gone; every session is a chip now.
+- **Story:** held back to the lap the viewer says they have watched
+  (remembered per session; `?upto=` in a link), and the heading says
+  how far. It used to show the whole race the moment one was picked.
+  Moments are grouped (start, on track, strategy, incidents, finish)
+  under a lap axis that ends at the viewer's lap. It never shows the
+  race's length, or how many moments are still hidden: either would
+  hint at what is coming.
+- **About:** led by four published numbers: the held-out undercut
+  record, 410 pit stops measured, the fuel coefficient, and 110/110
+  story cards. `published.test.ts` checks each against its committed
+  report.
+- **Desk density:** Focus or Full, from the masthead on screens 900 px
+  and wider, remembered on the device. Focus keeps the battle, the next
+  call, the story, the ribbon and the top ten. The map, analytics, radio
+  and race control are left out, not just hidden.
+
+Checks:
+- `e2e/archive.spec.ts` (new, in `verify-phase3`);
+- `weekend.spec.ts`, which now checks the pre-session screen;
+- `why.spec.ts`, which now checks the story is held back first;
+- a Focus test in `desk.spec.ts`;
+- the test calendars gain the fixture's 2024 season.
+
+Baselines that change: live, sessions, about and race desk. The story
+page has none.
+
+**Circuit and Grand Prix pages against their M2 mockups (2026-10-15).**
+Both match. The one real difference: the Grand Prix page's stop-cost
+card left out the DRS zones it already loaded. It now lists them. The
+circuit page goes further than its mockup (numbered corners on the
+outline, the evidence behind each tyre figure) and is unchanged. The
+grand-prix baselines change.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 
@@ -880,8 +1025,14 @@ Each milestone ships between race weekends and passes W0 before deploy.
   states" and "tower checked against official timing" are met. "Circuit and
   Grand Prix pages indexed" is Google's to report, in Search Console's
   Pages report.
-- **M3:** W7 done (see W7's status). W2 screen redesigns and S6 share
-  images are next.
+- **M3:**
+  - W7 is done (see W7's status).
+  - W2's screen redesigns were built 2026-10-14 and 15 (see W2) but are
+    not done until you review them. That means approving the new
+    mockups, `just verify-visual` and `visual-approve`, `just
+    verify-real`, and the side-by-side review against the competitor
+    screenshots.
+  - S6 share images are next.
 - **M4 onwards:** not started.
 
 ## Parked (needs a decision)

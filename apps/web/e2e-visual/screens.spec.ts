@@ -7,8 +7,7 @@
  * Grand Prix and its time zone set to UTC, reduced motion. The race desk
  * replays a race, which needs a running clock, so it is captured at its
  * last lap with its live-moving parts masked instead (the sync strip's clocks,
- * the map's cars, and the phone glance's gap trend, which holds whichever
- * kernel snapshots the replay's timing happened to release). */
+ * the map's cars, and the moment toasts, which expire on a timer). */
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const FROZEN_NOW = new Date('2099-09-28T12:00:00Z');
@@ -99,11 +98,7 @@ for (const width of WIDTHS) {
 			await settle(page);
 			await expect(page).toHaveScreenshot(`race-desk-${width}-${theme}.png`, {
 				fullPage: true,
-				mask: [
-					page.locator('canvas'),
-					page.locator('section.sync'),
-					page.locator('.p-glance .trend, .p-glance .line')
-				]
+				mask: [page.locator('canvas'), page.locator('section.sync'), page.locator('.toaster')]
 			});
 			await page.context().close();
 		});

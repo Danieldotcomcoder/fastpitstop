@@ -23,7 +23,7 @@
 	import { seoFor, toSeoSession } from '$lib/seo';
 	import { api, type components } from '$lib/api/client';
 	import { pickLiveSession } from '$lib/live-session-picker';
-	import NextRace from '$lib/home/NextRace.svelte';
+	import IdleLive from '$lib/live/IdleLive.svelte';
 	import { loadNextRace, type NextRaceView } from '$lib/home/load';
 
 	type SessionSummary = components['schemas']['SessionSummaryOut'];
@@ -48,6 +48,15 @@
 	let status = $state<Status>(initial.sessions.length > 0 ? 'ready' : 'checking');
 	let sessions = $state<SessionSummary[]>(initial.sessions);
 	let next = $state<NextRaceView | null>(initial.next);
+	/** The catalog, as the idle screens need it (which sessions can replay). */
+	let held = $derived(
+		sessions.map((s) => ({
+			year: s.session_key.year,
+			round: s.session_key.round,
+			sessionType: s.session_key.session_type,
+			live: s.live === true
+		}))
+	);
 
 	/** The latest finished race, for "watch from the start" between sessions. */
 	let lastRace = $derived.by(() => {
@@ -113,9 +122,10 @@
 	{/await}
 {:else}
 	<section class="idle wide-dashboard">
-		<h1 class="visually-hidden">Live</h1>
 		{#if next}
-			<NextRace event={next.event} outline={next.outline} live={null} {lastRace} />
+			<IdleLive {next} {held} {lastRace} circuit={data.circuit} />
+		{:else}
+			<h1 class="visually-hidden">Live</h1>
 		{/if}
 		<p class="note" class:error={status === 'unreachable'}>
 			{#if status === 'ready'}

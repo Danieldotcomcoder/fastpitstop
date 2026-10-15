@@ -6,6 +6,7 @@
 	import { resolve } from '$app/paths';
 	import { brand } from '$lib/brand';
 	import NextRace from '$lib/home/NextRace.svelte';
+	import { MODEL_RECORD } from '$lib/model-record';
 	import { HOME_FAQ, seoFor, type SeoSession } from '$lib/seo';
 	import type { PageProps } from './$types';
 
@@ -76,6 +77,34 @@
 			{lastRace}
 		/>
 	{/if}
+
+	<section class="pillars" aria-label="What makes it different">
+		<div>
+			<span class="n">01</span>
+			<h2>Never ahead of your TV</h2>
+			<p>
+				Tap once when the lights go out and every number waits for your picture. No spoilers from
+				the tower, the map, the predictions or the story.
+			</p>
+		</div>
+		<div>
+			<span class="n">02</span>
+			<h2>Says what just happened</h2>
+			<p>
+				Passes, stops and safety cars written up the moment you see them, with the timing and race
+				control messages that back each line.
+			</p>
+		</div>
+		<div>
+			<span class="n">03</span>
+			<h2>Calls the strategy, and shows its record</h2>
+			<p>
+				Undercut windows before they open. On {MODEL_RECORD.races} races of {MODEL_RECORD.season}
+				it never saw, its high-confidence calls were right {MODEL_RECORD.highConfidenceHitRatePct}%
+				of the time.
+			</p>
+		</div>
+	</section>
 
 	<div class="reading">
 		{#if live && !liveThisWeekend}
@@ -190,6 +219,27 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-5);
+	}
+
+	/* Mockup A's three points, under the next race. */
+	.pillars {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: var(--space-6);
+		padding: var(--space-5) 0 0;
+	}
+	.pillars .n {
+		font: 500 var(--font-size-xs) / 1 var(--font-mono);
+		color: var(--accent);
+	}
+	.pillars h2 {
+		margin: var(--space-2) 0 0;
+		font: 500 var(--font-size-lg) / 1.2 var(--font-display);
+	}
+	.pillars p {
+		margin: var(--space-2) 0 0;
+		color: var(--text-secondary);
+		line-height: 1.55;
 	}
 
 	.reading {

@@ -46,6 +46,13 @@
 	import PitBoard from '$lib/desk/PitBoard.svelte';
 	import SyncStrip from '$lib/desk/SyncStrip.svelte';
 	import WhyLane from '$lib/desk/WhyLane.svelte';
+	import BattleHero from '$lib/desk/BattleHero.svelte';
+	import RaceRibbon from '$lib/desk/RaceRibbon.svelte';
+	import { battleTrend, fieldLine, ribbonModel, teammateDashed } from '$lib/desk/hero';
+	import { RaceHistoryReducer } from '$lib/desk/race-history';
+	import { MomentToasts } from '$lib/desk/moments';
+	import { ToastQueue } from '$lib/ui/toasts';
+	import Toaster from '$lib/ui/Toaster.svelte';
 	import { focusPair } from '$lib/desk/focus';
 	import { LapRecordReducer } from '$lib/desk/lap-records';
 	import { buildBoard, crossoverFor, type Crossover } from '$lib/desk/pit-board';
@@ -105,6 +112,31 @@
 		{ id: 'story', label: 'Story', icon: 'M6 4h12v16l-6-4-6 4z' }
 	] as const;
 	let phoneTab = $state<string>('race');
+
+	/** Desktop density (ROADMAP W2 D5): Full shows every panel; Focus keeps
+	 * the battle, the next call, the story, the ribbon and the top ten.
+	 * Remembered on the device; phones use their tabs instead. */
+	const DENSITY_KEY = 'desk-density';
+	function storedDensity(): 'full' | 'focus' {
+		try {
+			return typeof localStorage !== 'undefined' && localStorage.getItem(DENSITY_KEY) === 'focus'
+				? 'focus'
+				: 'full';
+		} catch {
+			return 'full';
+		}
+	}
+	let density = $state<'full' | 'focus'>(storedDensity());
+	function setDensity(next: 'full' | 'focus'): void {
+		density = next;
+		try {
+			localStorage.setItem(DENSITY_KEY, next);
+		} catch {
+			// Storage blocked: the choice lasts as long as the page.
+		}
+	}
+	/** Panels Focus leaves out are not mounted at all, so their work stops. */
+	const inFull = () => isPhone || density === 'full';
 	let deskEl: HTMLElement | undefined = $state();
 
 	/** On a phone a tab's panels are mounted the first time it is opened, and
@@ -142,6 +174,10 @@
 	const feed = new RaceFeedReducer();
 	const history = new SnapshotHistory();
 	const quali = new QualifyingReducer();
+	const raceHistory = new RaceHistoryReducer();
+	const moments = new MomentToasts();
+	const toasts = new ToastQueue();
+	let toastRevision = $state(0);
 
 	/** Qualifying and sprint qualifying get the qualifying board in place of
 	 * the race tower, pit board and race analytics. */
@@ -162,6 +198,7 @@
 		reveal.update(visible.events);
 		why.update(visible.events);
 		feed.update(visible.events);
+		raceHistory.update(visible.events);
 		if (isQualifying) quali.update(visible.events);
 		// Fresh copies: the reducer mutates rows in place, and Svelte only
 		// re-renders a keyed row whose value changed identity.
@@ -239,6 +276,64 @@
 		void revision;
 		return why.explanations;
 	});
+
+	// --- mockup A's desktop views (ROADMAP W2) ---------------------------------
+	// Recomputed only when what they draw changed: most released events
+	// (gaps at sector lines, sector times) change none of it, and at 1x the
+	// desk stays inside its main-thread budget (ROADMAP W0).
+	let historyVersion = $derived.by(() => {
+		// `rows` is where the reducers fold the released log: read it first.
+		void rows;
+		return raceHistory.version;
+	});
+	/** The top ten as the ribbon draws them: who, in what order, which team. */
+	let topKey = $derived(
+		rows
+			.filter((r) => r.position !== null && !r.retired)
+			.slice(0, 10)
+			.map((r) => `${r.driver}:${r.position}:${r.team ?? ''}:${codes[r.driver] ?? ''}`)
+			.join(',')
+	);
+	let dashed = $derived.by(() => {
+		void topKey;
+		return untrack(() => teammateDashed(rows));
+	});
+	let trend = $derived.by(() => {
+		void historyVersion;
+		const p = pair;
+		return p ? untrack(() => battleTrend(raceHistory, p.a, p.b)) : null;
+	});
+	let ribbon = $derived.by(() => {
+		void historyVersion;
+		void topKey;
+		// The announced distance only (`lap.total`): never the finishing lap
+		// count, which would give a shortened race away.
+		const total = lap.total;
+		return untrack(() => ribbonModel(raceHistory, rows, codes, total));
+	});
+	let fieldNote = $derived(fieldLine(rows, codes));
+	/** "Gap at the line": the gap as the pair last crossed it, so it moves
+	 * once a lap like a timing screen's line, not with every sector. */
+	let battleGapS = $derived.by(() => {
+		const crossed = trend?.points.at(-1)?.gapS;
+		if (crossed !== undefined) return crossed;
+		const behind = pair ? rows.find((r) => r.driver === pair.a) : undefined;
+		return behind?.lapsDown === null && behind.intervalToAheadS !== null
+			? behind.intervalToAheadS
+			: board.intervalS;
+	});
+
+	/** New moments arrive as toasts (W2 D4), but only ones the viewer's
+	 * clock has just reached: joining a race late never replays a backlog
+	 * of them. */
+	$effect(() => {
+		const fresh = moments.take(
+			visible.events,
+			playbackClockMs(serverNowMs(), controller.delayState.get().delaySeconds)
+		);
+		for (const t of fresh) toasts.push(t.text, Date.now(), t.kicker);
+		if (fresh.length > 0) toastRevision++;
+	});
 	let feedItems = $derived.by(() => {
 		void revision;
 		return feed.list(feedFilter);
@@ -312,7 +407,8 @@
 
 	function connect(delay = controller.delayState.get().delaySeconds) {
 		disconnect();
-		for (const reducer of [tower, reveal, records, why, feed, history, quali]) reducer.reset();
+		for (const reducer of [tower, reveal, records, why, feed, history, quali, raceHistory, moments])
+			reducer.reset();
 		visible = EMPTY_VISIBLE_STATE;
 		lightsOutUtc = null;
 		firstEventUtc = null;
@@ -482,7 +578,11 @@
 	});
 </script>
 
-<div class="wide-dashboard desk-page" data-tab={qualiBoard ? undefined : phoneTab}>
+<div
+	class="wide-dashboard desk-page"
+	data-tab={qualiBoard ? undefined : phoneTab}
+	data-density={qualiBoard ? undefined : density}
+>
 	<DeskIcons />
 	<header class="masthead">
 		<div class="brand">
@@ -506,6 +606,16 @@
 				{/each}
 			</dl>
 		</div>
+		{#if !qualiBoard}
+			<div class="density seg" role="group" aria-label="How much to show">
+				<button type="button" aria-pressed={density === 'focus'} onclick={() => setDensity('focus')}
+					>Focus</button
+				>
+				<button type="button" aria-pressed={density === 'full'} onclick={() => setDensity('full')}
+					>Full</button
+				>
+			</div>
+		{/if}
 		{#if qualiBoard}
 			<div class="lapcount" data-testid="quali-clock">
 				<span class="caps">{qualiBoard.label ?? 'Qualifying'}</span>
@@ -559,11 +669,21 @@
 				<PhoneGlance
 					{rows}
 					model={board}
-					{spark}
+					{trend}
 					{names}
 					{explanations}
 					onFocus={(d) => (focus = d)}
 					onAll={() => selectTab('strategy')}
+				/>
+			{/if}
+			{#if !isPhone}
+				<BattleHero
+					attacker={board.attacker}
+					defender={board.defender}
+					gapS={battleGapS}
+					{trend}
+					{names}
+					{dashed}
 				/>
 			{/if}
 			{#if shows('strategy')}
@@ -582,7 +702,7 @@
 			{#if shows('story')}
 				<WhyLane {explanations} {codes} {teams} />
 			{/if}
-			{#if shows('map')}
+			{#if shows('map') && inFull()}
 				<DeskMap
 					{controller}
 					{circuit}
@@ -591,7 +711,11 @@
 					{pair}
 					{codes}
 					timeScale={isLive ? 1 : speed > 0 ? speed : 1}
+					{fieldNote}
 				/>
+			{/if}
+			{#if shows('strategy')}
+				<RaceRibbon model={ribbon} {pair} />
 			{/if}
 			{#if shows('battle')}
 				<PitBoard
@@ -600,7 +724,7 @@
 					focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
 				/>
 			{/if}
-			{#if shows('strategy')}
+			{#if shows('strategy') && inFull()}
 				<DeskAnalytics
 					apiKey={session.key}
 					laps={revealedLaps}
@@ -614,7 +738,7 @@
 					{revision}
 				/>
 			{/if}
-			{#if shows('story')}
+			{#if shows('story') && inFull()}
 				<FeedLane
 					items={feedItems}
 					filter={feedFilter}
@@ -638,6 +762,7 @@
 		<span>Showing only the race you’ve reached.</span>
 	</footer>
 	<DeskTooltip />
+	{#if !qualiBoard}<Toaster queue={toasts} revision={toastRevision} />{/if}
 	<span hidden data-testid="session-visible-events">{visible.events.length}</span>
 	<span hidden data-testid="session-last-event">{visible.lastEventTimeUtc ?? ''}</span>
 	<span hidden data-testid="session-clock-offset">{clockOffsetMs}</span>

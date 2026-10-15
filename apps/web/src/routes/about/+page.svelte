@@ -1,7 +1,34 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { brand } from '$lib/brand';
+	import { PUBLISHED } from '$lib/published';
 	import { seoFor } from '$lib/seo';
+
+	const { undercut, pitLoss, fuel, story } = PUBLISHED;
+	/** The numbers behind it (ROADMAP W2): each from a committed report,
+	 * checked against it by `published.test.ts`. */
+	const TILES = [
+		{
+			value: `${undercut.highConfidenceHitRatePct}%`,
+			what: 'of high-confidence undercut calls were right',
+			from: `${undercut.highConfidenceCalls} calls on ${undercut.races} races of ${undercut.season} the model never saw`
+		},
+		{
+			value: String(pitLoss.stops),
+			what: 'pit stops measured',
+			from: `${pitLoss.races} races of ${pitLoss.season}: a stop costs ${pitLoss.lowest.seconds} s at ${pitLoss.lowest.circuit}, ${pitLoss.highest.seconds} s at ${pitLoss.highest.circuit}`
+		},
+		{
+			value: String(fuel.sPerKg),
+			what: 'seconds a lap per kilogram of fuel',
+			from: `fitted across ${fuel.stints} stints of ${fuel.races} races`
+		},
+		{
+			value: `${story.borneOut} / ${story.cards}`,
+			what: 'story cards borne out by the raw timing',
+			from: `${story.races} races judged; ${story.found} of ${story.headlines} headline moments found`
+		}
+	];
 </script>
 
 <svelte:head>
@@ -15,6 +42,20 @@
 		while you watch it on TV or a stream. It shows live timing, and it also works out what the timing
 		feed does not tell you.
 	</p>
+
+	<section class="numbers" aria-labelledby="numbers-title">
+		<h2 id="numbers-title">The numbers behind it</h2>
+		<p class="muted">Each from a report committed with the code, re-run as seasons land.</p>
+		<div class="tiles">
+			{#each TILES as tile (tile.what)}
+				<div class="tile">
+					<div class="value num">{tile.value}</div>
+					<div class="what">{tile.what}</div>
+					<div class="from">{tile.from}</div>
+				</div>
+			{/each}
+		</div>
+	</section>
 
 	<h2>What it shows</h2>
 	<ul>
@@ -69,6 +110,38 @@
 </article>
 
 <style>
+	.numbers {
+		margin-top: var(--space-6);
+	}
+	.numbers h2 {
+		margin-bottom: var(--space-1);
+	}
+	.tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: var(--space-3);
+		margin-top: var(--space-3);
+	}
+	.tile {
+		padding: var(--space-4);
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-lg);
+		background: var(--panel);
+	}
+	.value {
+		font: 500 2.25rem / 1.05 var(--font-display);
+		letter-spacing: -0.02em;
+	}
+	.what {
+		margin-top: var(--space-2);
+		font-weight: 600;
+	}
+	.from {
+		margin-top: var(--space-1);
+		font-size: var(--font-size-sm);
+		color: var(--text-muted);
+	}
+
 	.about h2 {
 		font-family: var(--font-display);
 		font-size: var(--font-size-lg);
