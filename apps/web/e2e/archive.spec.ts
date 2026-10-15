@@ -1,7 +1,9 @@
 /** The session archive by weekend (ROADMAP W2): the season as a strip of
  * its circuits, then one card per round with every session it holds.
- * Fixture catalog: 2024 rounds 1 and 2 (races); the test calendar's 2024
- * season adds round 3, run but not held. */
+ * Fixture catalog: 2024 rounds 1 and 2 (races). The test calendar's 2024
+ * season holds rounds 1 and 3 only: round 2 is left undated on purpose,
+ * since `standings.spec.ts` needs the latest held race to have no date.
+ * Round 3 is run but not held. */
 import { expect, test } from '@playwright/test';
 
 for (const width of [390, 1440]) {
@@ -11,8 +13,8 @@ for (const width of [390, 1440]) {
 		await page.setViewportSize({ width, height: 900 });
 		await page.goto('/sessions');
 		const strip = page.getByTestId('season-strip');
-		await expect(strip.getByRole('link')).toHaveCount(3);
-		await expect(page.getByRole('heading', { name: /2024 · 3 of 3 rounds run/i })).toBeVisible();
+		await expect(strip.getByRole('link')).toHaveCount(2);
+		await expect(page.getByRole('heading', { name: /2024 · 2 of 2 rounds run/i })).toBeVisible();
 		await expect(strip.getByRole('link', { name: /Round 1, Bahrain/ })).toHaveAttribute(
 			'href',
 			'/sessions/2024/1'

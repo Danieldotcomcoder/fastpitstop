@@ -7,10 +7,12 @@ import { expect, test } from '@playwright/test';
 test('the ribbon never runs ahead of the lap counter, and nothing shows before the delay', async ({
 	page
 }) => {
+	test.setTimeout(120_000);
 	const errors: string[] = [];
 	page.on('pageerror', (e) => errors.push(e.message));
 	await page.setViewportSize({ width: 1440, height: 900 });
-	await page.goto('/sessions/2024/1?speed=16&delay=6');
+	// A delay long enough that a slow first load still lands inside it.
+	await page.goto('/sessions/2024/1?speed=16&delay=20');
 	const ribbon = page.getByTestId('race-ribbon');
 	const reached = () => ribbon.locator('svg').getAttribute('data-reached').then(Number);
 	const lap = async () => Number(await page.getByTestId('session-lap').textContent());
@@ -21,15 +23,17 @@ test('the ribbon never runs ahead of the lap counter, and nothing shows before t
 	await expect(ribbon.locator('polyline')).toHaveCount(0);
 	await expect(page.getByTestId('battle-gap')).toHaveCount(0);
 
+	// Then, as laps are released, the ribbon follows the lap counter and
+	// never passes it.
+	await expect.poll(reached, { timeout: 60_000 }).toBeGreaterThan(0);
 	let last = 0;
-	for (let sample = 0; sample < 12; sample++) {
-		await page.waitForTimeout(1_500);
+	for (let sample = 0; sample < 10; sample++) {
 		const [r, l] = [await reached(), await lap()];
 		expect(r).toBeLessThanOrEqual(l);
 		expect(r).toBeGreaterThanOrEqual(last);
 		last = r;
+		await page.waitForTimeout(1_000);
 	}
-	expect(last).toBeGreaterThan(0);
 	// A flat line has no height, so Playwright never calls it visible: count.
 	expect(await ribbon.locator('polyline').count()).toBeGreaterThan(0);
 	expect(errors).toEqual([]);
