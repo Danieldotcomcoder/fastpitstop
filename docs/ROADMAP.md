@@ -35,8 +35,8 @@ app.formula1dashboard.com, f1livedata.com and MultiViewer.
 
 **What nobody else has**
 
-- Predictions with published, backtested accuracy (85.7% on high-confidence
-  undercut calls, over 2025 races the model never saw) and a confidence
+- Predictions with published, backtested accuracy (85.3% on high-confidence
+  undercut and overcut calls, over 2025 races the model never saw) and a confidence
   label on every number.
 - A delay gate that covers everything: timing, predictions, radio and
   explanations, with the phone clock corrected against the server.
@@ -365,7 +365,7 @@ and replays. What it adds that the desk lacked:
 - **One line on the field** beside the map: who leads by how much, how
   many cars are on the lead lap and how spread out they are.
 - **What could happen next** keeps the undercut board and quotes the
-  model's held-out record (85.7% of 70 high-confidence calls, 10 races
+  model's held-out record (85.3% of 68 high-confidence calls, 10 races
   of 2025). `model-record.test.ts` checks it against the committed
   report. This race's own scorecard is W5, not built.
 - **Layout:** three columns at 1320 px and up (tower; battle, ribbon,
