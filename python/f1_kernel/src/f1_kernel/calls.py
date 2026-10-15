@@ -196,20 +196,18 @@ def _undercut_call(
     locked = ends.get((driver, in_lap + 1))
     if locked is None:
         return None  # only reachable for an excluded row with no out-lap
+    resolved: datetime | None = None
     if outcome.pending:
-        status, resolved = CallStatus.PENDING, None
-    elif not outcome.evaluated:
-        status = CallStatus.VOID
-        resolved = _settled(outcome.evidence_lap, (driver, rival), ends, race_end, locked)
+        status = CallStatus.PENDING
     else:
-        status = (
-            CallStatus.NO_CALL
-            if outcome.hit is None
-            else CallStatus.RIGHT
-            if outcome.hit
-            else CallStatus.WRONG
-        )
-        resolved = _settled(outcome.evidence_lap, (driver, rival), ends, race_end, locked)
+        if not outcome.evaluated:
+            status = CallStatus.VOID
+        elif outcome.hit is None:
+            status = CallStatus.NO_CALL
+        else:
+            status = CallStatus.RIGHT if outcome.hit else CallStatus.WRONG
+        moment = outcome.settled_at_utc or race_end
+        resolved = None if moment is None else max(moment, locked)
     return Call(
         call_id=f"undercut:{driver}:{rival}:{in_lap}",
         kind=CallKind.UNDERCUT,
@@ -278,23 +276,6 @@ def _rejoin_call(
         actual_position=outcome.actual_position,
         actual_car_ahead=outcome.actual_car_ahead,
     )
-
-
-def _settled(
-    evidence_lap: int | None,
-    pair: tuple[str, str],
-    ends: dict[tuple[str, int], datetime],
-    race_end: datetime | None,
-    locked: datetime,
-) -> datetime | None:
-    """When the lap that settled it was complete for both cars; the end of
-    the race when only that settles it."""
-    if evidence_lap is None:
-        moment = race_end
-    else:
-        found = [ends[(car, evidence_lap)] for car in pair if (car, evidence_lap) in ends]
-        moment = max(found) if found else race_end
-    return None if moment is None else max(moment, locked)
 
 
 __all__ = [

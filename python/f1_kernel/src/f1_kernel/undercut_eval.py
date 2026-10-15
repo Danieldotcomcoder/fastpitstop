@@ -110,7 +110,12 @@ class StopPairOutcome:
     evidence_lap: int | None = None
     """The lap whose end settled this row (the outcome lap, the rival's
     out-lap, the first neutralised lap). None when only the end of the race
-    settles it. `f1_kernel.calls` dates a resolution by it."""
+    settles it."""
+    settled_at_utc: datetime | None = None
+    """The crossing that settled it: the later car's at the outcome lap, the
+    rival's out-lap, the first neutralised crossing. Laps arrive in time
+    order, so this never moves once set. None while pending, and when only
+    the end of the race settles it. `f1_kernel.calls` dates a resolution by it."""
     fit_floor: str | None = None
     """The worse of the two degradation fits' reliability — where
     `confidence` starts before any cap. With the three fields below, the
@@ -299,7 +304,10 @@ def _score_pair(
         return None  # not a duel: unknown gap, or out of undercut range
 
     def excluded(
-        reason: str, stayer_stop: int | None = None, evidence_lap: int | None = None
+        reason: str,
+        stayer_stop: int | None = None,
+        evidence_lap: int | None = None,
+        settled_at: datetime | None = None,
     ) -> StopPairOutcome:
         """Not scored, but the call was made: it carries it, so the live
         ledger shows what a voided call said."""
@@ -320,17 +328,13 @@ def _score_pair(
             truth=None,
             exclusion=reason,
             evidence_lap=evidence_lap,
+            settled_at=settled_at,
         )
 
     pair = (attacker, defender)
 
     def waiting(reason: str, stayer_stop: int | None = None) -> StopPairOutcome:
-        """Still running: void now if the duel was already neutralised,
-        else the call as made, its outcome to come."""
-        latest = max((lap for (driver, lap) in rows if driver in pair), default=decision_lap)
-        neutral = _first_neutralized_lap(rows, pair, decision_lap + 1, latest)
-        if neutral is not None:
-            return excluded("neutralized_between_stops", stayer_stop, neutral)
+        """Still running: the call as made, its outcome to come."""
         result, _ = _predict(
             kind, attacker, defender, decision_lap, None, fits_at, params, total_laps
         )
@@ -351,18 +355,49 @@ def _score_pair(
         )
 
     stayer_stop = next((lap for lap in stops_by_driver.get(stayer, []) if lap > decision_lap), None)
+    if stayer_stop is not None and stayer_stop <= first_stop_lap:
+        return excluded(
+            "double_stacked_or_simultaneous",
+            stayer_stop,
+            first_stop_lap + 1,
+            _end(
+                rows, attacker if kind is CrossoverKind.UNDERCUT else defender, first_stop_lap + 1
+            ),
+        )
+
+    # Voids the laps run so far already settle, the earliest-known first. A
+    # fact once true stays true, so a void's reason never changes as the
+    # race goes on, and the finished race gives the same one: the live
+    # ledger never re-tells a call it has settled.
+    truth_lap = stayer_stop + 1 if stayer_stop is not None else None
+    latest = max((lap for (driver, lap) in rows if driver in pair), default=decision_lap)
+    voids: list[tuple[datetime, int, str]] = []
+    neutral = _first_neutralized(
+        rows, pair, decision_lap + 1, truth_lap if truth_lap is not None else latest
+    )
+    if neutral is not None:
+        voids.append((neutral[0], neutral[1], "neutralized_between_stops"))
+    out_end = _end(rows, stayer, stayer_stop + 1) if stayer_stop is not None else None
+    if (
+        stayer_stop is not None
+        and out_end is not None
+        and not _is_green_stop(rows, stayer, stayer_stop)
+    ):
+        voids.append((out_end, stayer_stop + 1, "rival_stop_not_green"))
+    if voids:
+        settled_at, evidence_lap, reason = min(voids)
+        return excluded(reason, stayer_stop, evidence_lap, settled_at)
+
     if stayer_stop is None:
         if final:
             return excluded("rival_never_stopped_again")
         return waiting("waiting_for_rival_stop")
-    if stayer_stop <= first_stop_lap:
-        return excluded("double_stacked_or_simultaneous", stayer_stop, first_stop_lap + 1)
-    if not final and (stayer, stayer_stop + 1) not in rows:
+    if (stayer, stayer_stop + 1) not in rows:
+        if final:  # no out-lap: it never left the pits
+            return excluded("rival_stop_not_green", stayer_stop)
         return waiting("waiting_for_rival_out_lap", stayer_stop)
-    if not _is_green_stop(rows, stayer, stayer_stop):
-        return excluded("rival_stop_not_green", stayer_stop, stayer_stop + 1)
 
-    truth_lap = stayer_stop + 1
+    assert truth_lap is not None
     actual_margin = _gap_between(rows, defender, attacker, truth_lap)
     if actual_margin is None:
         if not final and any((driver, truth_lap) not in rows for driver in pair):
@@ -370,9 +405,6 @@ def _score_pair(
         return excluded("no_common_outcome_lap", stayer_stop)
     # _gap_between(defender, attacker, ...) is defender-behind-attacker:
     # positive means the attacker crossed the line first, i.e. is ahead.
-    neutral = _first_neutralized_lap(rows, pair, decision_lap + 1, truth_lap)
-    if neutral is not None:
-        return excluded("neutralized_between_stops", stayer_stop, neutral)
 
     result, predicted_ahead = _predict(
         kind, attacker, defender, decision_lap, stayer_stop, fits_at, params, total_laps
@@ -451,6 +483,7 @@ def _outcome(
     exclusion: str | None = None,
     pending: bool = False,
     evidence_lap: int | None = None,
+    settled_at: datetime | None = None,
 ) -> StopPairOutcome:
     undercut = kind is CrossoverKind.UNDERCUT
     truth_lap, actual_margin = truth if truth is not None else (None, None)
@@ -492,6 +525,9 @@ def _outcome(
         ),
         pending=pending,
         evidence_lap=truth_lap if truth is not None else evidence_lap,
+        settled_at_utc=_settled_by_outcome(rows, (attacker, defender), truth_lap)
+        if truth_lap is not None
+        else settled_at,
     )
 
 
@@ -550,19 +586,36 @@ def _row_neutralized(row: dict[str, object]) -> bool:
     return any(flag in _NEUTRALIZED for flag in flags)  # type: ignore[union-attr]
 
 
-def _first_neutralized_lap(
+def _first_neutralized(
     rows: dict[tuple[str, int], dict[str, object]],
     drivers: tuple[str, str],
     from_lap: int,
     to_lap: int,
-) -> int | None:
-    """The first lap in the range either car ran under SC/VSC/red."""
-    for lap_number in range(from_lap, to_lap + 1):
-        for driver in drivers:
-            row = rows.get((driver, lap_number))
-            if row is not None and _row_neutralized(row):
-                return lap_number
-    return None
+) -> tuple[datetime, int] | None:
+    """The earliest crossing in the lap range at which either car had run
+    under SC/VSC/red, and its lap."""
+    found = [
+        (end, lap_number)
+        for lap_number in range(from_lap, to_lap + 1)
+        for driver in drivers
+        if (row := rows.get((driver, lap_number))) is not None
+        and _row_neutralized(row)
+        and isinstance(end := row.get("lap_end_utc"), datetime)
+    ]
+    return min(found) if found else None
+
+
+def _end(rows: dict[tuple[str, int], dict[str, object]], driver: str, lap: int) -> datetime | None:
+    row = rows.get((driver, lap))
+    end = row.get("lap_end_utc") if row is not None else None
+    return end if isinstance(end, datetime) else None
+
+
+def _settled_by_outcome(
+    rows: dict[tuple[str, int], dict[str, object]], pair: tuple[str, str], truth_lap: int
+) -> datetime | None:
+    ends = [end for driver in pair if (end := _end(rows, driver, truth_lap)) is not None]
+    return max(ends) if ends else None
 
 
 def _race_order_at(laps: pl.DataFrame, lap_number: int) -> list[str]:

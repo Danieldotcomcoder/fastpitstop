@@ -324,6 +324,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sessions/{key}/calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Calls
+         * @description The calls ledger (ROADMAP W5): every undercut and rejoin call locked
+         *     by the end of `upto`, how each resolved, and the scorecard. Only the call
+         *     kinds a passing held-out backtest cleared are served.
+         */
+        get: operations["get_calls_sessions__key__calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions/{key}/circuit": {
         parameters: {
             query?: never;
@@ -648,6 +670,75 @@ export interface components {
             /** Session Year */
             session_year: number;
         };
+        /**
+         * CallKind
+         * @enum {string}
+         */
+        CallKind: "undercut" | "rejoin";
+        /**
+         * CallLedgerOut
+         * @description `GET /sessions/{key}/calls`: every call locked by the end of
+         *     `upto_lap` (the lap the viewer has watched to), and the scorecard over
+         *     them. `final` once the whole race is in: then nothing is pending.
+         */
+        CallLedgerOut: {
+            /** Calls */
+            calls: components["schemas"]["CallOut"][];
+            /** Final */
+            final: boolean;
+            /** Kinds */
+            kinds: components["schemas"]["CallKind"][];
+            scorecard: components["schemas"]["ScorecardOut"];
+            session_key: components["schemas"]["SessionKey"];
+            /** Upto Lap */
+            upto_lap: number | null;
+        };
+        /**
+         * CallOut
+         * @description One `f1_kernel.Call` (ROADMAP W5): what the desk said about a car the
+         *     lap before it boxed, and how the race settled it. Laps, never clock
+         *     times: a replay re-times its stream, and a lap reads the same in both.
+         *     The `call` stream envelope carries this whole object each time the
+         *     call locks or its status changes.
+         */
+        CallOut: {
+            /** Actual Car Ahead */
+            actual_car_ahead: string | null;
+            /** Actual Position */
+            actual_position: number | null;
+            /** Call Id */
+            call_id: string;
+            confidence: components["schemas"]["Confidence"];
+            /** Crossover Lap */
+            crossover_lap: number | null;
+            /** Decision Lap */
+            decision_lap: number;
+            /** Detail */
+            detail: string | null;
+            /** Driver */
+            driver: string;
+            /** Driver Ahead After */
+            driver_ahead_after: boolean | null;
+            /** In Lap */
+            in_lap: number;
+            kind: components["schemas"]["CallKind"];
+            /** Projected Margin S */
+            projected_margin_s: number | null;
+            /** Projected Position */
+            projected_position: number | null;
+            /** Rival */
+            rival: string | null;
+            /** Rival Stop Lap */
+            rival_stop_lap: number | null;
+            status: components["schemas"]["CallStatus"];
+            /** Window */
+            window: string | null;
+        };
+        /**
+         * CallStatus
+         * @enum {string}
+         */
+        CallStatus: "pending" | "right" | "wrong" | "void" | "no_call";
         /**
          * CircuitOut
          * @description `GET /sessions/{key}/circuit` — `f1_kernel.Circuit`'s geometry, for
@@ -1161,6 +1252,8 @@ export interface components {
              * @enum {string}
              */
             provenance: "live" | "historical";
+            /** Rejoins */
+            rejoins: components["schemas"]["RejoinProjectionOut"][];
             session_key: components["schemas"]["SessionKey"];
             /** Summary */
             summary: string;
@@ -1418,6 +1511,42 @@ export interface components {
             status: "ok";
         };
         /**
+         * RejoinProjectionOut
+         * @description One `f1_kernel.RejoinProjection`: where a car comes out if it boxes
+         *     at the end of the next lap, with the clear air its confidence reads.
+         */
+        RejoinProjectionOut: {
+            /** Car Ahead */
+            car_ahead: string | null;
+            /** Car Behind */
+            car_behind: string | null;
+            confidence: components["schemas"]["Confidence"];
+            /** Decision Lap */
+            decision_lap: number;
+            /** Driver */
+            driver: string;
+            /** Gap To Ahead S */
+            gap_to_ahead_s: number | null;
+            /** Gap To Behind S */
+            gap_to_behind_s: number | null;
+            /** In Lap */
+            in_lap: number;
+            /** Margin S */
+            margin_s: number | null;
+            /** Pit Loss Provenance */
+            pit_loss_provenance: string;
+            /** Pit Loss S */
+            pit_loss_s: number;
+            /** Pit Loss Sigma S */
+            pit_loss_sigma_s: number | null;
+            /** Position */
+            position: number;
+            /** Position Now */
+            position_now: number;
+            /** Reasons */
+            reasons: string[];
+        };
+        /**
          * Reliability
          * @description How much a `DegradationFit` should be trusted — driven by lap count
          *     and fit quality, never presented as a single undifferentiated number.
@@ -1482,6 +1611,32 @@ export interface components {
              * Format: date-time
              */
             start_utc: string;
+        };
+        /** ScoreLineOut */
+        ScoreLineOut: {
+            confidence: components["schemas"]["Confidence"];
+            /** Right */
+            right: number;
+            /** Wrong */
+            wrong: number;
+        };
+        /**
+         * ScorecardOut
+         * @description `f1_kernel.Scorecard`: resolved calls only, high to low.
+         */
+        ScorecardOut: {
+            /** By Confidence */
+            by_confidence: components["schemas"]["ScoreLineOut"][];
+            /** No Call */
+            no_call: number;
+            /** Pending */
+            pending: number;
+            /** Right */
+            right: number;
+            /** Void */
+            void: number;
+            /** Wrong */
+            wrong: number;
         };
         /**
          * ServerTimeOut
@@ -2122,6 +2277,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnomalyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_calls_sessions__key__calls_get: {
+        parameters: {
+            query?: {
+                /** @description The lap the viewer has watched to: nothing past its end is in the answer. Omit for the whole race. */
+                upto?: number | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallLedgerOut"];
                 };
             };
             /** @description Validation Error */

@@ -54,6 +54,7 @@ from f1_kernel.frames import (
 from f1_kernel.fuel import fuel_correct
 from f1_kernel.load import session_frames, telemetry_frame
 from f1_kernel.params import KernelParams
+from f1_kernel.rejoin import RejoinProjection, rejoin_snapshot
 from f1_kernel.sources import EventSource
 from f1_kernel.undercut import CrossoverResult, undercut_snapshot
 
@@ -98,6 +99,9 @@ class KernelReport:
     crossovers: tuple[CrossoverResult, ...]
     """One `undercut_window` call per adjacent pair at `decision_lap`,
     walk-forward safe (`f1_kernel.undercut.undercut_snapshot`)."""
+    rejoins: tuple[RejoinProjection, ...]
+    """Where each car comes out if it boxes at the end of the next lap,
+    from the same decision lap (`f1_kernel.rejoin.rejoin_snapshot`)."""
 
     braking_drift: tuple[BrakingDrift, ...]
     """Empty unless telemetry was supplied for at least one driver — see
@@ -184,6 +188,14 @@ def analyze_session_from_frames(
     resolved_decision_lap = crossovers[0].decision_lap if crossovers else decision_lap
     if not frames.laps.is_empty() and not crossovers:
         notes.append("no undercut/overcut pair found at the decision lap")
+    rejoin_lap = (
+        resolved_decision_lap
+        if resolved_decision_lap is not None
+        else _latest_shared_lap(frames.laps)
+    )
+    rejoins = (
+        rejoin_snapshot(frames, params, decision_lap=rejoin_lap) if rejoin_lap is not None else []
+    )
 
     braking_fits: list[BrakingDrift] = []
     braking_drivers: list[str] = []
@@ -215,6 +227,7 @@ def analyze_session_from_frames(
         total_laps=resolved_total_laps,
         decision_lap=resolved_decision_lap,
         crossovers=tuple(crossovers),
+        rejoins=tuple(rejoins),
         braking_drift=tuple(braking_fits),
         braking_drivers=tuple(braking_drivers),
         notes=tuple(notes),
@@ -327,6 +340,23 @@ class LiveKernelSession:
         return analyze_session_from_frames(
             frames, self.params, telemetry=telemetry, total_laps=total_laps
         )
+
+
+def _latest_shared_lap(laps: pl.DataFrame) -> int | None:
+    """The latest lap at least two cars have completed: the decision lap
+    `undercut_snapshot` would pick, for when it found no pair at all."""
+    if laps.is_empty():
+        return None
+    shared = (
+        laps.filter(pl.col("lap_end_utc").is_not_null())
+        .group_by("lap_number")
+        .agg(pl.col("driver").n_unique().alias("n"))
+        .filter(pl.col("n") >= 2)
+    )
+    if shared.is_empty():
+        return None
+    found = shared["lap_number"].max()
+    return found if isinstance(found, int) else None
 
 
 def _race_counter(events: Sequence[DomainEvent]) -> int | None:

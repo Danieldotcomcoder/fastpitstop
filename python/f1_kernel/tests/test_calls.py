@@ -70,8 +70,8 @@ def _assert_never_ahead_and_never_changes(
             assert call.resolved_at_utc is None or call.resolved_at_utc <= moment, call
             assert (call.status is CallStatus.PENDING) == (call.resolved_at_utc is None), call
             if call.call_id in settled:
-                before = settled[call.call_id]
-                assert (call.status, call.confidence) == (before.status, before.confidence)
+                # Settled is settled: same outcome, same reason, same moment.
+                assert call == settled[call.call_id]
             if call.status is not CallStatus.PENDING:
                 settled[call.call_id] = call
             # Its claim never moves either, pending or not.
@@ -80,7 +80,7 @@ def _assert_never_ahead_and_never_changes(
             assert call.projected_position == final[call.call_id].projected_position
 
     for call_id, call in settled.items():
-        assert final[call_id].status is call.status
+        assert final[call_id] == call
 
 
 @pytest.mark.parametrize("key", ALL_RACES, ids=lambda key: f"round{key.round}")

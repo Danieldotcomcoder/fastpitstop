@@ -263,6 +263,236 @@
         "title": "BrakingPointRowOut",
         "type": "object"
       },
+      "CallKind": {
+        "enum": [
+          "undercut",
+          "rejoin"
+        ],
+        "title": "CallKind",
+        "type": "string"
+      },
+      "CallLedgerOut": {
+        "description": "`GET /sessions/{key}/calls`: every call locked by the end of\n`upto_lap` (the lap the viewer has watched to), and the scorecard over\nthem. `final` once the whole race is in: then nothing is pending.",
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/CallOut"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "final": {
+            "title": "Final",
+            "type": "boolean"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/CallKind"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "scorecard": {
+            "$ref": "#/components/schemas/ScorecardOut"
+          },
+          "session_key": {
+            "$ref": "#/components/schemas/SessionKey"
+          },
+          "upto_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upto Lap"
+          }
+        },
+        "required": [
+          "session_key",
+          "kinds",
+          "upto_lap",
+          "final",
+          "calls",
+          "scorecard"
+        ],
+        "title": "CallLedgerOut",
+        "type": "object"
+      },
+      "CallOut": {
+        "description": "One `f1_kernel.Call` (ROADMAP W5): what the desk said about a car the\nlap before it boxed, and how the race settled it. Laps, never clock\ntimes: a replay re-times its stream, and a lap reads the same in both.\nThe `call` stream envelope carries this whole object each time the\ncall locks or its status changes.",
+        "properties": {
+          "actual_car_ahead": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Car Ahead"
+          },
+          "actual_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Position"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "crossover_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crossover Lap"
+          },
+          "decision_lap": {
+            "title": "Decision Lap",
+            "type": "integer"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "driver_ahead_after": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Ahead After"
+          },
+          "in_lap": {
+            "title": "In Lap",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CallKind"
+          },
+          "projected_margin_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Margin S"
+          },
+          "projected_position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Position"
+          },
+          "rival": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rival"
+          },
+          "rival_stop_lap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rival Stop Lap"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CallStatus"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          }
+        },
+        "required": [
+          "call_id",
+          "kind",
+          "driver",
+          "rival",
+          "decision_lap",
+          "in_lap",
+          "confidence",
+          "status",
+          "detail",
+          "window",
+          "crossover_lap",
+          "projected_position",
+          "projected_margin_s",
+          "rival_stop_lap",
+          "driver_ahead_after",
+          "actual_position",
+          "actual_car_ahead"
+        ],
+        "title": "CallOut",
+        "type": "object"
+      },
+      "CallStatus": {
+        "enum": [
+          "pending",
+          "right",
+          "wrong",
+          "void",
+          "no_call"
+        ],
+        "title": "CallStatus",
+        "type": "string"
+      },
       "CircuitOut": {
         "description": "`GET /sessions/{key}/circuit` \u2014 `f1_kernel.Circuit`'s geometry, for\nthe track map. `None` (not a 404) when the session's event does not\nmatch one of the few circuits this project ships metadata for yet \u2014\nthe same \"an analytic must degrade gracefully, not assume every venue\nis present\" discipline `f1_kernel.circuit_for_event` already documents.",
         "properties": {
@@ -1840,6 +2070,13 @@
             "title": "Provenance",
             "type": "string"
           },
+          "rejoins": {
+            "items": {
+              "$ref": "#/components/schemas/RejoinProjectionOut"
+            },
+            "title": "Rejoins",
+            "type": "array"
+          },
           "session_key": {
             "$ref": "#/components/schemas/SessionKey"
           },
@@ -1869,6 +2106,7 @@
           "degradation_fits",
           "degradation_by_compound",
           "crossovers",
+          "rejoins",
           "braking_drift",
           "braking_drivers",
           "notes",
@@ -2614,6 +2852,134 @@
         "title": "ReadyOut",
         "type": "object"
       },
+      "RejoinProjectionOut": {
+        "description": "One `f1_kernel.RejoinProjection`: where a car comes out if it boxes\nat the end of the next lap, with the clear air its confidence reads.",
+        "properties": {
+          "car_ahead": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Car Ahead"
+          },
+          "car_behind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Car Behind"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "decision_lap": {
+            "title": "Decision Lap",
+            "type": "integer"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "gap_to_ahead_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap To Ahead S"
+          },
+          "gap_to_behind_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap To Behind S"
+          },
+          "in_lap": {
+            "title": "In Lap",
+            "type": "integer"
+          },
+          "margin_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin S"
+          },
+          "pit_loss_provenance": {
+            "title": "Pit Loss Provenance",
+            "type": "string"
+          },
+          "pit_loss_s": {
+            "title": "Pit Loss S",
+            "type": "number"
+          },
+          "pit_loss_sigma_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pit Loss Sigma S"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "position_now": {
+            "title": "Position Now",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "driver",
+          "decision_lap",
+          "in_lap",
+          "position_now",
+          "position",
+          "car_ahead",
+          "gap_to_ahead_s",
+          "car_behind",
+          "gap_to_behind_s",
+          "margin_s",
+          "pit_loss_s",
+          "pit_loss_provenance",
+          "pit_loss_sigma_s",
+          "confidence",
+          "reasons"
+        ],
+        "title": "RejoinProjectionOut",
+        "type": "object"
+      },
       "Reliability": {
         "description": "How much a `DegradationFit` should be trusted \u2014 driven by lap count\nand fit quality, never presented as a single undifferentiated number.",
         "enum": [
@@ -2772,6 +3138,70 @@
           "start_local"
         ],
         "title": "ScheduleSessionOut",
+        "type": "object"
+      },
+      "ScoreLineOut": {
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/Confidence"
+          },
+          "right": {
+            "title": "Right",
+            "type": "integer"
+          },
+          "wrong": {
+            "title": "Wrong",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "confidence",
+          "right",
+          "wrong"
+        ],
+        "title": "ScoreLineOut",
+        "type": "object"
+      },
+      "ScorecardOut": {
+        "description": "`f1_kernel.Scorecard`: resolved calls only, high to low.",
+        "properties": {
+          "by_confidence": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreLineOut"
+            },
+            "title": "By Confidence",
+            "type": "array"
+          },
+          "no_call": {
+            "title": "No Call",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "right": {
+            "title": "Right",
+            "type": "integer"
+          },
+          "void": {
+            "title": "Void",
+            "type": "integer"
+          },
+          "wrong": {
+            "title": "Wrong",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "right",
+          "wrong",
+          "by_confidence",
+          "pending",
+          "void",
+          "no_call"
+        ],
+        "title": "ScorecardOut",
         "type": "object"
       },
       "ServerTimeOut": {
@@ -4020,6 +4450,68 @@
         "summary": "Get Session Anomalies",
         "tags": [
           "why"
+        ]
+      }
+    },
+    "/sessions/{key}/calls": {
+      "get": {
+        "description": "The calls ledger (ROADMAP W5): every undercut and rejoin call locked\nby the end of `upto`, how each resolved, and the scorecard. Only the call\nkinds a passing held-out backtest cleared are served.",
+        "operationId": "get_calls_sessions__key__calls_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The lap the viewer has watched to: nothing past its end is in the answer. Omit for the whole race.",
+            "in": "query",
+            "name": "upto",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The lap the viewer has watched to: nothing past its end is in the answer. Omit for the whole race.",
+              "title": "Upto"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallLedgerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Calls",
+        "tags": [
+          "sessions"
         ]
       }
     },

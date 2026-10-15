@@ -24,6 +24,7 @@ RADIO_FIXTURE_ENV_VAR = "F1_API_RADIO_FIXTURE"
 WHY_FIXTURE_ENV_VAR = "F1_API_WHY_FIXTURE"
 SCHEDULE_FIXTURE_ENV_VAR = "F1_API_SCHEDULE_FIXTURE"
 DEFAULT_FASTF1_CACHE_DIR = Path("data/fastf1_cache")
+CALL_KINDS_ENV_VAR = "F1_API_CALL_KINDS"
 MAX_EXPLANATIONS_ENV_VAR = "F1_WHY_MAX_EXPLANATIONS"
 DEFAULT_MAX_EXPLANATIONS = 20
 """Ceiling on story cards per session. Template narration costs nothing, so
@@ -61,6 +62,12 @@ class Settings:
     `get_narration_model` resolves to a citing mock so E2E can assert a
     grounded explanation without a live API key. Unset (the default) keeps
     the normal Claude-or-declining-mock resolution."""
+    call_kinds: frozenset[str] | None = None
+    """The call kinds (ROADMAP W5) the stream and `GET .../calls` serve.
+    None, every real deployment, means `f1_kernel.CLEARED_CALL_KINDS`: only
+    kinds a passing held-out backtest cleared. Set (`F1_API_CALL_KINDS=
+    undercut,rejoin`, or `none`) only by the Playwright harnesses and local
+    development, to exercise a kind that has not cleared yet."""
     max_explanations: int = DEFAULT_MAX_EXPLANATIONS
     """How many of a session's anomalies actually get narrated (the most
     salient ones). A real race detects a few hundred anomalies; explaining
@@ -133,6 +140,7 @@ def get_settings() -> Settings:
             else None
         ),
         max_explanations=max_explanations,
+        call_kinds=_call_kinds(os.environ.get(CALL_KINDS_ENV_VAR)),
         feedback_enabled=os.environ.get(FEEDBACK_ENABLED_ENV_VAR, "1").strip()
         not in {"0", "false", "False"},
         feedback_to=os.environ.get("F1_FEEDBACK_TO") or "danielshdeed1995.ds@gmail.com",
@@ -149,7 +157,16 @@ def get_settings() -> Settings:
     )
 
 
+def _call_kinds(raw: str | None) -> frozenset[str] | None:
+    if raw is None or not raw.strip():
+        return None
+    if raw.strip().lower() == "none":
+        return frozenset()
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
+
+
 __all__ = [
+    "CALL_KINDS_ENV_VAR",
     "CORS_ORIGINS_ENV_VAR",
     "DEFAULT_CORS_ORIGINS",
     "DEFAULT_HISTORICAL_ROOT",

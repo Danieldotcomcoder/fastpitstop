@@ -765,6 +765,70 @@ medium beats low), with the report committed.**
 scorecard reproduces the backtest numbers on replayed races, and no call
 ever appears ahead of the playback clock (property test).
 
+**Status (2026-10-15): steps 1 to 3 of 5 built, blocked on your desktop
+runs.**
+
+*Found first:* the committed 2025 undercut report fails W5's own bar.
+Medium scores 65.8% (79 calls) and low 67.4% (43), so medium is below
+low. Its check only compared high (85.7%) with low. The live desk also
+shows only undercut calls, while that report mixes in overcut ones.
+You chose option A: diagnose on 2024, change the rule only if 2024
+agrees, then check 2025 once.
+
+*Built:*
+- **Diagnosis tools.** Each scored undercut pair records what set its
+  confidence:
+  - the worse of the two degradation fits;
+  - the medium cap, plus the same check at the rival's real stop lap,
+    where the call is actually scored;
+  - the not-green cap.
+
+  The report adds:
+  - a W5 ordering check with 95% intervals;
+  - the same check for undercut calls on their own;
+  - hit rates along each of those inputs;
+  - with `--diagnose`, the candidate rules.
+- **Calls in the kernel** (`f1_kernel.calls`, `f1_kernel.rejoin`).
+  - *What a call is:* what the desk said about a car the lap before it
+    boxed: an undercut window, or a rejoin ("P6, behind RUS").
+  - *How it resolves:* right, wrong, void (with the reason) or no call.
+    Only right and wrong count, split by confidence.
+  - *Same code as the backtest:* the ledger is the backtest's own
+    evaluator run over the laps released so far, so at the flag the
+    scorecard is the backtest on that race.
+  - *Rejoin confidence:* clear air to the nearest car against the spread
+    of one stop at that circuit.
+- **Rejoin backtest** (`tools/backtest_rejoin.py`). Pit loss is measured
+  only on the seasons before the one being tested.
+- **Ship gate.** `CLEARED_CALL_KINDS` is empty until a held-out report
+  passes; a test fails if the two disagree. `F1_API_CALL_KINDS` turns
+  kinds on for development and the browser tests only.
+- **Through Delay Sync.**
+  - A `call` stream envelope is sent when a call locks and again when
+    its status changes.
+  - `GET /sessions/{key}/calls?upto=` serves the ledger page.
+  - Every per-lap analytics update now carries each car's rejoin
+    projection.
+  - In the browser, `$lib/calls` folds the released calls into the
+    scorecard.
+
+*Checks:*
+- **Kernel property test:** both fixture races and four scripted edge
+  cases, at every lock and settle instant:
+  - nothing is dated past the viewer's moment;
+  - a settled call never changes in any field.
+
+  It found and fixed a void whose reason changed between mid-race and
+  the flag.
+- **API property test:** no `call` envelope is stamped before the
+  replayed crossing it is about.
+- **Browser property test:** 200 seeded trials through the real
+  `TimelineBuffer`.
+
+*Waiting on you:* `just w5-diagnose` (2024 undercut diagnosis and rejoin
+development report), then, with the rules settled, `just w5-holdout`
+(2025). Then the mockups (step 4) and the screens (step 5).
+
 ### W6. Sync 2.0 (signature)
 
 Built as pure TypeScript in `$lib/delay-sync/`, with property tests like
@@ -1051,7 +1115,9 @@ Each milestone ships between race weekends and passes W0 before deploy.
     verify-real`, and the side-by-side review against the competitor
     screenshots.
   - S6 share images: built 2026-10-15 (see S6).
-- **M4 onwards:** not started.
+- **M4:** W5 steps 1 to 3 built 2026-10-15 (see W5), waiting on your
+  desktop backtest runs. W6 not started.
+- **M5:** not started.
 
 ## Parked (needs a decision)
 
