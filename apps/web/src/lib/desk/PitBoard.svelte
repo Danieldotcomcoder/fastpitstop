@@ -7,7 +7,7 @@
 	import { colorForTeam } from '$lib/teams';
 	import ConfBadge from './ConfBadge.svelte';
 	import { sgn, surname } from './format';
-	import { modelRecordLine } from './model-record';
+	import { modelRecordLine } from '$lib/model-record';
 	import { tyresLine, type BoardModel } from './pit-board';
 	import type { SparkPoint } from './snapshot-history';
 	import { hideTip, showTip } from './tooltip';

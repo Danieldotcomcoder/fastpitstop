@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import report from '../../../../../python/f1_kernel/reports/undercut_backtest.md?raw';
+import report from '../../../../python/f1_kernel/reports/undercut_backtest.md?raw';
 import { MODEL_RECORD } from './model-record';
 
 describe('MODEL_RECORD', () => {

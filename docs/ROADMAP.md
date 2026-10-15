@@ -400,6 +400,19 @@ Checks:
 
 The race-desk visual baselines change and need re-approval.
 
+**Home (2026-10-14), per A-Home.** It already had the next race, its
+countdown and sessions, the circuit drawing itself, and the last race
+behind the shield. It gains the mockup's three points under them:
+- never ahead of your TV;
+- says what just happened;
+- calls the strategy, with the model's held-out record.
+
+One departure for honesty: the mockup's "and keeps score" reads "and
+shows its record". A per-race scorecard is W5, not built yet.
+
+The search text, recent races and questions stay below, unchanged. The
+home visual baselines change.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 
