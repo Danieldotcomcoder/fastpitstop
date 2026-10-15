@@ -141,6 +141,21 @@ visual-approve:
 backtest-phase2:
     uv run python python/f1_kernel/tools/run_backtest_suite.py
 
+# ROADMAP W5, step one of two, on 2024 (development): why the undercut's
+# medium calls score below low (with candidate confidence rules), and the
+# rejoin call with pit loss measured on 2023 only. Rules and thresholds are
+# read here; 2025 stays held out. Needs the 2023-2024 backfill; not in CI.
+w5-diagnose:
+    uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2024 --diagnose --out python/f1_kernel/reports/undercut_backtest_2024_diagnosis.md
+    uv run python python/f1_kernel/tools/backtest_rejoin.py --seasons 2024 --out python/f1_kernel/reports/rejoin_backtest_2024_dev.md
+
+# ROADMAP W5, step two: the held-out 2025 check, run once the rules read
+# from `w5-diagnose` are in the kernel. Pit loss for the rejoin call comes
+# from 2023-2024 only. These two reports decide which calls ship live.
+w5-holdout:
+    uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2025
+    uv run python python/f1_kernel/tools/backtest_rejoin.py --seasons 2025
+
 # Phase 3.1: run the FastAPI read model locally (http://127.0.0.1:8000,
 # docs at /docs). See docs/PHASE3.md.
 serve-api:

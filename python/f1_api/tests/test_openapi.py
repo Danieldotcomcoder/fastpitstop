@@ -26,6 +26,7 @@ EXPECTED_PATHS = {
     "/sessions/{key}/laps",
     "/sessions/{key}/degradation",
     "/sessions/{key}/analysis",
+    "/sessions/{key}/calls",
     "/sessions/{key}/circuit",
     "/sessions/{key}/telemetry/{driver}",
     "/sessions/{key}/radio",

@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from f1_api.calls import CallTracker, call_envelope, enabled_call_kinds
 from f1_api.config import Settings
 from f1_api.schemas import StreamEnvelope
 from f1_api.sessions import resolve_session
@@ -453,6 +454,8 @@ class _LiveAnalysis:
         self._store = explanation_store
         self._radio_index = radio_index
         self._feed = LapSnapshotFeed(session_key, event_name=event_name)
+        kinds = enabled_call_kinds(settings)
+        self._calls = CallTracker(kinds) if kinds else None
         self._considered: set[str] = set()
         self._told: dict[str, str] = {}
         """Each neutralization card considered: the retirements it named."""
@@ -484,11 +487,24 @@ class _LiveAnalysis:
                     continue
                 if report.crossovers:
                     self._ready.append(kernel_snapshot_envelope(event.ts_utc, report))
+                self._track_calls(report, event.ts_utc)
                 self._explain(report)
             except Exception:
                 _log.warning(
                     "live analysis failed for one lap; the stream continues", exc_info=True
                 )
+
+    def _track_calls(self, report: KernelReport, event_time: datetime) -> None:
+        # Live, a call only the end of the race settles (a rival who never
+        # stopped) stays pending on the stream; the ledger page settles it
+        # once the session is archived.
+        if self._calls is None:
+            return
+        try:
+            for call in self._calls.update(report):
+                self._ready.append(call_envelope(event_time, call))
+        except Exception:
+            _log.warning("call ledger failed for one lap; the stream continues", exc_info=True)
 
     def _explain(self, report: KernelReport) -> None:
         # The replay's story rules, applied to the race so far: each moment

@@ -21,6 +21,7 @@ from f1_api.schemas import (
     AnomalyOut,
     BrakingDriftOut,
     BrakingPointRowOut,
+    CallOut,
     CircuitOut,
     CitedEvidenceOut,
     ClassificationEntryOut,
@@ -34,13 +35,25 @@ from f1_api.schemas import (
     RadioClipOut,
     RadioSearchResultOut,
     RadioSegmentOut,
+    RejoinProjectionOut,
+    ScorecardOut,
+    ScoreLineOut,
     SessionDetailOut,
     SessionSummaryOut,
 )
 from f1_api.sessions import SessionEntry, session_key_path
 from f1_api.why import anomaly_id_path, evidence_href
 from f1_domain import DomainEvent, DriverListUpdated, SessionKey, SessionStatusChanged
-from f1_kernel import BrakingDrift, Circuit, CrossoverResult, DegradationFit, KernelReport
+from f1_kernel import (
+    BrakingDrift,
+    Call,
+    Circuit,
+    CrossoverResult,
+    DegradationFit,
+    KernelReport,
+    RejoinProjection,
+    Scorecard,
+)
 from f1_kernel.circuit import circuit_for_session
 from f1_kernel.status import track_status_timeline
 from f1_radio.search import SearchResult
@@ -84,6 +97,46 @@ def degradation_fit_rows(fits: Sequence[DegradationFit]) -> list[DegradationFitO
 
 def crossover_rows(crossovers: Sequence[CrossoverResult]) -> list[CrossoverResultOut]:
     return [CrossoverResultOut.model_validate(asdict(c)) for c in crossovers]
+
+
+def rejoin_rows(rejoins: Sequence[RejoinProjection]) -> list[RejoinProjectionOut]:
+    return [RejoinProjectionOut.model_validate(asdict(r)) for r in rejoins]
+
+
+def call_out(call: Call) -> CallOut:
+    return CallOut(
+        call_id=call.call_id,
+        kind=call.kind,
+        driver=call.driver,
+        rival=call.rival,
+        decision_lap=call.decision_lap,
+        in_lap=call.in_lap,
+        confidence=call.confidence,
+        status=call.status,
+        detail=call.detail,
+        window=call.window,
+        crossover_lap=call.crossover_lap,
+        projected_position=call.projected_position,
+        projected_margin_s=call.projected_margin_s,
+        rival_stop_lap=call.rival_stop_lap,
+        driver_ahead_after=call.driver_ahead_after,
+        actual_position=call.actual_position,
+        actual_car_ahead=call.actual_car_ahead,
+    )
+
+
+def scorecard_out(card: Scorecard) -> ScorecardOut:
+    return ScorecardOut(
+        right=card.right,
+        wrong=card.wrong,
+        by_confidence=[
+            ScoreLineOut(confidence=line.confidence, right=line.right, wrong=line.wrong)
+            for line in card.by_confidence
+        ],
+        pending=card.pending,
+        void=card.void,
+        no_call=card.no_call,
+    )
 
 
 def braking_drift_rows(fits: Sequence[BrakingDrift]) -> list[BrakingDriftOut]:
@@ -217,6 +270,7 @@ def kernel_report_out(report: KernelReport, entry: SessionEntry) -> KernelReport
         degradation_fits=degradation_fit_rows(report.degradation_fits),
         degradation_by_compound=degradation_by_compound_rows(report.degradation_by_compound),
         crossovers=crossover_rows(report.crossovers),
+        rejoins=rejoin_rows(report.rejoins),
         braking_drift=braking_drift_rows(report.braking_drift),
         braking_drivers=list(report.braking_drivers),
         notes=list(report.notes),
@@ -351,6 +405,7 @@ __all__ = [
     "anomaly_out",
     "braking_drift_rows",
     "braking_point_rows",
+    "call_out",
     "cited_evidence_out",
     "classification_from_laps",
     "crossover_rows",
@@ -362,5 +417,7 @@ __all__ = [
     "lap_summary_rows",
     "radio_clip_out",
     "radio_search_result_out",
+    "rejoin_rows",
+    "scorecard_out",
     "session_detail",
 ]

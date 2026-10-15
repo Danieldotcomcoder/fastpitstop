@@ -20,7 +20,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from f1_domain import SessionKey
-from f1_kernel import Confidence, CrossoverKind, Reliability, WindowState
+from f1_kernel import CallKind, CallStatus, Confidence, CrossoverKind, Reliability, WindowState
 
 Provenance = Literal["live", "historical"]
 
@@ -228,6 +228,8 @@ class CrossoverResultOut(BaseModel):
     projected_gap_if_covered_low_s: float | None
     projected_gap_if_covered_high_s: float | None
     projected_margin_at_assumed_stop_s: float | None
+    projected_margin_at_assumed_stop_low_s: float | None
+    projected_margin_at_assumed_stop_high_s: float | None
     projected_rejoin_gap_s: float | None
     window: WindowState
     opens_in_laps: int | None
@@ -236,6 +238,84 @@ class CrossoverResultOut(BaseModel):
     reasons: list[str]
     attacker_state: DriverStintStateOut
     defender_state: DriverStintStateOut
+
+
+class RejoinProjectionOut(BaseModel):
+    """One `f1_kernel.RejoinProjection`: where a car comes out if it boxes
+    at the end of the next lap, with the clear air its confidence reads."""
+
+    driver: str
+    decision_lap: int
+    in_lap: int
+    position_now: int
+    position: int
+    car_ahead: str | None
+    gap_to_ahead_s: float | None
+    car_behind: str | None
+    gap_to_behind_s: float | None
+    margin_s: float | None
+    pit_loss_s: float
+    pit_loss_provenance: str
+    pit_loss_sigma_s: float | None
+    confidence: Confidence
+    reasons: list[str]
+
+
+class CallOut(BaseModel):
+    """One `f1_kernel.Call` (ROADMAP W5): what the desk said about a car the
+    lap before it boxed, and how the race settled it. Laps, never clock
+    times: a replay re-times its stream, and a lap reads the same in both.
+    The `call` stream envelope carries this whole object each time the
+    call locks or its status changes."""
+
+    call_id: str
+    kind: CallKind
+    driver: str
+    rival: str | None
+    decision_lap: int
+    in_lap: int
+    confidence: Confidence
+    status: CallStatus
+    detail: str | None
+    window: str | None
+    crossover_lap: int | None
+    projected_position: int | None
+    projected_margin_s: float | None
+    rival_stop_lap: int | None
+    driver_ahead_after: bool | None
+    actual_position: int | None
+    actual_car_ahead: str | None
+
+
+class ScoreLineOut(BaseModel):
+    confidence: Confidence
+    right: int
+    wrong: int
+
+
+class ScorecardOut(BaseModel):
+    """`f1_kernel.Scorecard`: resolved calls only, high to low."""
+
+    right: int
+    wrong: int
+    by_confidence: list[ScoreLineOut]
+    pending: int
+    void: int
+    no_call: int
+
+
+class CallLedgerOut(BaseModel):
+    """`GET /sessions/{key}/calls`: every call locked by the end of
+    `upto_lap` (the lap the viewer has watched to), and the scorecard over
+    them. `final` once the whole race is in: then nothing is pending."""
+
+    session_key: SessionKey
+    kinds: list[CallKind]
+    """The call kinds served: those cleared by a passing held-out backtest."""
+    upto_lap: int | None
+    final: bool
+    calls: list[CallOut]
+    scorecard: ScorecardOut
 
 
 class BrakingDriftOut(BaseModel):
@@ -332,6 +412,7 @@ class KernelReportOut(BaseModel):
     degradation_fits: list[DegradationFitOut]
     degradation_by_compound: list[DegradationByCompoundRowOut]
     crossovers: list[CrossoverResultOut]
+    rejoins: list[RejoinProjectionOut]
     braking_drift: list[BrakingDriftOut]
     braking_drivers: list[str]
     notes: list[str]

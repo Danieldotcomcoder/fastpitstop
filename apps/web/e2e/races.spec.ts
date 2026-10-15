@@ -37,6 +37,20 @@ test('a weekend in progress: countdown, sessions and a calendar file', async ({
 	expect(ics).toContain('SUMMARY:Singapore Grand Prix: Race');
 });
 
+test('a Grand Prix page shares its own card: a 1200x630 PNG (S6)', async ({ request }) => {
+	const html = await (await request.get(`/races/${year}/singapore`)).text();
+	const card = /<meta property="og:image" content="https:\/\/fastpitstop\.online([^"]+)"/.exec(
+		html
+	)?.[1];
+	expect(card).toBe(`/races/${year}/singapore/og.png`);
+	const response = await request.get(card!);
+	expect(response.headers()['content-type']).toBe('image/png');
+	const png = await response.body();
+	expect(png.subarray(1, 4).toString()).toBe('PNG');
+	expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 630]);
+	expect((await request.get(`/races/${year}/no-such-race/og.png`)).status()).toBe(404);
+});
+
 test('a weekend that is over shows how the last race there was run, no result', async ({
 	page
 }) => {

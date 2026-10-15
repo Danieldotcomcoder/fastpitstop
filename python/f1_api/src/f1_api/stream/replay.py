@@ -126,7 +126,8 @@ from typing import Any
 
 import polars as pl
 
-from f1_api.convert import crossover_rows
+from f1_api.calls import CallTracker, call_envelope
+from f1_api.convert import crossover_rows, rejoin_rows
 from f1_api.schemas import StreamEnvelope
 from f1_api.why import (
     CitedEvidenceRef,
@@ -138,6 +139,7 @@ from f1_api.why import (
 from f1_domain import DomainEvent, LapCounterUpdated, SessionKey, TeamRadioClip
 from f1_domain.events import DOMAIN_EVENT_ADAPTER
 from f1_kernel import (
+    CallKind,
     EventSource,
     KernelParams,
     KernelReport,
@@ -267,6 +269,7 @@ def kernel_snapshot_envelope(event_time: datetime, report: KernelReport) -> Stre
     payload = {
         "decision_lap": report.decision_lap,
         "crossovers": [c.model_dump(mode="json") for c in crossover_rows(report.crossovers)],
+        "rejoins": [r.model_dump(mode="json") for r in rejoin_rows(report.rejoins)],
     }
     return StreamEnvelope(event_time_utc=event_time, kind=KERNEL_SNAPSHOT_KIND, payload=payload)
 
@@ -455,6 +458,13 @@ class LapSnapshotFeed:
         self._highest_flushed_lap = max(self._highest_flushed_lap or 0, lap_number)
         return report
 
+    def flush(self) -> KernelReport:
+        """Everything still buffered, analysed now: the race's last word,
+        once the stream has ended."""
+        report = self._live.push(self._pending)
+        self._pending = []
+        return report
+
     @property
     def events(self) -> tuple[DomainEvent, ...]:
         """Everything flushed into the kernel so far (car positions aside) —
@@ -475,11 +485,13 @@ class _SnapshotWorker:
     early cannot happen. Reports come back in lap order; one thread, one
     feed."""
 
-    def __init__(self, feed: LapSnapshotFeed) -> None:
+    def __init__(self, feed: LapSnapshotFeed, calls: CallTracker | None = None) -> None:
         self._feed = feed
+        self._calls = calls
+        self._last_ts: datetime | None = None
         self._closed = threading.Event()
         self._inbox: queue.SimpleQueue[tuple[DomainEvent, datetime] | None] = queue.SimpleQueue()
-        self._ready: deque[tuple[datetime, KernelReport]] = deque()
+        self._ready: deque[StreamEnvelope] = deque()
         self._thread = threading.Thread(target=self._run, name="f1-api-snapshots", daemon=True)
         self._thread.start()
 
@@ -488,15 +500,21 @@ class _SnapshotWorker:
             self._inbox.put((event, live_ts))
 
     def ready(self) -> Iterator[StreamEnvelope]:
-        """Snapshots finished since the last call, oldest first."""
+        """Snapshots and calls finished since the last call, oldest first."""
         while self._ready:
-            live_ts, report = self._ready.popleft()
-            yield kernel_snapshot_envelope(live_ts, report)
+            yield self._ready.popleft()
 
     def finish(self) -> Iterator[StreamEnvelope]:
-        """Wait for everything submitted, then the remaining snapshots."""
+        """Wait for everything submitted, then the remaining snapshots, and
+        the calls the end of the race settles (a rival who never stopped)."""
         self._inbox.put(None)
         self._thread.join()
+        if self._calls is not None and self._last_ts is not None:
+            try:
+                for call in self._calls.update(self._feed.flush(), final=True):
+                    self._ready.append(call_envelope(self._last_ts, call))
+            except Exception:
+                _log.warning("settling the calls failed; the replay ends", exc_info=True)
         yield from self.ready()
 
     def close(self) -> None:
@@ -507,13 +525,22 @@ class _SnapshotWorker:
     def _run(self) -> None:
         while (item := self._inbox.get()) is not None and not self._closed.is_set():
             event, live_ts = item
+            self._last_ts = live_ts
             try:
                 report = self._feed.feed(event)
             except Exception:
                 _log.warning("kernel snapshot failed; the replay continues", exc_info=True)
                 continue
-            if report is not None and report.crossovers:
-                self._ready.append((live_ts, report))
+            if report is None:
+                continue
+            if report.crossovers:
+                self._ready.append(kernel_snapshot_envelope(live_ts, report))
+            if self._calls is not None:
+                try:
+                    for call in self._calls.update(report):
+                        self._ready.append(call_envelope(live_ts, call))
+                except Exception:
+                    _log.warning("call ledger failed for one lap", exc_info=True)
 
 
 def _pacing_anchor_ts(events: list[DomainEvent], *, anchor_to_first_lap: bool) -> datetime:
@@ -615,6 +642,7 @@ def replay_envelopes(
     radio_index: SearchIndex | None = None,
     event_name: str | None = None,
     positions: pl.DataFrame | None = None,
+    call_kinds: Collection[CallKind] = (),
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
@@ -685,7 +713,8 @@ def replay_envelopes(
     # A replay holds the whole race, so its snapshots can use the real
     # distance from lap 1 rather than the slice seen so far.
     snapshots = _SnapshotWorker(
-        LapSnapshotFeed(session_key, total_laps=race_distance_laps(events), event_name=event_name)
+        LapSnapshotFeed(session_key, total_laps=race_distance_laps(events), event_name=event_name),
+        CallTracker(tuple(call_kinds)) if call_kinds else None,
     )
     try:
         start_wall = clock()

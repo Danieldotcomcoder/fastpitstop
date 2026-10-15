@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from f1_api.calls import enabled_call_kinds, session_call_ledger
 from f1_api.config import Settings, get_settings
 from f1_api.convert import (
     braking_point_rows,
@@ -24,6 +25,7 @@ from f1_api.geometry import session_positions
 from f1_api.response_cache import ResponseCache
 from f1_api.schemas import (
     BrakingPointRowOut,
+    CallLedgerOut,
     CircuitOut,
     DegradationFitOut,
     KernelReportOut,
@@ -194,6 +196,42 @@ def get_analysis(
             raise _not_found(session_key)
         report = _analyze(resolved, session_key, braking_drivers=braking_drivers)
         return kernel_report_out(report, resolved.entry)
+
+
+@router.get("/sessions/{key}/calls", response_model=CallLedgerOut)
+def get_calls(
+    session_key: SessionKeyDep,
+    settings: SettingsDep,
+    upto: Annotated[
+        int | None,
+        Query(
+            ge=0,
+            description=(
+                "The lap the viewer has watched to: nothing past its end is in the "
+                "answer. Omit for the whole race."
+            ),
+        ),
+    ] = None,
+) -> CallLedgerOut:
+    """The calls ledger (ROADMAP W5): every undercut and rejoin call locked
+    by the end of `upto`, how each resolved, and the scorecard. Only the call
+    kinds a passing held-out backtest cleared are served."""
+    with resolve_session(settings, session_key) as resolved:
+        if resolved is None:
+            raise _not_found(session_key)
+        source = resolved.source
+        frames = session_frames(source, session_key, event_name=resolved.entry.event_name)
+        distance = race_distance_laps(
+            source.events(session_key, kinds=["lap_counter_updated", "lap_completed"])
+        )
+        return session_call_ledger(
+            frames,
+            KernelParams(),
+            enabled_call_kinds(settings),
+            upto_lap=upto,
+            total_laps=distance,
+            running=resolved.entry.live,
+        )
 
 
 @router.get("/sessions/{key}/circuit", response_model=CircuitOut | None)

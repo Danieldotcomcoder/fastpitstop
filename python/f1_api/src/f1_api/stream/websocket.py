@@ -20,6 +20,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
+from f1_api.calls import enabled_call_kinds
 from f1_api.config import Settings, get_settings
 from f1_api.geometry import session_positions
 from f1_api.radio import radio_store_cm
@@ -327,6 +328,7 @@ async def _stream_replay(
                     radio_index=radio_index,
                     event_name=event_name,
                     positions=positions,
+                    call_kinds=enabled_call_kinds(settings),
                 )
             ) as envelopes:
                 for envelope in envelopes:

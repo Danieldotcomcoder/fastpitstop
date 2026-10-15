@@ -204,6 +204,12 @@ class CrossoverResult:
     projected_margin_at_assumed_stop_s: float | None
     """Margin at the `assume_*_stop_lap` what-if, when one was passed —
     how the backtest scores a prediction against the realized stop."""
+    projected_margin_at_assumed_stop_low_s: float | None
+    projected_margin_at_assumed_stop_high_s: float | None
+    """`projected_margin_at_assumed_stop_s` at the same deg-rate 95% CI
+    extremes as the covered band. Reported, not used for `confidence`:
+    the backtest compares the two bands (ROADMAP W5) before any rule
+    moves to the lap a call is actually scored at."""
     projected_rejoin_gap_s: float | None
     """Physical gap the first stopper faces to the stayer right after the
     out-lap, seconds; positive = first stopper behind. The one number the
@@ -720,8 +726,20 @@ def _crossover(
             break
 
     assumed_margin: float | None = None
+    assumed_band: tuple[float | None, float | None] = (None, None)
     if assumed_second_stop_lap is not None and assumed_second_stop_lap >= earliest_second_stop:
         assumed_margin = margin(assumed_second_stop_lap)
+        assumed_band = _covered_margin_band(
+            kind,
+            attacker_pace,
+            defender_pace,
+            attacker_fit,
+            defender_fit,
+            gap,
+            compound_delta,
+            resolved_decision,
+            assumed_second_stop_lap,
+        )
 
     if kind is CrossoverKind.UNDERCUT:
         rejoin = _rejoin_gap(
@@ -759,6 +777,8 @@ def _crossover(
         projected_gap_if_covered_low_s=low,
         projected_gap_if_covered_high_s=high,
         projected_margin_at_assumed_stop_s=assumed_margin,
+        projected_margin_at_assumed_stop_low_s=assumed_band[0],
+        projected_margin_at_assumed_stop_high_s=assumed_band[1],
         projected_rejoin_gap_s=rejoin,
         window=window,
         opens_in_laps=opens_in,
@@ -903,6 +923,8 @@ def _unknown_result(
         projected_gap_if_covered_low_s=None,
         projected_gap_if_covered_high_s=None,
         projected_margin_at_assumed_stop_s=None,
+        projected_margin_at_assumed_stop_low_s=None,
+        projected_margin_at_assumed_stop_high_s=None,
         projected_rejoin_gap_s=None,
         window=WindowState.UNKNOWN,
         opens_in_laps=None,
@@ -1021,6 +1043,8 @@ CROSSOVER_RESULT_SCHEMA: Schema = {
     "projected_gap_if_covered_low_s": pl.Float64(),
     "projected_gap_if_covered_high_s": pl.Float64(),
     "projected_margin_at_assumed_stop_s": pl.Float64(),
+    "projected_margin_at_assumed_stop_low_s": pl.Float64(),
+    "projected_margin_at_assumed_stop_high_s": pl.Float64(),
     "projected_rejoin_gap_s": pl.Float64(),
     "window": pl.String(),
     "opens_in_laps": pl.Int32(),
@@ -1061,6 +1085,8 @@ def crossover_results_to_frame(results: Sequence[CrossoverResult]) -> pl.DataFra
             "projected_gap_if_covered_low_s": r.projected_gap_if_covered_low_s,
             "projected_gap_if_covered_high_s": r.projected_gap_if_covered_high_s,
             "projected_margin_at_assumed_stop_s": r.projected_margin_at_assumed_stop_s,
+            "projected_margin_at_assumed_stop_low_s": r.projected_margin_at_assumed_stop_low_s,
+            "projected_margin_at_assumed_stop_high_s": r.projected_margin_at_assumed_stop_high_s,
             "projected_rejoin_gap_s": r.projected_rejoin_gap_s,
             "window": r.window.value,
             "opens_in_laps": r.opens_in_laps,

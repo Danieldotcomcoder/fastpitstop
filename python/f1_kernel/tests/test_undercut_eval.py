@@ -26,7 +26,7 @@ KEY = SessionKey(year=2024, round=1, session_type=SessionType.RACE)
 RACE_START = datetime(2024, 3, 2, 15, 0, tzinfo=UTC)
 
 
-def _scripted_undercut_race() -> SessionFrames:
+def _scripted_undercut_race(pit_in: dict[str, int] | None = None) -> SessionFrames:
     """Two cars, 18 laps. '44' runs 1.0s behind '1' for 11 laps, pits on
     lap 12, and emerges ahead once '1' pits on lap 15 — the lap times make
     the undercut succeed BY CONSTRUCTION (fresh 88.5s laps against the
@@ -37,7 +37,7 @@ def _scripted_undercut_race() -> SessionFrames:
         "44": [91.0, *[90.0] * 10, 92.0, 105.0, 88.5, 88.5, 88.5, 88.5, 88.5],
         "1": [90.0, *[90.0] * 10, 90.5, 91.0, 91.5, 93.0, 106.0, 89.0, 89.0],
     }
-    pit_in = {"44": 12, "1": 15}
+    pit_in = pit_in or {"44": 12, "1": 15}
     rows: list[dict[str, object]] = []
     for driver, times in lap_times.items():
         stop = pit_in[driver]
@@ -200,3 +200,61 @@ def test_the_fixture_races_produce_stop_pairs(
         assert outcome.window is not None
         if outcome.predicted_ahead is not None:
             assert outcome.hit == (outcome.predicted_ahead == outcome.actual_ahead)
+
+
+def test_each_scored_call_says_why_it_got_its_confidence(params: KernelParams) -> None:
+    """ROADMAP W5 option A: the breakdown columns the backtest groups by."""
+    duel = next(o for o in evaluate_session_stops(_scripted_undercut_race(), params) if o.evaluated)
+
+    assert duel.fit_floor == "good"
+    assert duel.decision_not_green is False
+    assert duel.covered_band_crosses_zero is False
+    assert duel.scored_band_crosses_zero is not None
+
+
+def test_the_report_rebuilds_todays_confidence_rule_exactly(
+    source: HistoricalSource, params: KernelParams
+) -> None:
+    """The candidate rules in `--diagnose` start from today's rule rebuilt
+    out of the breakdown columns; if that rebuild disagreed with the
+    kernel's own confidence on any call, every candidate would be wrong
+    the same way."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "tools" / "backtest_undercut.py"
+    spec = importlib.util.spec_from_file_location("backtest_undercut", path)
+    assert spec is not None and spec.loader is not None
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+
+    table = pl.DataFrame(
+        [
+            row
+            for key in ALL_RACES
+            for row in evaluate_session_stops_rows(session_frames(source, key), params)
+        ]
+    )
+    scored = table.filter(pl.col("evaluated") & pl.col("hit").is_not_null())
+    assert scored.height > 0
+
+    report = tool._render_report(["fixture"], [], table, diagnose=True)
+
+    assert f"**{scored.height} of {scored.height}** calls" in report
+    assert "## W5 ordering check" in report
+    assert "## Why each call got its confidence" in report
+    assert "## Candidate confidence rules" in report
+    assert "## Candidate confidence rules" not in tool._render_report(["fixture"], [], table)
+
+
+def test_a_rival_that_pitted_on_the_decision_lap_stopped_first(params: KernelParams) -> None:
+    """'1' pits at the end of lap 11, the lap before '44' does: it stopped
+    first, so 44's stop was never an undercut on it. Excluded as soon as
+    44's call locks, not left waiting for a second stop of 1's."""
+    race = _scripted_undercut_race({"44": 12, "1": 11})
+
+    [duel] = [o for o in evaluate_session_stops(race, params, final=False) if o.kind == "undercut"]
+
+    assert duel.evaluated is False
+    assert duel.pending is False
+    assert duel.exclusion == "rival_stopped_first"

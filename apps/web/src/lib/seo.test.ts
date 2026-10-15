@@ -233,6 +233,22 @@ describe('Grand Prix pages', () => {
 		expect(sitemapPaths([], [], [race])).toContain('/races/2026/united-states');
 		expect(serverRendered('/races/2026/united-states')).toBe(true);
 	});
+
+	it('shares its own card (S6); other pages keep the site image', () => {
+		const head = renderSeoHead(seoFor('/races/2026/united-states', [], [], [race]), {
+			withTitle: false
+		});
+		expect(head).toContain(
+			'<meta property="og:image" content="https://fastpitstop.online/races/2026/united-states/og.png" />'
+		);
+		expect(head).toContain(
+			'<meta name="twitter:image" content="https://fastpitstop.online/races/2026/united-states/og.png" />'
+		);
+		expect(head).toContain('2026 United States Grand Prix, Circuit of the Americas, 23–25 Oct');
+		expect(renderSeoHead(seoFor('/about'), { withTitle: false })).toContain(
+			'content="https://fastpitstop.online/og-image.png"'
+		);
+	});
 });
 
 describe('standings', () => {

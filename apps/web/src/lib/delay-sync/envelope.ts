@@ -22,12 +22,14 @@ export interface Envelope {
 export const KERNEL_SNAPSHOT_KIND = 'kernel_snapshot';
 
 /** `f1_api.stream.replay.kernel_snapshot_envelope`'s payload shape:
- * `{decision_lap, crossovers}`, each crossover a `CrossoverResultOut`. Kept
- * opaque here (`unknown[]`) — Delay Sync's job stops at "don't release this
- * before its time," not at knowing what a crossover means. */
+ * `{decision_lap, crossovers, rejoins}`, each crossover a
+ * `CrossoverResultOut` and each rejoin a `RejoinProjectionOut`. Kept opaque
+ * here (`unknown[]`) — Delay Sync's job stops at "don't release this before
+ * its time," not at knowing what a crossover means. */
 export interface KernelSnapshotPayload {
 	decision_lap: number | null;
 	crossovers: unknown[];
+	rejoins?: unknown[];
 }
 
 export function isKernelSnapshot(envelope: Envelope): boolean {
