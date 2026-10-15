@@ -825,9 +825,31 @@ agrees, then check 2025 once.
 - **Browser property test:** 200 seeded trials through the real
   `TimelineBuffer`.
 
-*Waiting on you:* `just w5-diagnose` (2024 undercut diagnosis and rejoin
-development report), then, with the rules settled, `just w5-holdout`
-(2025). Then the mockups (step 4) and the screens (step 5).
+*Step 4, mockups (2026-10-15):* five new boards on the design canvas,
+row W5. They are drawn from the ledger the code produces on the
+checked-in Bahrain replay at lap 16; the 2025 record is left as
+placeholders until the held-out run exists.
+- **Race desk:** where the focused car comes out if it boxes now, drawn
+  against how much a stop varies here; today's score by confidence; the
+  latest calls.
+- **Phone:** the Strategy tab.
+- **Ledger page:** held to the lap you have watched, like the story
+  page, and never showing the race's length. Calls are grouped as
+  counted, waiting and not counted, with the reason for each.
+- **Ledger on a phone.**
+- **The call card in each state.**
+
+Drawing them found two bugs, both fixed:
+- **Rejoin projection:** it covered a car already in the pits, or on its
+  out-lap.
+- **Undercut evaluator:** a rival that pitted on the decision lap itself
+  (so it stopped first) was left waiting for a second stop. Scored rows
+  are unchanged.
+
+*Waiting on you:*
+- approving the W5 mockups, before step 5 (the screens);
+- `just w5-diagnose` (2024 undercut diagnosis and rejoin development
+  report), then, with the rules settled, `just w5-holdout` (2025).
 
 ### W6. Sync 2.0 (signature)
 
