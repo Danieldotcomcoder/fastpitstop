@@ -35,7 +35,7 @@
 		else delete root.dataset.theme;
 		document
 			.querySelector('meta[name="theme-color"]')
-			?.setAttribute('content', light ? '#eeefea' : '#151614');
+			?.setAttribute('content', light ? '#eeefea' : '#030311');
 		try {
 			if (light) localStorage.setItem('theme', 'light');
 			else localStorage.removeItem('theme');
