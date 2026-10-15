@@ -97,6 +97,21 @@ class StopPairOutcome:
     hit: bool | None
     """predicted_ahead == actual_ahead; None when either side is None."""
     reasons: str
+    fit_floor: str | None = None
+    """The worse of the two degradation fits' reliability — where
+    `confidence` starts before any cap. With the three fields below, the
+    breakdown of WHY a call got its confidence (ROADMAP W5): the backtest
+    reports hit rate along each, so a confidence rule that orders badly
+    can be traced to the input that misleads it."""
+    covered_band_crosses_zero: bool | None = None
+    """The immediate-cover margin changes sign across the deg-rate 95%
+    CIs — the check that caps `confidence` at medium today."""
+    scored_band_crosses_zero: bool | None = None
+    """The same check at the rival's REAL stop lap, the margin the call is
+    actually scored on. Reported only; never feeds `confidence`."""
+    decision_not_green: bool | None = None
+    """Either car's decision lap ran under a non-green status — the check
+    that caps `confidence` at low."""
 
 
 def evaluate_session_stops(frames: SessionFrames, params: KernelParams) -> list[StopPairOutcome]:
@@ -214,6 +229,10 @@ def evaluate_session_stops_rows(
             "truth_lap": o.truth_lap,
             "hit": o.hit,
             "reasons": o.reasons,
+            "fit_floor": o.fit_floor,
+            "covered_band_crosses_zero": o.covered_band_crosses_zero,
+            "scored_band_crosses_zero": o.scored_band_crosses_zero,
+            "decision_not_green": o.decision_not_green,
         }
         for o in evaluate_session_stops(frames, params)
     ]
@@ -326,6 +345,48 @@ def _score_pair(
         truth_lap=truth_lap,
         hit=None if predicted_ahead is None else predicted_ahead == actual_ahead,
         reasons="; ".join(result.reasons),
+        fit_floor=_fit_floor(result),
+        covered_band_crosses_zero=_crosses_zero(
+            result.projected_gap_if_covered_low_s, result.projected_gap_if_covered_high_s
+        ),
+        scored_band_crosses_zero=_crosses_zero(
+            result.projected_margin_at_assumed_stop_low_s,
+            result.projected_margin_at_assumed_stop_high_s,
+        ),
+        decision_not_green=any(
+            _non_green(rows.get((driver, decision_lap))) for driver in (attacker, defender)
+        ),
+    )
+
+
+_RELIABILITY_ORDER = ("unreliable", "thin", "good")
+
+
+def _fit_floor(result: CrossoverResult) -> str | None:
+    found = [
+        state.fit_reliability
+        for state in (result.attacker_state, result.defender_state)
+        if state.fit_reliability in _RELIABILITY_ORDER
+    ]
+    if len(found) < 2:
+        return None
+    return min(found, key=_RELIABILITY_ORDER.index)
+
+
+def _crosses_zero(low: float | None, high: float | None) -> bool | None:
+    if low is None or high is None:
+        return None
+    return min(low, high) < 0 < max(low, high)
+
+
+def _non_green(row: dict[str, object] | None) -> bool:
+    """`f1_kernel.undercut`'s own reading of a decision lap's status."""
+    if row is None:
+        return False
+    return row.get("track_status") not in (
+        None,
+        TrackStatusKind.GREEN.value,
+        TrackStatusKind.CHEQUERED.value,
     )
 
 

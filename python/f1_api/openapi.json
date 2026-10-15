@@ -1034,6 +1034,28 @@
             ],
             "title": "Projected Gap If Covered S"
           },
+          "projected_margin_at_assumed_stop_high_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Margin At Assumed Stop High S"
+          },
+          "projected_margin_at_assumed_stop_low_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Projected Margin At Assumed Stop Low S"
+          },
           "projected_margin_at_assumed_stop_s": {
             "anyOf": [
               {
@@ -1084,6 +1106,8 @@
           "projected_gap_if_covered_low_s",
           "projected_gap_if_covered_high_s",
           "projected_margin_at_assumed_stop_s",
+          "projected_margin_at_assumed_stop_low_s",
+          "projected_margin_at_assumed_stop_high_s",
           "projected_rejoin_gap_s",
           "window",
           "opens_in_laps",

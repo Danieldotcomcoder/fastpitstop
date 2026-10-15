@@ -897,6 +897,10 @@ export interface components {
             projected_gap_if_covered_low_s: number | null;
             /** Projected Gap If Covered S */
             projected_gap_if_covered_s: number | null;
+            /** Projected Margin At Assumed Stop High S */
+            projected_margin_at_assumed_stop_high_s: number | null;
+            /** Projected Margin At Assumed Stop Low S */
+            projected_margin_at_assumed_stop_low_s: number | null;
             /** Projected Margin At Assumed Stop S */
             projected_margin_at_assumed_stop_s: number | null;
             /** Projected Rejoin Gap S */

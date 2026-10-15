@@ -7,6 +7,11 @@ wrong call is visibly different from a "high confidence" wrong call.
     uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2025
     uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2024 2025
 
+`--diagnose` adds what each candidate confidence rule would have scored
+(ROADMAP W5, option A). Run it on 2024 only: a rule is chosen on 2024, then
+2025 is regenerated WITHOUT it, as the unseen check. Looking at candidate
+rules on 2025 would spend the held-out season.
+
 This is reporting, not calibration: nothing here is written back into
 `KernelParams` or the circuit files (that is `calibrate_pit_loss.py`).
 Re-running it never changes kernel behaviour, only
@@ -47,6 +52,11 @@ def main(argv: list[str]) -> int:
         help="seasons to include (default: 2025, the held-out prediction season)",
     )
     parser.add_argument("--out", default=str(OUTPUT_PATH))
+    parser.add_argument(
+        "--diagnose",
+        action="store_true",
+        help="add candidate confidence rules to the report (2024 only, see above)",
+    )
     args = parser.parse_args(argv[1:])
 
     source = HistoricalSource(args.root)
@@ -77,7 +87,7 @@ def main(argv: list[str]) -> int:
             print(f"  {error}")
 
     table = result.table
-    report = _render_report(labels, result.errors, table)
+    report = _render_report(labels, result.errors, table, diagnose=args.diagnose)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report, encoding="utf-8")
@@ -93,7 +103,13 @@ def main(argv: list[str]) -> int:
     return 0
 
 
-def _render_report(labels: Sequence[str], errors: Sequence[object], table: pl.DataFrame) -> str:
+def _render_report(
+    labels: Sequence[str],
+    errors: Sequence[object],
+    table: pl.DataFrame,
+    *,
+    diagnose: bool = False,
+) -> str:
     lines = [
         "# Undercut / overcut backtest report",
         "",
@@ -159,6 +175,39 @@ def _render_report(labels: Sequence[str], errors: Sequence[object], table: pl.Da
             _calibration_verdict(scored),
             "",
         ]
+        lines += [
+            "## W5 ordering check",
+            "",
+            "A call type ships on the live scorecard only when high beats medium beats low "
+            "(ROADMAP W5). Each rate carries its Wilson 95% interval, so a gap smaller than "
+            "the sample can resolve is visible as one.",
+            "",
+            _ordering_table(scored, "confidence"),
+            "",
+            _ordering_verdict(scored, "confidence"),
+            "",
+        ]
+        for kind in ("undercut", "overcut"):
+            subset = scored.filter(pl.col("kind") == kind)
+            if subset.is_empty():
+                continue
+            lines += [
+                f"### {kind.capitalize()} calls only",
+                "",
+                "The live desk shows undercut calls (the car behind stops first); overcut "
+                "calls are scored here but never shown live, so the scorecard's bar is the "
+                "undercut's own ordering."
+                if kind == "undercut"
+                else "Scored in the backtest, not shown on the live desk.",
+                "",
+                _ordering_table(subset, "confidence"),
+                "",
+                _ordering_verdict(subset, "confidence"),
+                "",
+            ]
+        lines += _why_confidence_sections(scored)
+        if diagnose:
+            lines += _candidate_rule_sections(scored)
         lines += ["## Worst misses (highest confidence, wrong call)", ""]
         lines.append(_worst_misses_table(scored))
         lines.append("")
@@ -206,6 +255,180 @@ def _calibration_verdict(scored: pl.DataFrame) -> str:
         verdict = "PASS" if rates["high"] >= rates["low"] else "FAIL"
         return f"**{verdict}**: high={rates['high']:.1%} vs low={rates['low']:.1%}"
     return f"insufficient confidence spread to check ({sorted(rates)})"
+
+
+_LEVELS = ("high", "medium", "low")
+
+
+def _wilson(hits: int, n: int) -> tuple[float, float]:
+    """The Wilson score interval at 95%: honest at small n and near 0/1."""
+    if n == 0:
+        return (0.0, 1.0)
+    z = 1.959964
+    p = hits / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / (1 + z * z / n)
+    return (centre - half, centre + half)
+
+
+def _level_rates(scored: pl.DataFrame, column: str) -> dict[str, tuple[int, int]]:
+    """(hits, n) per confidence level in `column`."""
+    out: dict[str, tuple[int, int]] = {}
+    for level in _LEVELS:
+        subset = scored.filter(pl.col(column) == level)
+        if not subset.is_empty():
+            out[level] = (int(subset["hit"].cast(pl.Int64).sum()), subset.height)
+    return out
+
+
+def _ordering_table(scored: pl.DataFrame, column: str) -> str:
+    lines = ["| confidence | n | hit rate | 95% interval |", "| --- | --- | --- | --- |"]
+    for level, (hits, n) in _level_rates(scored, column).items():
+        low, high = _wilson(hits, n)
+        lines.append(f"| {level} | {n} | {hits / n:.1%} | {low:.1%} to {high:.1%} |")
+    return "\n".join(lines)
+
+
+def _ordering_verdict(scored: pl.DataFrame, column: str) -> str:
+    rates = {level: hits / n for level, (hits, n) in _level_rates(scored, column).items()}
+    if len(rates) < 3:
+        return f"insufficient confidence spread to check ({sorted(rates)})"
+    ordered = rates["high"] > rates["medium"] > rates["low"]
+    verdict = "PASS" if ordered else "FAIL"
+    return (
+        f"**W5 {verdict}**: high={rates['high']:.1%} > medium={rates['medium']:.1%} "
+        f"> low={rates['low']:.1%}"
+    )
+
+
+def _hit_table(scored: pl.DataFrame, column: str, label: str) -> str:
+    grouped = (
+        scored.group_by(column)
+        .agg(
+            pl.len().alias("n"),
+            pl.col("hit").cast(pl.Int64).sum().alias("hits"),
+        )
+        .sort(column, nulls_last=True)
+    )
+    lines = [f"| {label} | n | hit rate | 95% interval |", "| --- | --- | --- | --- |"]
+    for row in grouped.to_dicts():
+        hits, n = int(row["hits"]), int(row["n"])
+        low, high = _wilson(hits, n)
+        value = "n/a" if row[column] is None else row[column]
+        lines.append(f"| {value} | {n} | {hits / n:.1%} | {low:.1%} to {high:.1%} |")
+    return "\n".join(lines)
+
+
+def _with_margin_bucket(scored: pl.DataFrame) -> pl.DataFrame:
+    size = pl.col("predicted_margin_s").abs()
+    return scored.with_columns(
+        pl.when(size.is_null())
+        .then(None)
+        .when(size < 0.5)
+        .then(pl.lit("a. under 0.5 s"))
+        .when(size < 1.5)
+        .then(pl.lit("b. 0.5 to 1.5 s"))
+        .when(size < 3.0)
+        .then(pl.lit("c. 1.5 to 3 s"))
+        .otherwise(pl.lit("d. 3 s or more"))
+        .alias("margin_size")
+    )
+
+
+def _why_confidence_sections(scored: pl.DataFrame) -> list[str]:
+    """Hit rate along each input the confidence rule reads, plus the
+    margin's size, which it does not read today."""
+    if "fit_floor" not in scored.columns:
+        return []
+    return [
+        "## Why each call got its confidence",
+        "",
+        "The confidence rule starts from the worse of the two degradation fits, caps at "
+        "medium when the immediate-cover margin changes sign across the fits' 95% "
+        "intervals, and caps at low when the decision lap was not green. A call is "
+        "scored at the rival's REAL stop lap, so the same sign check there is shown "
+        "beside it. The margin's size is not read by the rule today.",
+        "",
+        "### By the worse fit",
+        "",
+        _hit_table(scored, "fit_floor", "worse fit"),
+        "",
+        "### Immediate-cover margin changes sign (caps at medium today)",
+        "",
+        _hit_table(scored, "covered_band_crosses_zero", "changes sign"),
+        "",
+        "### Margin at the real stop lap changes sign (not used today)",
+        "",
+        _hit_table(scored, "scored_band_crosses_zero", "changes sign"),
+        "",
+        "### Decision lap not green (caps at low today)",
+        "",
+        _hit_table(scored, "decision_not_green", "not green"),
+        "",
+        "### Size of the predicted margin at the real stop lap",
+        "",
+        _hit_table(_with_margin_bucket(scored), "margin_size", "margin"),
+        "",
+    ]
+
+
+_RANK = {"low": 0, "medium": 1, "high": 2}
+_FROM_FIT = {"good": "high", "thin": "medium", "unreliable": "low"}
+
+
+def _candidate(scored: pl.DataFrame, *, sign_check: str | None) -> pl.DataFrame:
+    """Confidence recomputed from the fit floor with the sign cap read
+    from `sign_check` (or no sign cap at all), and the not-green cap kept."""
+    level = pl.col("fit_floor").replace_strict(_FROM_FIT, default=None)
+    if sign_check is not None:
+        level = (
+            pl.when(pl.col(sign_check).fill_null(False) & (level == "high"))
+            .then(pl.lit("medium"))
+            .otherwise(level)
+        )
+    level = (
+        pl.when(pl.col("decision_not_green").fill_null(False)).then(pl.lit("low")).otherwise(level)
+    )
+    return scored.with_columns(level.alias("candidate"))
+
+
+def _candidate_rule_sections(scored: pl.DataFrame) -> list[str]:
+    if "fit_floor" not in scored.columns:
+        return []
+    lines = [
+        "## Candidate confidence rules (diagnosis, in-sample)",
+        "",
+        "Each table recomputes confidence over the same calls. Chosen here, then checked "
+        "once on the held-out season with the chosen rule in the kernel.",
+        "",
+    ]
+    rebuilt = _candidate(scored, sign_check="covered_band_crosses_zero")
+    same = rebuilt.filter(pl.col("candidate") == pl.col("confidence")).height
+    lines += [
+        f"Today's rule rebuilt from the columns matches the kernel's confidence on "
+        f"**{same} of {rebuilt.height}** calls (anything less means a column is wrong).",
+        "",
+    ]
+    undercuts = scored.filter(pl.col("kind") == "undercut")
+    for title, check in (
+        ("Today's rule, rebuilt from the columns (sanity check)", "covered_band_crosses_zero"),
+        ("Sign check at the real stop lap instead", "scored_band_crosses_zero"),
+        ("No sign check", None),
+    ):
+        lines += [f"### {title}", ""]
+        for label, frame in (("All calls", scored), ("Undercut calls only", undercuts)):
+            if frame.is_empty():
+                continue
+            table = _candidate(frame, sign_check=check)
+            lines += [
+                f"{label}:",
+                "",
+                _ordering_table(table, "candidate"),
+                "",
+                _ordering_verdict(table, "candidate"),
+                "",
+            ]
+    return lines
 
 
 def _worst_misses_table(scored: pl.DataFrame) -> str:

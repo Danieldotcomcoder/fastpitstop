@@ -141,6 +141,13 @@ visual-approve:
 backtest-phase2:
     uv run python python/f1_kernel/tools/run_backtest_suite.py
 
+# ROADMAP W5, option A: why the undercut's medium calls score below low.
+# Writes the 2024 backtest WITH candidate confidence rules (in-sample, where
+# a rule is chosen); 2025 stays held out and is regenerated only after the
+# chosen rule is in the kernel. Needs the 2024 backfill; never run in CI.
+w5-diagnose:
+    uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2024 --diagnose --out python/f1_kernel/reports/undercut_backtest_2024_diagnosis.md
+
 # Phase 3.1: run the FastAPI read model locally (http://127.0.0.1:8000,
 # docs at /docs). See docs/PHASE3.md.
 serve-api:

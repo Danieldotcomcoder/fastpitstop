@@ -228,6 +228,8 @@ class CrossoverResultOut(BaseModel):
     projected_gap_if_covered_low_s: float | None
     projected_gap_if_covered_high_s: float | None
     projected_margin_at_assumed_stop_s: float | None
+    projected_margin_at_assumed_stop_low_s: float | None
+    projected_margin_at_assumed_stop_high_s: float | None
     projected_rejoin_gap_s: float | None
     window: WindowState
     opens_in_laps: int | None
