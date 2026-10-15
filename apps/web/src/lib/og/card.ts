@@ -15,14 +15,14 @@ export const CARD = { width: 1200, height: 630 } as const;
 /** The dark theme's own colours (`tokens.css`), so a card looks like the
  * site it links to. */
 const COLOR = {
-	paper: '#0b0e13',
-	panel: '#131821',
-	rule: '#232a35',
-	ink: '#eef1f6',
-	ink2: '#b8c0cc',
-	muted: '#8a94a3',
+	paper: '#151614',
+	panel: '#1d1e1b',
+	rule: '#2c2d29',
+	ink: '#efefea',
+	ink2: '#c0c1b9',
+	muted: '#93958c',
 	accent: '#93a6ff',
-	track: '#283040'
+	track: '#31332d'
 } as const;
 
 export interface ShareCard {
