@@ -239,6 +239,25 @@ class KernelParams(BaseModel):
         ),
     )
 
+    rejoin_high_margin_sigmas: float = Field(
+        default=2.0,
+        gt=0,
+        description=(
+            "A rejoin call (`f1_kernel.rejoin`) is high confidence when the nearest "
+            "car is at least this many single-stop spreads away: a stop this far off "
+            "its median is rare enough (about 1 in 20 under a normal spread) to call. "
+            "Expressed in the circuit's own measured spread, so nothing is in seconds."
+        ),
+    )
+    rejoin_medium_margin_sigmas: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "...and medium when it is at least this many; closer is low. Validated, "
+            "not fitted: the rejoin backtest must show high beating medium beating low."
+        ),
+    )
+
     # -- degradation fitting (Phase 2.3) ----------------------------------
     min_laps_for_degradation: int = Field(
         default=5,
@@ -441,6 +460,8 @@ PARAM_PROVENANCE: dict[str, ParamProvenance] = {
     "undercut_out_lap_penalty_s": ParamProvenance.PROVISIONAL,
     "undercut_horizon_laps": ParamProvenance.STRUCTURAL,
     "undercut_max_gap_s": ParamProvenance.STRUCTURAL,
+    "rejoin_high_margin_sigmas": ParamProvenance.STRUCTURAL,
+    "rejoin_medium_margin_sigmas": ParamProvenance.STRUCTURAL,
     "min_laps_for_degradation": ParamProvenance.STRUCTURAL,
     "degradation_max_ci_width_s_per_lap": ParamProvenance.STRUCTURAL,
     "degradation_quadratic_min_laps": ParamProvenance.STRUCTURAL,

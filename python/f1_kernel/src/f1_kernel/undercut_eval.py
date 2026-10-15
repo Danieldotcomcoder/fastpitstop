@@ -32,6 +32,13 @@ a backtest that quietly cherry-picks its stops proves nothing.
 `evaluate_session_stops` is a pure `(SessionFrames, KernelParams) -> rows`
 analytic, so `f1_kernel.Backtest` runs it over a corpus unchanged;
 `tools/backtest_undercut.py` is the committed-report entry point.
+
+**The same function is the live ledger** (ROADMAP W5, `f1_kernel.calls`).
+Over the laps released so far, `final=False` reports a pair that is still
+waiting (the rival has not stopped, or the outcome lap is not run) as
+`pending` rather than excluding it, with the call already filled in. Once
+the race is over (`final=True`) the ledger IS the backtest: the live
+scorecard cannot drift from the published hit rates.
 """
 
 from __future__ import annotations
@@ -97,6 +104,13 @@ class StopPairOutcome:
     hit: bool | None
     """predicted_ahead == actual_ahead; None when either side is None."""
     reasons: str
+    pending: bool = False
+    """Only with `final=False`: the call is made but its outcome has not
+    happened yet; `exclusion` says what it waits for. Never in a backtest."""
+    evidence_lap: int | None = None
+    """The lap whose end settled this row (the outcome lap, the rival's
+    out-lap, the first neutralised lap). None when only the end of the race
+    settles it. `f1_kernel.calls` dates a resolution by it."""
     fit_floor: str | None = None
     """The worse of the two degradation fits' reliability — where
     `confidence` starts before any cap. With the three fields below, the
@@ -114,18 +128,30 @@ class StopPairOutcome:
     that caps `confidence` at low."""
 
 
-def evaluate_session_stops(frames: SessionFrames, params: KernelParams) -> list[StopPairOutcome]:
+def evaluate_session_stops(
+    frames: SessionFrames,
+    params: KernelParams,
+    *,
+    total_laps: int | None = None,
+    final: bool = True,
+) -> list[StopPairOutcome]:
     """Every scoreable stop-pair in one race, walked forward honestly.
 
     Pure and deterministic. Fits are computed once per distinct decision
     lap (sliced to it) and shared by the pairs that decide there.
+
+    `total_laps` is the race distance; it defaults to the last lap in the
+    frame, right for a finished race. `final=False` reads the frame as a
+    race still running (see the module docstring).
     """
     laps = frames.laps
     if laps.is_empty():
         return []
-    total_laps = laps["lap_number"].max()
-    if not isinstance(total_laps, int):
-        return []
+    if total_laps is None:
+        found = laps["lap_number"].max()
+        if not isinstance(found, int):
+            return []
+        total_laps = found
 
     rows_by_driver_lap: dict[tuple[str, int], dict[str, object]] = {
         (str(row["driver"]), int(row["lap_number"])): row for row in laps.to_dicts()
@@ -181,6 +207,7 @@ def evaluate_session_stops(frames: SessionFrames, params: KernelParams) -> list[
                         fits_at=fits_at,
                         params=params,
                         total_laps=total_laps,
+                        final=final,
                     )
                 )
             if index + 1 < len(order):
@@ -195,6 +222,7 @@ def evaluate_session_stops(frames: SessionFrames, params: KernelParams) -> list[
                         fits_at=fits_at,
                         params=params,
                         total_laps=total_laps,
+                        final=final,
                     )
                 )
 
@@ -233,6 +261,8 @@ def evaluate_session_stops_rows(
             "covered_band_crosses_zero": o.covered_band_crosses_zero,
             "scored_band_crosses_zero": o.scored_band_crosses_zero,
             "decision_not_green": o.decision_not_green,
+            "pending": o.pending,
+            "evidence_lap": o.evidence_lap,
         }
         for o in evaluate_session_stops(frames, params)
     ]
@@ -254,11 +284,13 @@ def _score_pair(
     fits_at: Callable[[int], tuple[SessionFrames, list[DegradationFit]]],
     params: KernelParams,
     total_laps: int,
+    final: bool = True,
 ) -> StopPairOutcome | None:
     """One discovered pair, scored or excluded with a reason. The FIRST
     stopper is the attacker for an undercut and the defender for an
     overcut; `stayer` is the other car, whose realized stop closes the
-    book."""
+    book. With `final=False` a pair whose outcome has not happened yet
+    comes back `pending`, its call already made."""
     decision_lap = first_stop_lap - 1
     stayer = defender if kind is CrossoverKind.UNDERCUT else attacker
 
@@ -266,31 +298,116 @@ def _score_pair(
     if gap is None or gap < 0 or gap > params.undercut_max_gap_s:
         return None  # not a duel: unknown gap, or out of undercut range
 
-    def excluded(reason: str, stayer_stop: int | None = None) -> StopPairOutcome:
-        return _excluded_outcome(
-            kind, attacker, defender, decision_lap, first_stop_lap, stayer_stop, gap, reason
+    def excluded(
+        reason: str, stayer_stop: int | None = None, evidence_lap: int | None = None
+    ) -> StopPairOutcome:
+        """Not scored, but the call was made: it carries it, so the live
+        ledger shows what a voided call said."""
+        result, _ = _predict(
+            kind, attacker, defender, decision_lap, None, fits_at, params, total_laps
+        )
+        return _outcome(
+            kind,
+            attacker,
+            defender,
+            decision_lap,
+            first_stop_lap,
+            stayer_stop,
+            gap,
+            result,
+            rows,
+            predicted_ahead=None,
+            truth=None,
+            exclusion=reason,
+            evidence_lap=evidence_lap,
+        )
+
+    pair = (attacker, defender)
+
+    def waiting(reason: str, stayer_stop: int | None = None) -> StopPairOutcome:
+        """Still running: void now if the duel was already neutralised,
+        else the call as made, its outcome to come."""
+        latest = max((lap for (driver, lap) in rows if driver in pair), default=decision_lap)
+        neutral = _first_neutralized_lap(rows, pair, decision_lap + 1, latest)
+        if neutral is not None:
+            return excluded("neutralized_between_stops", stayer_stop, neutral)
+        result, _ = _predict(
+            kind, attacker, defender, decision_lap, None, fits_at, params, total_laps
+        )
+        return _outcome(
+            kind,
+            attacker,
+            defender,
+            decision_lap,
+            first_stop_lap,
+            stayer_stop,
+            gap,
+            result,
+            rows,
+            predicted_ahead=None,
+            truth=None,
+            exclusion=reason,
+            pending=True,
         )
 
     stayer_stop = next((lap for lap in stops_by_driver.get(stayer, []) if lap > decision_lap), None)
     if stayer_stop is None:
-        return excluded("rival_never_stopped_again")
+        if final:
+            return excluded("rival_never_stopped_again")
+        return waiting("waiting_for_rival_stop")
     if stayer_stop <= first_stop_lap:
-        return excluded("double_stacked_or_simultaneous", stayer_stop)
+        return excluded("double_stacked_or_simultaneous", stayer_stop, first_stop_lap + 1)
+    if not final and (stayer, stayer_stop + 1) not in rows:
+        return waiting("waiting_for_rival_out_lap", stayer_stop)
     if not _is_green_stop(rows, stayer, stayer_stop):
-        return excluded("rival_stop_not_green", stayer_stop)
+        return excluded("rival_stop_not_green", stayer_stop, stayer_stop + 1)
 
     truth_lap = stayer_stop + 1
     actual_margin = _gap_between(rows, defender, attacker, truth_lap)
     if actual_margin is None:
+        if not final and any((driver, truth_lap) not in rows for driver in pair):
+            return waiting("waiting_for_outcome_lap", stayer_stop)
         return excluded("no_common_outcome_lap", stayer_stop)
     # _gap_between(defender, attacker, ...) is defender-behind-attacker:
     # positive means the attacker crossed the line first, i.e. is ahead.
-    if _window_neutralized(rows, (attacker, defender), decision_lap + 1, truth_lap):
-        return excluded("neutralized_between_stops", stayer_stop)
+    neutral = _first_neutralized_lap(rows, pair, decision_lap + 1, truth_lap)
+    if neutral is not None:
+        return excluded("neutralized_between_stops", stayer_stop, neutral)
 
+    result, predicted_ahead = _predict(
+        kind, attacker, defender, decision_lap, stayer_stop, fits_at, params, total_laps
+    )
+    return _outcome(
+        kind,
+        attacker,
+        defender,
+        decision_lap,
+        first_stop_lap,
+        stayer_stop,
+        gap,
+        result,
+        rows,
+        predicted_ahead=predicted_ahead,
+        truth=(truth_lap, actual_margin),
+    )
+
+
+def _predict(
+    kind: CrossoverKind,
+    attacker: str,
+    defender: str,
+    decision_lap: int,
+    stayer_stop: int | None,
+    fits_at: Callable[[int], tuple[SessionFrames, list[DegradationFit]]],
+    params: KernelParams,
+    total_laps: int,
+) -> tuple[CrossoverResult, bool | None]:
+    """The call made at the decision lap, from the slice to it. Its window,
+    crossover lap and confidence never depend on `stayer_stop`; only the
+    scored side does, once the rival's real stop is known."""
     sliced_state, fits = fits_at(decision_lap)
     if kind is CrossoverKind.UNDERCUT:
-        result: CrossoverResult = undercut_window(
+        result = undercut_window(
             sliced_state,
             attacker,
             defender,
@@ -300,39 +417,54 @@ def _score_pair(
             total_laps=total_laps,
             assume_defender_stop_lap=stayer_stop,
         )
-        predicted_ahead = (
-            None
-            if result.window is WindowState.UNKNOWN
-            else result.crossover_lap is not None and stayer_stop >= result.crossover_lap
-        )
-    else:
-        result = overcut_window(
-            sliced_state,
-            attacker,
-            defender,
-            fits,
-            params,
-            decision_lap=decision_lap,
-            total_laps=total_laps,
-            assume_attacker_stop_lap=stayer_stop,
-        )
-        predicted_ahead = (
-            None
-            if result.window is WindowState.UNKNOWN
-            else result.crossover_lap is not None and stayer_stop <= result.crossover_lap
-        )
+        if stayer_stop is None or result.window is WindowState.UNKNOWN:
+            return result, None
+        return result, result.crossover_lap is not None and stayer_stop >= result.crossover_lap
+    result = overcut_window(
+        sliced_state,
+        attacker,
+        defender,
+        fits,
+        params,
+        decision_lap=decision_lap,
+        total_laps=total_laps,
+        assume_attacker_stop_lap=stayer_stop,
+    )
+    if stayer_stop is None or result.window is WindowState.UNKNOWN:
+        return result, None
+    return result, result.crossover_lap is not None and stayer_stop <= result.crossover_lap
 
-    actual_ahead = actual_margin > 0
+
+def _outcome(
+    kind: CrossoverKind,
+    attacker: str,
+    defender: str,
+    decision_lap: int,
+    first_stop_lap: int,
+    stayer_stop: int | None,
+    gap: float,
+    result: CrossoverResult,
+    rows: dict[tuple[str, int], dict[str, object]],
+    *,
+    predicted_ahead: bool | None,
+    truth: tuple[int, float] | None,
+    exclusion: str | None = None,
+    pending: bool = False,
+    evidence_lap: int | None = None,
+) -> StopPairOutcome:
+    undercut = kind is CrossoverKind.UNDERCUT
+    truth_lap, actual_margin = truth if truth is not None else (None, None)
+    actual_ahead = None if actual_margin is None else actual_margin > 0
     return StopPairOutcome(
         kind=kind.value,
         attacker=attacker,
         defender=defender,
         decision_lap=decision_lap,
-        attacker_stop_lap=first_stop_lap if kind is CrossoverKind.UNDERCUT else stayer_stop,
-        defender_stop_lap=stayer_stop if kind is CrossoverKind.UNDERCUT else first_stop_lap,
+        attacker_stop_lap=first_stop_lap if undercut else (stayer_stop or 0),
+        defender_stop_lap=stayer_stop if undercut else first_stop_lap,
         gap_at_decision_s=gap,
-        evaluated=True,
-        exclusion=None,
+        evaluated=truth is not None,
+        exclusion=exclusion,
         predicted_ahead=predicted_ahead,
         predicted_margin_s=result.projected_margin_at_assumed_stop_s,
         projected_gap_if_covered_s=result.projected_gap_if_covered_s,
@@ -343,7 +475,9 @@ def _score_pair(
         actual_ahead=actual_ahead,
         actual_margin_s=actual_margin,
         truth_lap=truth_lap,
-        hit=None if predicted_ahead is None else predicted_ahead == actual_ahead,
+        hit=None
+        if predicted_ahead is None or actual_ahead is None
+        else predicted_ahead == actual_ahead,
         reasons="; ".join(result.reasons),
         fit_floor=_fit_floor(result),
         covered_band_crosses_zero=_crosses_zero(
@@ -356,6 +490,8 @@ def _score_pair(
         decision_not_green=any(
             _non_green(rows.get((driver, decision_lap))) for driver in (attacker, defender)
         ),
+        pending=pending,
+        evidence_lap=truth_lap if truth is not None else evidence_lap,
     )
 
 
@@ -390,42 +526,6 @@ def _non_green(row: dict[str, object] | None) -> bool:
     )
 
 
-def _excluded_outcome(
-    kind: CrossoverKind,
-    attacker: str,
-    defender: str,
-    decision_lap: int,
-    first_stop_lap: int,
-    stayer_stop: int | None,
-    gap: float | None,
-    reason: str,
-) -> StopPairOutcome:
-    undercut = kind is CrossoverKind.UNDERCUT
-    return StopPairOutcome(
-        kind=kind.value,
-        attacker=attacker,
-        defender=defender,
-        decision_lap=decision_lap,
-        attacker_stop_lap=first_stop_lap if undercut else (stayer_stop or 0),
-        defender_stop_lap=stayer_stop if undercut else first_stop_lap,
-        gap_at_decision_s=gap,
-        evaluated=False,
-        exclusion=reason,
-        predicted_ahead=None,
-        predicted_margin_s=None,
-        projected_gap_if_covered_s=None,
-        crossover_lap=None,
-        window=None,
-        opens_in_laps=None,
-        confidence=None,
-        actual_ahead=None,
-        actual_margin_s=None,
-        truth_lap=None,
-        hit=None,
-        reasons="",
-    )
-
-
 def _is_green_stop(
     rows: dict[tuple[str, int], dict[str, object]], driver: str, in_lap: int
 ) -> bool:
@@ -450,17 +550,19 @@ def _row_neutralized(row: dict[str, object]) -> bool:
     return any(flag in _NEUTRALIZED for flag in flags)  # type: ignore[union-attr]
 
 
-def _window_neutralized(
+def _first_neutralized_lap(
     rows: dict[tuple[str, int], dict[str, object]],
     drivers: tuple[str, str],
     from_lap: int,
     to_lap: int,
-) -> bool:
-    return any(
-        (row := rows.get((driver, lap_number))) is not None and _row_neutralized(row)
-        for driver in drivers
-        for lap_number in range(from_lap, to_lap + 1)
-    )
+) -> int | None:
+    """The first lap in the range either car ran under SC/VSC/red."""
+    for lap_number in range(from_lap, to_lap + 1):
+        for driver in drivers:
+            row = rows.get((driver, lap_number))
+            if row is not None and _row_neutralized(row):
+                return lap_number
+    return None
 
 
 def _race_order_at(laps: pl.DataFrame, lap_number: int) -> list[str]:
