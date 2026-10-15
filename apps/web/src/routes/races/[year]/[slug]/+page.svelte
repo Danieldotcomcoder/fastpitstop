@@ -117,6 +117,9 @@
 				<p class="facts num">
 					<span>{data.circuit.lapKm.toFixed(3)} km</span>
 					{#if data.circuit.corners}<span>{data.circuit.corners} corners</span>{/if}
+					{#if data.circuit.drsZones}<span
+							>{data.circuit.drsZones} DRS zone{data.circuit.drsZones === 1 ? '' : 's'}</span
+						>{/if}
 				</p>
 				<a class="more" href={resolve('/circuits/[slug]', { slug: data.circuit.slug })}
 					>Tyre wear and the corners at {data.circuit.name} →</a

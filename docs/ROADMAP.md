@@ -464,6 +464,13 @@ Checks:
 Baselines that change: live, sessions, about and race desk. The story
 page has none.
 
+**Circuit and Grand Prix pages against their M2 mockups (2026-10-15).**
+Both match. The one real difference: the Grand Prix page's stop-cost
+card left out the DRS zones it already loaded. It now lists them. The
+circuit page goes further than its mockup (numbered corners on the
+outline, the evidence behind each tyre figure) and is unchanged. The
+grand-prix baselines change.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 
