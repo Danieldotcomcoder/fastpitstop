@@ -1025,8 +1025,14 @@ Each milestone ships between race weekends and passes W0 before deploy.
   states" and "tower checked against official timing" are met. "Circuit and
   Grand Prix pages indexed" is Google's to report, in Search Console's
   Pages report.
-- **M3:** W7 done (see W7's status). W2 screen redesigns and S6 share
-  images are next.
+- **M3:**
+  - W7 is done (see W7's status).
+  - W2's screen redesigns were built 2026-10-14 and 15 (see W2) but are
+    not done until you review them. That means approving the new
+    mockups, `just verify-visual` and `visual-approve`, `just
+    verify-real`, and the side-by-side review against the competitor
+    screenshots.
+  - S6 share images are next.
 - **M4 onwards:** not started.
 
 ## Parked (needs a decision)
