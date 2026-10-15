@@ -72,6 +72,10 @@ export class RaceHistoryReducer {
 	/** The worst one that opened during the lap being run. */
 	private openedThisLap: Neutral | null = null;
 	private leader = 0;
+	/** Bumps whenever anything a view draws changed (a place, a lap's gap,
+	 * a lap completed, a stop, a neutralisation), so views can skip
+	 * recomputing on the many events that change none of it. */
+	version = 0;
 
 	update(events: readonly Envelope[]): void {
 		if (events.length < this.cursor) this.reset();
@@ -157,6 +161,7 @@ export class RaceHistoryReducer {
 		this.openedThisLap = null;
 		this.feedStatus = false;
 		this.leader = 0;
+		this.version++;
 	}
 
 	private point(driver: string): HistoryPoint {
@@ -180,6 +185,7 @@ export class RaceHistoryReducer {
 
 	/** Moves to a new set of open neutralisations, noting any that opened. */
 	private setOpen(next: Set<Neutral>): void {
+		if (next.size !== this.open.size || [...next].some((x) => !this.open.has(x))) this.version++;
 		for (const status of next) {
 			if (!this.open.has(status)) this.openedThisLap = worst([this.openedThisLap, status]);
 		}
@@ -206,7 +212,11 @@ export class RaceHistoryReducer {
 				const position = asNumber(p.position);
 				if (driver === null || position === null) return;
 				this.position.set(driver, position);
-				this.point(driver).position = position;
+				const pt = this.point(driver);
+				if (pt.position !== position) {
+					pt.position = position;
+					this.version++;
+				}
 				return;
 			}
 			case 'gap_updated': {
@@ -224,7 +234,11 @@ export class RaceHistoryReducer {
 					!this.lapsDone.has(driver) ||
 					this.crossedAt.get(driver) === envelope.event_time_utc
 				) {
-					this.point(driver).gapS = gap;
+					const pt = this.point(driver);
+					if (pt.gapS !== gap) {
+						pt.gapS = gap;
+						this.version++;
+					}
 					this.awaitingGap.delete(driver);
 				}
 				return;
@@ -236,6 +250,7 @@ export class RaceHistoryReducer {
 				if (lap <= (this.lapsDone.get(driver) ?? 0)) return;
 				this.lapsDone.set(driver, lap);
 				this.point(driver);
+				this.version++;
 				// The gap sent in the same instant as the crossing already
 				// filled the point; otherwise wait for the next one.
 				if (this.gapAt.get(driver) === envelope.event_time_utc) this.awaitingGap.delete(driver);
@@ -253,6 +268,7 @@ export class RaceHistoryReducer {
 				const laps = this.pits.get(driver) ?? new Set<number>();
 				laps.add((this.lapsDone.get(driver) ?? 0) + 1);
 				this.pits.set(driver, laps);
+				this.version++;
 				return;
 			}
 			case 'track_status_changed': {

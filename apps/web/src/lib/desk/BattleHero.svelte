@@ -21,11 +21,9 @@
 		names: Record<string, string>;
 		/** Second car of its team, drawn dashed (W2 D1). */
 		dashed: Record<string, boolean>;
-		/** True when the user picked the battle; false when it follows the lead. */
-		chosen: boolean;
 	}
 
-	let { attacker, defender, gapS, trend, names, dashed, chosen }: Props = $props();
+	let { attacker, defender, gapS, trend, names, dashed }: Props = $props();
 
 	const who = (d: BoardDriver) => surname(names[d.driver]) ?? d.code;
 	const meta = (d: BoardDriver) =>
@@ -70,78 +68,78 @@
 		<h2 class="caps battle-kicker" id="battleTitle">
 			The battle that matters{#if defender?.position}&nbsp;· for P{defender.position}{/if}
 		</h2>
-		<span class="battle-hint"
-			>{chosen ? 'Your pick' : 'Following the closest fight up front'} · tap any driver in Timing to change</span
-		>
+		<span class="battle-hint">Tap any driver in Timing to watch their fight instead</span>
 	</div>
-	{#if attacker && defender}
-		<div class="duel">
-			<div class="side">
-				<span
-					class="bar"
-					class:dashed={dashed[attacker.driver]}
-					style:--team={colorForTeam(attacker.team)}
-				></span>
-				<div>
-					<div class="name">{who(attacker)}</div>
-					<div class="meta">{meta(attacker)}</div>
-				</div>
-			</div>
-			<div class="gap">
-				<div class="gap-num num" data-testid="battle-gap">
-					{#if gapS !== null}<RollNumber value={gapS.toFixed(2)} key={lapKey} /><small>
-							s</small
-						>{:else}—{/if}
-				</div>
-				<div class="caps">Gap at the line</div>
-			</div>
-			<div class="side right">
-				<div>
-					<div class="name">{who(defender)}</div>
-					<div class="meta">{meta(defender)}</div>
-				</div>
-				<span
-					class="bar"
-					class:dashed={dashed[defender.driver]}
-					style:--team={colorForTeam(defender.team)}
-				></span>
+	<!-- Every block keeps its size from the first paint, filled or not: the
+	     card leads the desk, and growing when the running order arrived
+	     would push every panel under it down (W0's layout-shift budget). -->
+	<div class="duel">
+		<div class="side">
+			<span
+				class="bar"
+				class:dashed={attacker !== null && dashed[attacker.driver]}
+				style:--team={attacker ? colorForTeam(attacker.team) : 'var(--rule)'}
+			></span>
+			<div>
+				<div class="name">{attacker ? who(attacker) : '—'}</div>
+				<div class="meta">{attacker ? meta(attacker) : ''}&nbsp;</div>
 			</div>
 		</div>
-		<div class="trend">
-			{#if pts.length >= 2 && last}
-				<svg
-					viewBox="0 0 {W} {H}"
-					role="img"
-					aria-label={`Gap from ${who(attacker)} to ${who(defender)}, laps ${lo} to ${hi}: ${pts[0]!.gapS.toFixed(1)} seconds to ${last.gapS.toFixed(1)}`}
+		<div class="gap">
+			<div class="gap-num num" data-testid={attacker && defender ? 'battle-gap' : undefined}>
+				{#if attacker && defender && gapS !== null}<RollNumber
+						value={gapS.toFixed(2)}
+						key={lapKey}
+					/><small> s</small>{:else}—{/if}
+			</div>
+			<div class="caps">Gap at the line</div>
+		</div>
+		<div class="side right">
+			<div>
+				<div class="name">{defender ? who(defender) : '—'}</div>
+				<div class="meta">{defender ? meta(defender) : ''}&nbsp;</div>
+			</div>
+			<span
+				class="bar"
+				class:dashed={defender !== null && dashed[defender.driver]}
+				style:--team={defender ? colorForTeam(defender.team) : 'var(--rule)'}
+			></span>
+		</div>
+	</div>
+	<div class="trend">
+		{#if attacker && defender && pts.length >= 2 && last}
+			<svg
+				viewBox="0 0 {W} {H}"
+				role="img"
+				aria-label={`Gap from ${who(attacker)} to ${who(defender)}, laps ${lo} to ${hi}: ${pts[0]!.gapS.toFixed(1)} seconds to ${last.gapS.toFixed(1)}`}
+			>
+				{#each shades as s (s.key)}
+					<rect
+						x={s.x0}
+						y="0"
+						width={Math.max(1, s.x1 - s.x0)}
+						height={H - PAD.b}
+						class="neutral"
+					/>
+				{/each}
+				<line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} class="axis" />
+				<polyline points={line} class="gapline" />
+				<circle cx={x(last.lap)} cy={y(last.gapS)} r="4.5" class="gapdot" />
+				<text x={x(last.lap) + 10} y={y(last.gapS) + 4} class="endlabel"
+					>{last.gapS.toFixed(2)} s</text
 				>
-					{#each shades as s (s.key)}
-						<rect
-							x={s.x0}
-							y="0"
-							width={Math.max(1, s.x1 - s.x0)}
-							height={H - PAD.b}
-							class="neutral"
-						/>
-					{/each}
-					<line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} class="axis" />
-					<polyline points={line} class="gapline" />
-					<circle cx={x(last.lap)} cy={y(last.gapS)} r="4.5" class="gapdot" />
-					<text x={x(last.lap) + 10} y={y(last.gapS) + 4} class="endlabel"
-						>{last.gapS.toFixed(2)} s</text
-					>
-					<text x={PAD.l} y={H - 4} class="lap">Lap {lo}</text>
-					<text x={W - PAD.r} y={H - 4} class="lap" text-anchor="end">Lap {hi}</text>
-				</svg>
-			{:else}
-				<p class="trend-wait">
-					The trend appears once both cars have finished two laps on your clock.
-				</p>
-			{/if}
-		</div>
-		<p class="verdict" data-testid="battle-verdict">{sentence}</p>
-	{:else}
-		<p class="trend-wait">Waiting for the running order.</p>
-	{/if}
+				<text x={PAD.l} y={H - 4} class="lap">Lap {lo}</text>
+				<text x={W - PAD.r} y={H - 4} class="lap" text-anchor="end">Lap {hi}</text>
+			</svg>
+		{:else}
+			<p class="trend-wait">
+				{attacker && defender
+					? 'The trend appears once both cars have finished two laps on your clock.'
+					: 'Waiting for the running order.'}
+			</p>
+		{/if}
+	</div>
+	<p class="verdict" data-testid="battle-verdict">{sentence}</p>
 </section>
 
 <style>
@@ -149,9 +147,21 @@
 		display: grid;
 		gap: 12px;
 	}
+	/* Two fixed lines: the kicker gains "for P4" when the running order
+	   arrives, and a wrapping header moved every panel below (W0). */
 	.p-battle .panel-head {
 		margin-bottom: 0;
-		align-items: baseline;
+		flex-direction: column;
+		flex-wrap: nowrap;
+		align-items: flex-start;
+		gap: 2px;
+	}
+	.battle-kicker,
+	.battle-hint {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
 	}
 	.battle-kicker {
 		margin: 0;
@@ -161,9 +171,11 @@
 		font-size: 12px;
 		color: var(--muted);
 	}
+	/* A fixed centre: the gap's digits change width as they roll, and an
+	   "auto" column nudged both drivers sideways every lap. */
 	.duel {
 		display: grid;
-		grid-template-columns: 1fr auto 1fr;
+		grid-template-columns: minmax(0, 1fr) 11.5rem minmax(0, 1fr);
 		align-items: center;
 		gap: 16px;
 	}
@@ -199,6 +211,8 @@
 		margin-top: 4px;
 		font: 400 12px / 1.3 var(--f-mono);
 		color: var(--muted);
+		/* Two lines held, filled or not. */
+		min-height: 2.6em;
 	}
 	.gap {
 		text-align: center;
@@ -214,6 +228,12 @@
 	.gap .caps {
 		margin-top: 4px;
 		color: var(--muted);
+	}
+	/* The trend's box has the chart's own shape from the first paint. */
+	.trend {
+		aspect-ratio: 640 / 92;
+		display: flex;
+		align-items: center;
 	}
 	.trend svg {
 		display: block;
@@ -246,6 +266,8 @@
 	}
 	.verdict {
 		margin: 0;
+		/* Two lines held: the sentence arrives with the trend. */
+		min-height: 2.9em;
 		font: 400 16px / 1.45 var(--f-sans);
 		color: var(--ink);
 		max-width: 70ch;

@@ -400,6 +400,28 @@ Checks:
 
 The race-desk visual baselines change and need re-approval.
 
+Layout shift, measured here on a 16x replay with a 5 s delay, the first
+25 s:
+
+| Desk | 1440 px | 1440 px, Focus | 1024 px | 390 px |
+| --- | --- | --- | --- | --- |
+| Before W2 | 0.039 to 0.051 | n/a | n/a | n/a |
+| After W2 | 0.022 to 0.047 | 0.005 | 0.010 | 0.010 |
+
+The early part, about 0.04, is a load-time reflow of the sync strip.
+The old desk has it too; on your desktop the whole figure measured 0.02
+(W0).
+
+To stay inside W0's 0.05 budget:
+- every new block keeps its size from the first paint;
+- the battle's gap sits in a column of fixed width;
+- at 1320 px and up, the next call fills the slot beside the battle and
+  the ribbon without sizing it, and scrolls on the rare lap it needs
+  more room.
+
+The ribbon and the trend are recomputed only when a place, a lap's gap
+or a stop changes, not on every released event.
+
 **Home (2026-10-14), per A-Home.** It already had the next race, its
 countdown and sessions, the circuit drawing itself, and the last race
 behind the shield. It gains the mockup's three points under them:

@@ -278,16 +278,38 @@
 	});
 
 	// --- mockup A's desktop views (ROADMAP W2) ---------------------------------
-	let dashed = $derived(teammateDashed(rows));
+	// Recomputed only when what they draw changed: most released events
+	// (gaps at sector lines, sector times) change none of it, and at 1x the
+	// desk stays inside its main-thread budget (ROADMAP W0).
+	let historyVersion = $derived.by(() => {
+		// `rows` is where the reducers fold the released log: read it first.
+		void rows;
+		return raceHistory.version;
+	});
+	/** The top ten as the ribbon draws them: who, in what order, which team. */
+	let topKey = $derived(
+		rows
+			.filter((r) => r.position !== null && !r.retired)
+			.slice(0, 10)
+			.map((r) => `${r.driver}:${r.position}:${r.team ?? ''}:${codes[r.driver] ?? ''}`)
+			.join(',')
+	);
+	let dashed = $derived.by(() => {
+		void topKey;
+		return untrack(() => teammateDashed(rows));
+	});
 	let trend = $derived.by(() => {
-		void revision;
-		return pair ? battleTrend(raceHistory, pair.a, pair.b) : null;
+		void historyVersion;
+		const p = pair;
+		return p ? untrack(() => battleTrend(raceHistory, p.a, p.b)) : null;
 	});
 	let ribbon = $derived.by(() => {
-		void revision;
+		void historyVersion;
+		void topKey;
 		// The announced distance only (`lap.total`): never the finishing lap
 		// count, which would give a shortened race away.
-		return ribbonModel(raceHistory, rows, codes, lap.total);
+		const total = lap.total;
+		return untrack(() => ribbonModel(raceHistory, rows, codes, total));
 	});
 	let fieldNote = $derived(fieldLine(rows, codes));
 	/** "Gap at the line": the gap as the pair last crossed it, so it moves
@@ -662,7 +684,6 @@
 					{trend}
 					{names}
 					{dashed}
-					chosen={focus !== null}
 				/>
 			{/if}
 			{#if shows('strategy')}

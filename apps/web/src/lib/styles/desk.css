@@ -513,8 +513,8 @@
 		grid-template-columns: minmax(340px, 410px) minmax(0, 1fr);
 		grid-template-areas:
 			'tower battle'
-			'tower undercut'
 			'tower ribbon'
+			'tower undercut'
 			'radio map'
 			'why analytics';
 		align-items: start;
@@ -566,6 +566,20 @@
 	.desk-page .p-battle,
 	.desk-page .p-ribbon {
 		align-self: start;
+	}
+	/* The next call fills the slot beside the battle and the ribbon, and
+	   never sizes it: it grows as the kernel's numbers arrive, and growing
+	   pushed the story under it down mid-race (W0's layout-shift budget).
+	   In the unlikely case it needs more room, it scrolls. */
+	.desk-page .p-undercut {
+		contain: size;
+		align-self: stretch;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+	}
+	.desk-page .p-undercut .board-foot {
+		margin-top: auto;
 	}
 	.desk-page .lane-scroll {
 		position: absolute;
@@ -1733,6 +1747,9 @@
 .desk-page .field-note {
 	display: block;
 	margin-bottom: 4px;
+	/* Two lines held from the first paint: it arrives with the running
+	   order, and growing then moved every panel under the map. */
+	min-height: 2.7em;
 	font: 500 15px / 1.35 var(--f-display);
 	color: var(--ink);
 }
@@ -1810,8 +1827,32 @@
 	.desk-page .board-grid {
 		grid-template-columns: minmax(0, 1fr);
 	}
+	/* Fixed heights and the numbers first, so a new call fills its own
+	   lines instead of pushing the rest of the board down (W0). */
 	.desk-page .p-undercut .headline {
 		font-size: 30px;
+		min-height: calc(2 * 1.05em);
+	}
+	.desk-page .p-undercut .board-sub {
+		min-height: calc(3 * 1.45em);
+	}
+	.desk-page .board-grid > .stats {
+		order: -1;
+	}
+	/* Pit loss is the one figure in every state: first, so it never moves
+	   when the rest of the call arrives. */
+	.desk-page .p-undercut .stats .stat:last-child {
+		order: -1;
+	}
+	.desk-page .p-undercut .board-top {
+		min-height: 26px;
+		flex-wrap: nowrap;
+	}
+	.desk-page .p-undercut .tyres-line {
+		min-height: 1.3em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 }
 /* Toasts clear the phone and tablet tab bar. */
@@ -1841,7 +1882,7 @@
 		grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
 		grid-template-areas:
 			'battle undercut'
-			'ribbon why'
+			'ribbon undercut'
 			'tower why';
 		align-items: start;
 	}
@@ -1859,6 +1900,9 @@
 	/* Focus's battle at its full size, where the column has room for it. */
 	.desk-page[data-density='focus'] .p-battle .gap-num {
 		font-size: 88px;
+	}
+	.desk-page[data-density='focus'] .p-battle .duel {
+		grid-template-columns: minmax(0, 1fr) 15rem minmax(0, 1fr);
 	}
 	.desk-page[data-density='focus'] .p-battle .name {
 		font-size: 40px;

@@ -172,6 +172,11 @@
 			>
 		</div>
 		<div class="tyres-line">{tyresLine(model)}</div>
+	{:else}
+		<!-- The pair's lines, held empty until the running order arrives, so
+		     the call under them never jumps down (W0's layout-shift budget). -->
+		<div class="pair" aria-hidden="true">&nbsp;</div>
+		<div class="tyres-line" aria-hidden="true">&nbsp;</div>
 	{/if}
 	<p class="headline">{model.headline.before}<em>{model.headline.em}</em>{model.headline.after}</p>
 	<p class="board-sub">
