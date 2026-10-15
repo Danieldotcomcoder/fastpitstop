@@ -957,6 +957,24 @@ past sessions are test material, and live comes first (your call,
   races (rich results), plus `BreadcrumbList`.
 - **S6. A share image per Grand Prix** (track outline, name, date),
   generated at build time.
+  *Built 2026-10-15:*
+  - Every Grand Prix page shares its own 1200x630 card at
+    `/races/{year}/{slug}/og.png`: the circuit drawn from its outline,
+    the round, name, venue and dates, and the unofficial mark. Its
+    `og:image` and `twitter:image` point at it; other pages keep the site
+    image.
+  - The card is built from the calendar and the circuit file only, so it
+    can hold no result (`$lib/og/card.ts`, unit-tested, S7 wording
+    included).
+  - One departure from "at build time": the calendar and outlines come
+    from the API at runtime and the image build has no API. So a card is
+    rendered on first request (resvg, about 0.1 s) and cached per process
+    and for a day by clients, the same way `calendar.ics` is served.
+  - It is drawn with the site's own faces, vendored as TTF with their SIL
+    OFL licences (`$lib/server/og/fonts`), so it renders the same on any
+    machine.
+  - Checked by `e2e/races.spec.ts`: the page links its card, which is a
+    1200x630 PNG.
 - **S7. Spoiler rule as a test.** No title, description or server-rendered
   text may contain a session's result.
 - **S8. Launch, after M3:** a "Show HN" post on the engineering story,
@@ -1032,7 +1050,7 @@ Each milestone ships between race weekends and passes W0 before deploy.
     mockups, `just verify-visual` and `visual-approve`, `just
     verify-real`, and the side-by-side review against the competitor
     screenshots.
-  - S6 share images are next.
+  - S6 share images: built 2026-10-15 (see S6).
 - **M4 onwards:** not started.
 
 ## Parked (needs a decision)

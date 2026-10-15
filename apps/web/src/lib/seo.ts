@@ -109,6 +109,8 @@ export interface PageSeo {
 	path: string;
 	noindex: boolean;
 	jsonLd: Record<string, unknown>[];
+	/** The page's own share image; the site's default when absent. */
+	image?: { path: string; alt: string };
 }
 
 export const HOME_FAQ: readonly { question: string; answer: string }[] = [
@@ -245,11 +247,18 @@ export function seoFor(
 		const race = races.find((r) => r.year === Number(racePath[1]) && r.slug === racePath[2]);
 		if (race) {
 			const name = `${race.year} ${race.eventName}`;
-			return page(
-				`${name}: Schedule, Start Times & Countdown | ${brand.name}`,
-				`Every session of the ${name} at ${race.venue} (${race.dates}) in your own time zone, with a countdown, what a pit stop costs there and how the last race was run. Spoiler-free.`,
-				[raceJsonLd(race, path)]
-			);
+			return {
+				...page(
+					`${name}: Schedule, Start Times & Countdown | ${brand.name}`,
+					`Every session of the ${name} at ${race.venue} (${race.dates}) in your own time zone, with a countdown, what a pit stop costs there and how the last race was run. Spoiler-free.`,
+					[raceJsonLd(race, path)]
+				),
+				// Its own card (ROADMAP S6): the circuit, name and dates.
+				image: {
+					path: `${path}/og.png`,
+					alt: `${name}, ${race.venue}, ${race.dates}: the circuit outline`
+				}
+			};
 		}
 	}
 	const round = /^\/sessions\/(\d{4})\/(\d{1,2})$/.exec(path);
@@ -367,7 +376,8 @@ function jsonForScript(value: unknown): string {
  * whose own `<svelte:head>` outputs the (same) title. */
 export function renderSeoHead(seo: PageSeo, { withTitle }: { withTitle: boolean }): string {
 	const url = `${SITE_URL}${seo.path}`;
-	const image = `${SITE_URL}${OG_IMAGE.path}`;
+	const image = `${SITE_URL}${seo.image?.path ?? OG_IMAGE.path}`;
+	const imageAlt = seo.image?.alt ?? `${brand.name} — unofficial F1 live timing dashboard`;
 	const title = escapeHtml(seo.title);
 	const description = escapeHtml(seo.description);
 	const tags = [
@@ -383,7 +393,7 @@ export function renderSeoHead(seo: PageSeo, { withTitle }: { withTitle: boolean 
 		`<meta property="og:image" content="${image}" />`,
 		`<meta property="og:image:width" content="${OG_IMAGE.width}" />`,
 		`<meta property="og:image:height" content="${OG_IMAGE.height}" />`,
-		`<meta property="og:image:alt" content="${escapeHtml(brand.name)} — unofficial F1 live timing dashboard" />`,
+		`<meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />`,
 		'<meta name="twitter:card" content="summary_large_image" />',
 		`<meta name="twitter:title" content="${title}" />`,
 		`<meta name="twitter:description" content="${description}" />`,
