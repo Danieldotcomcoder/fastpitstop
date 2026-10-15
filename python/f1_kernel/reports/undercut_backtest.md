@@ -19,41 +19,120 @@ Predictions are made at the lap BEFORE the real stop, from data available up to 
 ## Coverage
 
 - Stop-pairs discovered: **439**
-- Excluded (not a scoreable green-flag duel): **172**
-- Evaluated (a green-flag duel with a known outcome): **267**
-  - Scored (window not UNKNOWN): **192**
-  - No-call (inputs too thin — `window=unknown`): **75**
+- Excluded (not a scoreable green-flag duel): **182**
+- Evaluated (a green-flag duel with a known outcome): **257**
+  - Scored (window not UNKNOWN): **185**
+  - No-call (inputs too thin — `window=unknown`): **72**
 
 ### Exclusion reasons
 
 | reason | count |
 | --- | --- |
-| rival_never_stopped_again | 91 |
-| rival_stop_not_green | 59 |
+| rival_never_stopped_again | 70 |
+| neutralized_between_stops | 59 |
+| rival_stopped_first | 32 |
 | double_stacked_or_simultaneous | 14 |
 | no_common_outcome_lap | 5 |
-| neutralized_between_stops | 3 |
+| rival_stop_not_green | 2 |
 
 ## Hit rate by confidence
 
 | confidence | n | hit rate |
 | --- | --- | --- |
-| high | 70 | 85.7% |
-| low | 43 | 67.4% |
-| medium | 79 | 65.8% |
+| high | 68 | 85.3% |
+| low | 76 | 64.5% |
+| medium | 41 | 70.7% |
 
 ## Hit rate by kind
 
 | kind | n | hit rate |
 | --- | --- | --- |
-| overcut | 97 | 78.4% |
-| undercut | 95 | 68.4% |
+| overcut | 94 | 78.7% |
+| undercut | 91 | 68.1% |
 
 ## Calibration check
 
 A well-calibrated predictor's HIGH-confidence hit rate should exceed its LOW-confidence hit rate — the whole point of reporting confidence at all.
 
-**PASS**: high=85.7% vs low=67.4%
+**PASS**: high=85.3% vs low=64.5%
+
+## W5 ordering check
+
+A call type ships on the live scorecard only when high beats medium beats low (ROADMAP W5). Each rate carries its Wilson 95% interval, so a gap smaller than the sample can resolve is visible as one.
+
+| confidence | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| high | 68 | 85.3% | 75.0% to 91.8% |
+| medium | 41 | 70.7% | 55.5% to 82.4% |
+| low | 76 | 64.5% | 53.3% to 74.3% |
+
+**W5 PASS**: high=85.3% > medium=70.7% > low=64.5%
+
+### Undercut calls only
+
+The live desk shows undercut calls (the car behind stops first); overcut calls are scored here but never shown live, so the scorecard's bar is the undercut's own ordering.
+
+| confidence | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| high | 28 | 71.4% | 52.9% to 84.7% |
+| medium | 21 | 66.7% | 45.4% to 82.8% |
+| low | 42 | 66.7% | 51.6% to 79.0% |
+
+**W5 FAIL**: high=71.4% > medium=66.7% > low=66.7%
+
+### Overcut calls only
+
+Scored in the backtest, not shown on the live desk.
+
+| confidence | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| high | 40 | 95.0% | 83.5% to 98.6% |
+| medium | 20 | 75.0% | 53.1% to 88.8% |
+| low | 34 | 61.8% | 45.0% to 76.1% |
+
+**W5 PASS**: high=95.0% > medium=75.0% > low=61.8%
+
+## Why each call got its confidence
+
+The confidence rule starts from the worse of the two degradation fits (high when both are good, low otherwise), caps at medium when the immediate-cover margin changes sign across the fits' 95% intervals, and caps at low when the decision lap was not green. A call is scored at the rival's REAL stop lap, so the same sign check there is shown beside it. The margin's size is not read by the rule today.
+
+### By the worse fit
+
+| worse fit | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| good | 110 | 79.1% | 70.6% to 85.6% |
+| thin | 34 | 61.8% | 45.0% to 76.1% |
+| unreliable | 41 | 68.3% | 53.0% to 80.4% |
+
+### Immediate-cover margin changes sign (caps at medium today)
+
+| changes sign | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| False | 91 | 75.8% | 66.1% to 83.5% |
+| True | 94 | 71.3% | 61.4% to 79.4% |
+
+### Margin at the real stop lap changes sign (not used today)
+
+| changes sign | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| False | 87 | 80.5% | 70.9% to 87.4% |
+| True | 98 | 67.3% | 57.6% to 75.8% |
+
+### Decision lap not green (caps at low today)
+
+| not green | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| False | 184 | 73.9% | 67.1% to 79.7% |
+| True | 1 | 0.0% | 0.0% to 79.3% |
+
+### Size of the predicted margin at the real stop lap
+
+| margin | n | hit rate | 95% interval |
+| --- | --- | --- | --- |
+| a. under 0.5 s | 6 | 50.0% | 18.8% to 81.2% |
+| b. 0.5 to 1.5 s | 13 | 76.9% | 49.7% to 91.8% |
+| c. 1.5 to 3 s | 18 | 72.2% | 49.1% to 87.5% |
+| d. 3 s or more | 148 | 74.3% | 66.7% to 80.7% |
 
 ## Worst misses (highest confidence, wrong call)
 
@@ -70,12 +149,12 @@ A well-calibrated predictor's HIGH-confidence hit rate should exceed its LOW-con
 | undercut | 16 | 1 | 39 | high | 10.00 | -7.29 | opens_later | 44 |
 | undercut | 63 | 44 | 17 | high | 9.10 | -8.34 | closed | 22 |
 | overcut | 4 | 12 | 18 | medium | -17.60 | 10.88 | closed | None |
-| overcut | 10 | 14 | 15 | medium | -11.27 | 3.26 | open | 20 |
-| overcut | 10 | 30 | 37 | medium | -47.99 | 14.32 | closed | None |
 | undercut | 5 | 31 | 30 | medium | 0.42 | -1.02 | open | 32 |
-| undercut | 18 | 63 | 25 | medium | 57.10 | -13.19 | opens_later | 29 |
-| overcut | 7 | 1 | 25 | medium | 4.36 | -4.77 | open | 36 |
-| undercut | 14 | 30 | 18 | medium | 3.93 | -2.14 | open | 20 |
-| undercut | 63 | 1 | 19 | medium | 6.83 | -4.40 | closed | 25 |
 | overcut | 23 | 30 | 30 | medium | 4.83 | -2.77 | open | 55 |
 | undercut | 63 | 16 | 18 | medium | 3.13 | -1.91 | open | 20 |
+| undercut | 31 | 22 | 42 | medium | -0.89 | 0.93 | closed | 45 |
+| undercut | 22 | 18 | 34 | medium | 1.26 | -2.24 | open | 36 |
+| overcut | 1 | 81 | 19 | medium | 44.47 | -4.10 | open | 44 |
+| overcut | 16 | 4 | 18 | medium | 9.85 | -5.98 | open | 43 |
+| undercut | 5 | 6 | 18 | medium | 2.78 | -1.63 | closed | 21 |
+| undercut | 10 | 27 | 30 | medium | 13.41 | -3.98 | closed | 34 |

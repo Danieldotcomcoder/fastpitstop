@@ -744,8 +744,9 @@ approved the same day):
 
 Forward-looking calls, released through Delay Sync like everything else:
 
-- *"LEC's undercut window opens in 2 laps."* (Exists today; 85.7% on
-  high-confidence calls.)
+- *"LEC's undercut window opens in 2 laps."* (Exists today; 85.3% on
+  high-confidence calls in the 2025 report, 71.4% on undercut calls
+  alone.)
 - *"Box now and HAM rejoins P6, in traffic behind RUS."* Rejoin
   projection; the pit board already computes it.
 - *"VER's pit window opens around lap 31."* New: the crossover of
@@ -765,8 +766,8 @@ medium beats low), with the report committed.**
 scorecard reproduces the backtest numbers on replayed races, and no call
 ever appears ahead of the playback clock (property test).
 
-**Status (2026-10-15): steps 1 to 3 of 5 built, blocked on your desktop
-runs.**
+**Status (2026-10-16): steps 1 to 4 of 5 done; the held-out check
+failed for both call types, so none ships. Waiting on your decision.**
 
 *Found first:* the committed 2025 undercut report fails W5's own bar.
 Medium scores 65.8% (79 calls) and low 67.4% (43), so medium is below
@@ -873,9 +874,28 @@ Drawing them found two bugs, both fixed:
   when only a car it drops behind did, against 66% when nobody did.
   They test the other cars' stops, not the projection.
 
+*Held-out check on 2025 (2026-10-16),* `just w5-holdout`, run once with
+the rules above, committed as `reports/undercut_backtest.md` and
+`reports/rejoin_backtest.md`. **Neither call type passed, so neither
+ships;** `CLEARED_CALL_KINDS` stays empty.
+- **Undercut calls:** high 71.4% (28), medium 66.7% (21), low 66.7%
+  (42). Medium ties low. All calls together now pass (85.3%, 70.7%,
+  64.5%; before the rule change medium was below low), and so do
+  overcut calls (95.0%, 75.0%, 61.8%), but the desk shows undercuts.
+- **Rejoin:** high 87.9% (33), medium 22.2% (9), low 51.0% (49).
+
+The corpus is the 10 races of 2025 on disk (rounds 2 to 11), so the
+middle buckets hold 9 to 21 calls with intervals 30 to 50 points wide.
+It cannot grow: F1's static archive answers 401 to every request since
+October 2026, from the desktop and from the VM, and `f1-backfill`
+depends on it. 2025 is now spent; tuning on it again would no longer be
+a held-out test. A fresh held-out season would be 2026 as recorded live
+by our own pipeline, which no rule has been read on.
+
 *Waiting on you:*
-- approving the W5 mockups, before step 5 (the screens);
-- `just w5-holdout` (2025), now that the rules are settled.
+- what to do with W5 given the result (a 2026 held-out run, a different
+  rule read from 2024, or shipping a call type with fewer levels);
+- approving the W5 mockups, before step 5 (the screens).
 
 ### W6. Sync 2.0 (signature)
 
@@ -1163,8 +1183,9 @@ Each milestone ships between race weekends and passes W0 before deploy.
     verify-real`, and the side-by-side review against the competitor
     screenshots.
   - S6 share images: built 2026-10-15 (see S6).
-- **M4:** W5 steps 1 to 3 built 2026-10-15 (see W5), waiting on your
-  desktop backtest runs. W6 not started.
+- **M4:** W5 steps 1 to 4 done 2026-10-16 (see W5): neither call type
+  passed the 2025 held-out check, waiting on your decision. W6 not
+  started.
 - **M5:** not started.
 
 ## Parked (needs a decision)

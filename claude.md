@@ -239,9 +239,10 @@ Phase 2 packages (under python/, in dependency order):
   predict at the lap BEFORE each real stop from sliced data only, score
   against who emerged ahead; 2024: 89.3% on high-confidence calls vs
   69.7% on low (calibration check PASS); 2025 held-out report committed
-  (267 evaluated duels, 192 scored, 73.4% overall, 85.7% high vs 67.4%
-  low over 10 backfilled rounds at generation time — re-run
-  `tools/run_backtest_suite.py` as more of 2025 lands).
+  (257 evaluated duels, 185 scored, 73.5% overall, 85.3% high vs 64.5%
+  low over the 10 backfilled rounds, regenerated 2026-10-16 with the W5
+  rule that a thin fit makes a call low; F1's archive now answers 401,
+  so more of 2025 cannot land).
 - f1_kernel.braking (2.6): braking-point drift — the thing the project
   originally thought needed computer vision, done from the brake channel
   every lap instead. `braking_points` takes one driver's telemetry frame
