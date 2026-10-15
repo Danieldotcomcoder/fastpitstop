@@ -112,6 +112,31 @@
 		{ id: 'story', label: 'Story', icon: 'M6 4h12v16l-6-4-6 4z' }
 	] as const;
 	let phoneTab = $state<string>('race');
+
+	/** Desktop density (ROADMAP W2 D5): Full shows every panel; Focus keeps
+	 * the battle, the next call, the story, the ribbon and the top ten.
+	 * Remembered on the device; phones use their tabs instead. */
+	const DENSITY_KEY = 'desk-density';
+	function storedDensity(): 'full' | 'focus' {
+		try {
+			return typeof localStorage !== 'undefined' && localStorage.getItem(DENSITY_KEY) === 'focus'
+				? 'focus'
+				: 'full';
+		} catch {
+			return 'full';
+		}
+	}
+	let density = $state<'full' | 'focus'>(storedDensity());
+	function setDensity(next: 'full' | 'focus'): void {
+		density = next;
+		try {
+			localStorage.setItem(DENSITY_KEY, next);
+		} catch {
+			// Storage blocked: the choice lasts as long as the page.
+		}
+	}
+	/** Panels Focus leaves out are not mounted at all, so their work stops. */
+	const inFull = () => isPhone || density === 'full';
 	let deskEl: HTMLElement | undefined = $state();
 
 	/** On a phone a tab's panels are mounted the first time it is opened, and
@@ -531,7 +556,11 @@
 	});
 </script>
 
-<div class="wide-dashboard desk-page" data-tab={qualiBoard ? undefined : phoneTab}>
+<div
+	class="wide-dashboard desk-page"
+	data-tab={qualiBoard ? undefined : phoneTab}
+	data-density={qualiBoard ? undefined : density}
+>
 	<DeskIcons />
 	<header class="masthead">
 		<div class="brand">
@@ -555,6 +584,16 @@
 				{/each}
 			</dl>
 		</div>
+		{#if !qualiBoard}
+			<div class="density seg" role="group" aria-label="How much to show">
+				<button type="button" aria-pressed={density === 'focus'} onclick={() => setDensity('focus')}
+					>Focus</button
+				>
+				<button type="button" aria-pressed={density === 'full'} onclick={() => setDensity('full')}
+					>Full</button
+				>
+			</div>
+		{/if}
 		{#if qualiBoard}
 			<div class="lapcount" data-testid="quali-clock">
 				<span class="caps">{qualiBoard.label ?? 'Qualifying'}</span>
@@ -642,7 +681,7 @@
 			{#if shows('story')}
 				<WhyLane {explanations} {codes} {teams} />
 			{/if}
-			{#if shows('map')}
+			{#if shows('map') && inFull()}
 				<DeskMap
 					{controller}
 					{circuit}
@@ -664,7 +703,7 @@
 					focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
 				/>
 			{/if}
-			{#if shows('strategy')}
+			{#if shows('strategy') && inFull()}
 				<DeskAnalytics
 					apiKey={session.key}
 					laps={revealedLaps}
@@ -678,7 +717,7 @@
 					{revision}
 				/>
 			{/if}
-			{#if shows('story')}
+			{#if shows('story') && inFull()}
 				<FeedLane
 					items={feedItems}
 					filter={feedFilter}

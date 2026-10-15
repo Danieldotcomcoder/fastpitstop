@@ -1820,3 +1820,47 @@
 		bottom: calc(68px + env(safe-area-inset-bottom, 0px));
 	}
 }
+/* Focus and Full (ROADMAP W2 D5): a desktop choice; phones have tabs. */
+.desk-page .density {
+	margin-left: auto;
+	align-self: center;
+}
+.desk-page .density button {
+	min-height: 40px;
+	padding-inline: 14px;
+}
+@media (max-width: 899px) {
+	.desk-page .density {
+		display: none;
+	}
+}
+@media (min-width: 900px) {
+	/* Focus: the battle large beside the next call, the ribbon and the top
+	   ten under it, the story down the side. */
+	.desk-page[data-density='focus'] .desk {
+		grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+		grid-template-areas:
+			'battle undercut'
+			'ribbon why'
+			'tower why';
+		align-items: start;
+	}
+	.desk-page[data-density='focus'] .tower-body tr.extra {
+		display: none !important;
+	}
+	.desk-page[data-density='focus'] .tower-more {
+		display: inline-flex !important;
+	}
+	.desk-page[data-density='focus'] .tower-body.expanded tr.extra {
+		display: table-row !important;
+	}
+}
+@media (min-width: 1320px) {
+	/* Focus's battle at its full size, where the column has room for it. */
+	.desk-page[data-density='focus'] .p-battle .gap-num {
+		font-size: 88px;
+	}
+	.desk-page[data-density='focus'] .p-battle .name {
+		font-size: 40px;
+	}
+}

@@ -413,6 +413,57 @@ shows its record". A per-race scorecard is W5, not built yet.
 The search text, recent races and questions stay below, unchanged. The
 home visual baselines change.
 
+**The other D5 screens (2026-10-15).** Mockup A drew none of them, so ten
+new boards came first, on the same design canvas, in direction A and
+from real figures (two rows under the M2 ones): `/live` off week,
+pre-session and post-session (pre-session also at phone width), the
+archive and story (also at phone width), about, and the desk's Focus
+density. You asked me not to wait, so they were built before your
+approval. Each leads with something the screen lacked:
+- **`/live` between sessions** (`$lib/live`):
+  - *Pre-session:* a countdown to the next session is the hero, then the
+    weekend's earlier sessions offered from the start, and how to get set.
+  - *Post-session:* the session just finished, offered from its start
+    with the result hidden, then the next one.
+  - *Off week:* the next Grand Prix.
+
+  Every state ends with "Before the weekend": what a stop costs at the
+  circuit, on the scale of every measured circuit; tyre wear per
+  compound, thin fits drawn as outlines; and the lap. All of it comes
+  from past races. `idleState` picks the screen from the calendar, the
+  catalog and the clock (unit-tested). Pre-session weather is still not
+  built: the feed sends none.
+- **Archive:** one card per weekend, every session it holds in running
+  order. Above them, the season as a strip of circuit outlines: rounds
+  run, the next one marked, later ones faint, and a run round with no
+  replay marked "no replay". The "include qualifying & practice" switch
+  is gone; every session is a chip now.
+- **Story:** held back to the lap the viewer says they have watched
+  (remembered per session; `?upto=` in a link), and the heading says
+  how far. It used to show the whole race the moment one was picked.
+  Moments are grouped (start, on track, strategy, incidents, finish)
+  under a lap axis that ends at the viewer's lap. It never shows the
+  race's length, or how many moments are still hidden: either would
+  hint at what is coming.
+- **About:** led by four published numbers: the held-out undercut
+  record, 410 pit stops measured, the fuel coefficient, and 110/110
+  story cards. `published.test.ts` checks each against its committed
+  report.
+- **Desk density:** Focus or Full, from the masthead on screens 900 px
+  and wider, remembered on the device. Focus keeps the battle, the next
+  call, the story, the ribbon and the top ten. The map, analytics, radio
+  and race control are left out, not just hidden.
+
+Checks:
+- `e2e/archive.spec.ts` (new, in `verify-phase3`);
+- `weekend.spec.ts`, which now checks the pre-session screen;
+- `why.spec.ts`, which now checks the story is held back first;
+- a Focus test in `desk.spec.ts`;
+- the test calendars gain the fixture's 2024 season.
+
+Baselines that change: live, sessions, about and race desk. The story
+page has none.
+
 **Not doing:** per-car labels on the map (removed at your request), F1 or
 team logos, driver headshots.
 

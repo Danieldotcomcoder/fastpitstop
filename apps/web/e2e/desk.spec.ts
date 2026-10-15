@@ -76,3 +76,33 @@ for (const width of [390, 768, 1024, 1440]) {
 		await expect(page.getByTestId('race-ribbon')).toBeVisible();
 	});
 }
+
+test('Focus keeps the battle, next call, story, ribbon and top ten, and is remembered', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/sessions/2024/1?speed=0&delay=0');
+	await expect(page.getByTestId('session-lap')).toHaveText('30', { timeout: 30_000 });
+	await expect(page.getByTestId('map-panel')).toBeVisible();
+
+	await page
+		.getByRole('group', { name: 'How much to show' })
+		.getByRole('button', { name: 'Focus' })
+		.click();
+	await expect(page.getByTestId('map-panel')).toHaveCount(0);
+	await expect(page.getByRole('tab', { name: 'Degradation' })).toHaveCount(0);
+	for (const id of ['battle-hero', 'undercut-panel', 'desk-why', 'race-ribbon', 'tower-panel']) {
+		await expect(page.getByTestId(id)).toBeVisible();
+	}
+	// The top ten only (the fixture race has eight cars, so all of them).
+	await expect(page.getByTestId('tower-row').filter({ visible: true })).toHaveCount(8);
+
+	await page.reload();
+	await expect(page.getByTestId('session-lap')).toHaveText('30', { timeout: 30_000 });
+	await expect(page.getByTestId('map-panel')).toHaveCount(0);
+	await page
+		.getByRole('group', { name: 'How much to show' })
+		.getByRole('button', { name: 'Full' })
+		.click();
+	await expect(page.getByTestId('map-panel')).toBeVisible();
+});
