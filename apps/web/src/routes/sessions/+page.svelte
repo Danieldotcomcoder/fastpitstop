@@ -1,10 +1,16 @@
 <script lang="ts">
+	/** The archive by weekend (ROADMAP W2, mockup "Sessions archive"): the
+	 * season as a strip of its circuits, then one card per round with every
+	 * session it holds, each replayed from its start. Nothing here gives a
+	 * result away. */
 	import { onMount, untrack } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { api, type components } from '$lib/api/client';
+	import { calendar, calendarSummary, weekends } from '$lib/archive/weekends';
 	import Panel from '$lib/components/Panel.svelte';
 	import LoadingState from '$lib/components/LoadingState.svelte';
-	import { SESSION_TYPE_LABELS, seoFor } from '$lib/seo';
+	import { serverNowMs } from '$lib/delay-sync';
+	import { seoFor } from '$lib/seo';
 	import { TrackThumbnail } from '$lib/ui';
 	import type { PageProps } from './$types';
 
@@ -18,9 +24,8 @@
 	let status = $state<'loading' | 'error' | 'ready'>(initial.length > 0 ? 'ready' : 'loading');
 	let sessions = $state<SessionSummary[]>(initial);
 	let errorMessage = $state('');
-	/** Races only by default — practice/qualifying behind a chip. */
-	let includeNonRace = $state(false);
 	let selectedYear = $state<number | null>(null);
+	let nowMs = $state(Date.now());
 
 	async function loadSessions(): Promise<void> {
 		status = 'loading';
@@ -40,41 +45,14 @@
 	}
 
 	let years = $derived([...new Set(sessions.map((s) => s.session_key.year))].sort((a, b) => b - a));
-
-	$effect(() => {
-		if (selectedYear === null && years.length > 0) {
-			selectedYear = years[0] ?? null;
-		}
-	});
-
-	let filtered = $derived.by(() => {
-		return sessions
-			.filter((s) => {
-				if (selectedYear !== null && s.session_key.year !== selectedYear) return false;
-				if (!includeNonRace && s.session_key.session_type !== 'race') return false;
-				return true;
-			})
-			.sort((a, b) => {
-				if (a.session_key.year !== b.session_key.year) {
-					return b.session_key.year - a.session_key.year;
-				}
-				return b.session_key.round - a.session_key.round;
-			});
-	});
-
-	/** The circuit's outline, fitted on the server (none when the page
-	 * fetched its list itself). */
-	function thumbFor(session: SessionSummary): string | undefined {
-		return session.circuit_name ? data.thumbs?.[session.circuit_name] : undefined;
-	}
-
-	function sessionHref(session: SessionSummary): string {
-		const { year, round, session_type } = session.session_key;
-		const path = resolve(`/sessions/${year}/${round}`);
-		return session_type === 'race' ? path : `${path}?session=${session_type}`;
-	}
+	let year = $derived(selectedYear ?? years[0] ?? null);
+	let cards = $derived(year === null ? [] : weekends(sessions, year));
+	let rounds = $derived(
+		year === null ? [] : calendar(data.schedules?.[year] ?? [], sessions, nowMs)
+	);
 
 	onMount(() => {
+		nowMs = serverNowMs();
 		if (sessions.length === 0) void loadSessions();
 	});
 </script>
@@ -83,152 +61,222 @@
 	<title>{seoFor('/sessions', []).title}</title>
 </svelte:head>
 
-<h1>Sessions</h1>
-<p>
-	Completed races, newest first. Nothing here gives a result away: open one to replay it from the
-	start.
-</p>
-
-<div class="toolbar">
-	{#if years.length > 0}
-		<div class="year-tabs" role="tablist" aria-label="Season">
-			{#each years as year (year)}
-				<button
-					type="button"
-					role="tab"
-					class="year-tab"
-					class:active={selectedYear === year}
-					aria-selected={selectedYear === year}
-					onclick={() => (selectedYear = year)}
-				>
-					{year}
-				</button>
-			{/each}
+<div class="archive wide-dashboard">
+	<header class="head">
+		<div>
+			<h1>Sessions</h1>
+			<p class="lede">
+				Every session we hold, by weekend. Nothing here gives a result away: open one to replay it
+				from the start.
+			</p>
 		</div>
-	{/if}
-	<label class="chip">
-		<input type="checkbox" bind:checked={includeNonRace} />
-		Include qualifying &amp; practice
-	</label>
-</div>
+		{#if years.length > 0}
+			<div class="year-tabs" role="tablist" aria-label="Season">
+				{#each years as y (y)}
+					<button
+						type="button"
+						role="tab"
+						class="year-tab"
+						class:active={year === y}
+						aria-selected={year === y}
+						onclick={() => (selectedYear = y)}
+					>
+						{y}
+					</button>
+				{/each}
+			</div>
+		{/if}
+	</header>
 
-{#if status === 'loading'}
-	<LoadingState label="Loading sessions…" />
-{:else if status === 'error'}
-	<Panel title="Couldn't load sessions">
-		<p>{errorMessage}</p>
-		<p class="hint">
-			Start the API, then
-			<button type="button" class="retry" onclick={loadSessions}>try again</button>.
-		</p>
-	</Panel>
-{:else if filtered.length === 0}
-	<Panel title="Nothing in this filter">
-		<p>
-			No sessions match the current year and type filter. Turn on qualifying &amp; practice, or pick
-			another season.
-		</p>
-	</Panel>
-{:else}
-	<ul class="session-list">
-		{#each filtered as session (session.key)}
-			{@const thumb = thumbFor(session)}
-			<li>
-				<!-- sessionHref() calls resolve() itself (see above). -->
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-				<a class="session-card" href={sessionHref(session)}>
-					<span class="round tabular">R{session.session_key.round}</span>
-					<span class="body">
-						<span class="event">{session.event_name ?? session.key}</span>
-						<span class="meta">
-							{#if session.circuit_name}
-								{session.circuit_name}
-								<span class="sep" aria-hidden="true">·</span>
-							{/if}
-							{SESSION_TYPE_LABELS[session.session_key.session_type] ??
-								session.session_key.session_type}
-						</span>
-						<span class="badges">
-							{#if session.has_radio}
-								<span class="badge">radio</span>
-							{/if}
-							{#if session.has_telemetry}
-								<span class="badge">telemetry</span>
-							{/if}
-							{#if session.live_recorded}
-								<span class="badge">live-recorded</span>
-							{/if}
-							{#if !session.has_radio && !session.has_telemetry && !session.live_recorded}
-								<span class="badge muted">timing</span>
-							{/if}
-						</span>
-					</span>
-					{#if thumb}
-						<span class="thumb">
+	{#if rounds.length > 0}
+		<section class="season" aria-labelledby="season-title">
+			<h2 id="season-title" class="caps">{year} · {calendarSummary(rounds)}</h2>
+			<ol class="strip" data-testid="season-strip">
+				{#each rounds as r (r.round)}
+					{@const thumb = r.circuitId ? data.thumbsById?.[r.circuitId] : undefined}
+					<li class={r.state} class:unheld={r.state === 'run' && !r.held}>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={r.href} title={r.eventName} aria-label={`Round ${r.round}, ${r.eventName}`}>
+							<span class="frame">
+								{#if thumb}
+									<TrackThumbnail
+										fitted={thumb}
+										label={`${r.circuitName ?? r.eventName} outline`}
+										width={data.thumbSize.width}
+										height={data.thumbSize.height}
+										strokeWidth={data.thumbSize.stroke}
+									/>
+								{/if}
+							</span>
+							<span class="caps"
+								>R{r.round}{r.state === 'next'
+									? ' · next'
+									: r.state === 'run' && !r.held
+										? ' · no replay'
+										: ''}</span
+							>
+						</a>
+					</li>
+				{/each}
+			</ol>
+		</section>
+	{/if}
+
+	{#if status === 'loading'}
+		<LoadingState label="Loading sessions…" />
+	{:else if status === 'error'}
+		<Panel title="Couldn't load sessions">
+			<p>{errorMessage}</p>
+			<p class="hint">
+				Start the API, then
+				<button type="button" class="retry" onclick={loadSessions}>try again</button>.
+			</p>
+		</Panel>
+	{:else if cards.length === 0}
+		<Panel title="Nothing this season yet">
+			<p>No session of this season is held yet. Pick another season.</p>
+		</Panel>
+	{:else}
+		<ul class="weekends" aria-label="Weekends">
+			{#each cards as w (w.round)}
+				{@const thumb = w.circuitName ? data.cards?.[w.circuitName] : undefined}
+				<li class="session-card" data-testid="weekend-card">
+					<span class="thumb">
+						{#if thumb}
 							<TrackThumbnail
 								fitted={thumb}
-								label={`${session.circuit_name} outline`}
-								width={data.thumbSize.width}
-								height={data.thumbSize.height}
-								strokeWidth={data.thumbSize.stroke}
+								label={`${w.circuitName} outline`}
+								width={data.cardSize.width}
+								height={data.cardSize.height}
+								strokeWidth={data.cardSize.stroke}
 							/>
-						</span>
-					{/if}
-				</a>
-			</li>
-		{/each}
-	</ul>
-{/if}
+						{/if}
+					</span>
+					<div class="body">
+						<span class="caps"
+							>Round {w.round}{#if w.liveRecorded}&nbsp;· taken in live{/if}{#if w.hasTelemetry}&nbsp;·
+								telemetry{/if}{#if w.hasRadio}&nbsp;· radio{/if}</span
+						>
+						<h2 class="event">
+							<a href={resolve(`/sessions/${w.year}/${w.round}`)}>{w.eventName}</a>
+						</h2>
+						{#if w.circuitName}<span class="meta">{w.circuitName}</span>{/if}
+						<ul class="chips" aria-label={`${w.eventName} sessions`}>
+							{#each w.sessions as session (session.type)}
+								<li>
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+									<a class="chip" class:race={session.type === 'race'} href={session.href}
+										>{session.label}{#if session.live}&nbsp;· live now{/if}</a
+									>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</div>
 
 <style>
-	.toolbar {
+	.archive {
+		width: 100%;
+		max-width: 1180px;
+		margin: 0 auto;
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-3);
-		margin-bottom: var(--space-5);
+		flex-direction: column;
+		gap: var(--space-5);
 	}
-
+	.head {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		gap: var(--space-4);
+		flex-wrap: wrap;
+	}
+	h1 {
+		margin: 0;
+	}
+	.lede {
+		margin: var(--space-2) 0 0;
+		color: var(--text-secondary);
+		max-width: 60ch;
+	}
+	.caps {
+		margin: 0;
+		font: 500 var(--font-size-xs) / 1.3 var(--font-mono);
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--muted);
+	}
 	.year-tabs {
 		display: flex;
 		gap: var(--space-1);
 		flex-wrap: wrap;
 	}
-
 	.year-tab {
+		min-height: 44px;
 		background: transparent;
 		border: 1px solid var(--hairline);
 		color: var(--text-muted);
-		padding: var(--space-1) var(--space-3);
+		padding: 0 var(--space-4);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		font-size: var(--font-size-sm);
-		border-radius: var(--radius-sm);
+		border-radius: 999px;
 		cursor: pointer;
 	}
-
 	.year-tab.active {
-		color: var(--text-primary);
-		border-color: var(--hairline-strong);
-		background: var(--surface-raised);
+		color: var(--paper);
+		border-color: var(--ink);
+		background: var(--ink);
 	}
-
-	.chip {
-		display: inline-flex;
-		align-items: center;
+	.strip {
+		list-style: none;
+		margin: var(--space-3) 0 0;
+		padding: 0 0 var(--space-2);
+		display: flex;
 		gap: var(--space-2);
-		font-size: var(--font-size-sm);
-		color: var(--text-secondary);
-		cursor: pointer;
-		user-select: none;
+		overflow-x: auto;
 	}
-
+	.strip a {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--space-1);
+		min-width: 88px;
+		text-decoration: none;
+	}
+	.frame {
+		display: block;
+		width: 88px;
+		height: 62px;
+		padding: 5px 7px;
+		box-sizing: border-box;
+		border: 1px solid var(--rule);
+		border-radius: var(--radius-md);
+		background: var(--panel);
+	}
+	.strip li.next .frame {
+		border-color: var(--warn-fill);
+		box-shadow: 0 0 0 1px var(--warn-fill);
+	}
+	.strip li.next .caps {
+		color: var(--ink);
+	}
+	/* Later rounds are only a promise: drawn faint, never as a held replay. */
+	.strip li.later .frame {
+		opacity: 0.45;
+	}
+	/* Run, but no replay held: the frame says so, not only the label. */
+	.strip li.unheld .frame {
+		border-style: dashed;
+		opacity: 0.6;
+	}
 	.hint {
 		color: var(--text-muted);
 		font-size: var(--font-size-sm);
 	}
-
 	.retry {
 		background: none;
 		border: none;
@@ -237,104 +285,75 @@
 		text-decoration: underline;
 		cursor: pointer;
 	}
-
-	.session-list {
+	.weekends {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-2);
+		display: grid;
+		gap: var(--space-3);
 	}
-
 	.session-card {
-		display: flex;
-		gap: var(--space-4);
-		align-items: flex-start;
-		padding: var(--space-4);
+		display: grid;
+		grid-template-columns: 132px minmax(0, 1fr);
+		gap: var(--space-5);
+		align-items: center;
+		padding: var(--space-4) var(--space-5);
 		border: 1px solid var(--hairline);
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-lg);
 		background: var(--surface-raised);
-		text-decoration: none;
-		color: inherit;
-		transition:
-			border-color var(--duration-fast) ease,
-			background var(--duration-fast) ease;
 	}
-
-	.session-card:hover {
-		border-color: var(--hairline-strong);
-		background: var(--surface-overlay);
-		opacity: 1;
+	@media (max-width: 599px) {
+		.session-card {
+			grid-template-columns: 72px minmax(0, 1fr);
+			gap: var(--space-3);
+			padding: var(--space-3) var(--space-4);
+		}
 	}
-
-	.session-card:focus-visible {
-		border-color: var(--hairline-strong);
-	}
-
-	.thumb {
-		flex: 0 0 72px;
-		align-self: center;
-	}
-
-	.round {
-		font-family: var(--font-display);
-		font-weight: 600;
-		letter-spacing: var(--tracking-display);
-		color: var(--text-muted);
-		min-width: 2.5rem;
-	}
-
 	.body {
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-1);
 		min-width: 0;
-		flex: 1;
 	}
-
 	.event {
-		font-family: var(--font-display);
-		font-size: var(--font-size-md);
-		font-weight: 600;
+		margin: 0;
+		font: 500 var(--font-size-lg) / 1.2 var(--font-display);
 		letter-spacing: var(--tracking-display);
-		color: var(--text-primary);
 	}
-
+	.event a {
+		color: inherit;
+		text-decoration: none;
+	}
+	.event a:hover {
+		text-decoration: underline;
+	}
 	.meta {
 		font-size: var(--font-size-sm);
 		color: var(--text-muted);
 	}
-
-	.sep {
-		margin: 0 0.25rem;
-		opacity: 0.6;
-	}
-
-	.badges {
+	.chips {
+		list-style: none;
+		margin: var(--space-2) 0 0;
+		padding: 0;
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--space-1);
-		margin-top: var(--space-1);
+		gap: var(--space-2);
 	}
-
-	.badge {
-		font-size: var(--font-size-xs);
-		font-weight: 500;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		color: var(--text-secondary);
-		border: 1px solid var(--hairline);
-		border-radius: var(--radius-sm);
-		padding: 0.1rem 0.4rem;
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 var(--space-3);
+		border: 1px solid var(--rule-strong);
+		border-radius: 999px;
+		color: var(--ink);
+		text-decoration: none;
+		font-size: var(--font-size-sm);
 	}
-
-	.badge.muted {
-		color: var(--text-muted);
+	.chip:hover {
+		background: var(--panel-sunk);
 	}
-
-	.tabular {
-		font-family: var(--font-mono);
-		font-variant-numeric: tabular-nums;
+	.chip.race {
+		border-color: var(--accent);
 	}
 </style>

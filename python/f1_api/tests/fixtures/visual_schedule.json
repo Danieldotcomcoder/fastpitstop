@@ -15,6 +15,38 @@
       ]
     }
   ],
+  "2024": [
+    {
+      "round": 1,
+      "event_name": "Bahrain Grand Prix",
+      "location": "Sakhir",
+      "country": "Bahrain",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Race", "start_utc": "2024-03-02T15:00:00+00:00", "start_local": "2024-03-02T18:00:00+03:00"}
+      ]
+    },
+    {
+      "round": 2,
+      "event_name": "Saudi Arabian Grand Prix",
+      "location": "Jeddah",
+      "country": "Saudi Arabia",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Race", "start_utc": "2024-03-09T17:00:00+00:00", "start_local": "2024-03-09T20:00:00+03:00"}
+      ]
+    },
+    {
+      "round": 3,
+      "event_name": "Australian Grand Prix",
+      "location": "Melbourne",
+      "country": "Australia",
+      "event_format": "conventional",
+      "sessions": [
+        {"name": "Race", "start_utc": "2024-03-24T04:00:00+00:00", "start_local": "2024-03-24T15:00:00+11:00"}
+      ]
+    }
+  ],
   "2025": [
     {
       "round": 4,
