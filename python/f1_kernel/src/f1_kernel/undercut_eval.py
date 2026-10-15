@@ -354,6 +354,18 @@ def _score_pair(
             pending=True,
         )
 
+    if decision_lap in stops_by_driver.get(stayer, []):
+        # The rival pitted at the end of the decision lap itself, a lap
+        # before this car: it stopped first, so this was never the duel
+        # called. Known the moment the call locks.
+        return excluded(
+            "rival_stopped_first",
+            decision_lap,
+            first_stop_lap + 1,
+            _end(
+                rows, attacker if kind is CrossoverKind.UNDERCUT else defender, first_stop_lap + 1
+            ),
+        )
     stayer_stop = next((lap for lap in stops_by_driver.get(stayer, []) if lap > decision_lap), None)
     if stayer_stop is not None and stayer_stop <= first_stop_lap:
         return excluded(
