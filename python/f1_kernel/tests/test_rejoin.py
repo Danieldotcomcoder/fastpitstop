@@ -176,3 +176,19 @@ def test_a_running_race_waits_for_the_out_lap_and_the_cars_around(params: Kernel
     assert before_d.pending and before_d.exclusion == "waiting_for_cars_around"
     assert not settled.pending and settled.hit is True
     assert settled.projection == before_out.projection
+
+
+def test_the_snapshot_skips_a_car_in_the_pits_or_just_out(params: KernelParams) -> None:
+    """At lap 10 X is in the pits (in-lap); at lap 11 it is on its out-lap.
+    Neither gets a "box next lap" projection, though it still counts as a
+    car on track for the others."""
+    race = scripted_race(offsets=OFFSETS, laps=14, stops={"X": (10, 20.0)})
+
+    at_in = rejoin_snapshot(race, params, decision_lap=10, pit_loss=MEASURED)
+    at_out = rejoin_snapshot(race, params, decision_lap=11, pit_loss=MEASURED)
+    after = rejoin_snapshot(race, params, decision_lap=12, pit_loss=MEASURED)
+
+    assert "X" not in [p.driver for p in at_in]
+    assert "X" not in [p.driver for p in at_out]
+    assert "X" in [p.driver for p in after]
+    assert len(at_in) == 4

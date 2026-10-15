@@ -135,9 +135,17 @@ def rejoin_snapshot(
     decision_lap: int,
     pit_loss: PitLossEstimate | None = None,
 ) -> list[RejoinProjection]:
-    """Every car that completed the decision lap, in race order."""
+    """Every car that completed the decision lap, in race order, except
+    one that pitted on it (in the pits now) or ran its out-lap on it (just
+    stopped): "if it boxes next lap" says nothing about either. They still
+    count as cars on track for everyone else's projection."""
     ends = _crossings(state.laps, decision_lap)
     estimate = pit_loss if pit_loss is not None else pit_loss_estimate(state, params)
+    at = state.laps.filter(pl.col("lap_number") == decision_lap)
+    stopping = {
+        str(driver)
+        for driver in at.filter(pl.col("is_pit_in") | pl.col("is_pit_out"))["driver"].to_list()
+    }
     return [
         _project(
             driver,
@@ -148,6 +156,7 @@ def rejoin_snapshot(
             params,
         )
         for driver in sorted(ends, key=ends.__getitem__)
+        if driver not in stopping
     ]
 
 
