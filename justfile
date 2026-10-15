@@ -143,11 +143,13 @@ backtest-phase2:
 
 # ROADMAP W5, step one of two, on 2024 (development): why the undercut's
 # medium calls score below low (with candidate confidence rules), and the
-# rejoin call with pit loss measured on 2023 only. Rules and thresholds are
-# read here; 2025 stays held out. Needs the 2023-2024 backfill; not in CI.
+# rejoin call with pit loss measured on 2024 itself (in-sample: F1's archive
+# answers 401 since October 2026, so 2023 cannot be fetched). Rules and
+# thresholds are read here; 2025 stays held out. Needs the 2024 backfill;
+# not in CI.
 w5-diagnose:
     uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2024 --diagnose --out python/f1_kernel/reports/undercut_backtest_2024_diagnosis.md
-    uv run python python/f1_kernel/tools/backtest_rejoin.py --seasons 2024 --out python/f1_kernel/reports/rejoin_backtest_2024_dev.md
+    uv run python python/f1_kernel/tools/backtest_rejoin.py --seasons 2024 --pit-loss-in-sample --out python/f1_kernel/reports/rejoin_backtest_2024_dev.md
 
 # ROADMAP W5, step two: the held-out 2025 check, run once the rules read
 # from `w5-diagnose` are in the kernel. Pit loss for the rejoin call comes

@@ -430,11 +430,15 @@ def _latest_common_lap(laps: pl.DataFrame, driver_a: str, driver_b: str) -> int 
 
 
 def _reliability_confidence(attacker: DegradationFit, defender: DegradationFit) -> Confidence:
+    """HIGH when both fits are good, LOW otherwise. A thin fit is LOW too,
+    not MEDIUM: it has too few laps for its interval to be checked at all,
+    and on the 2024 backtest its calls scored below unreliable ones (58%
+    against 70%), which made medium score below low. MEDIUM is left to the
+    sign cap: two good fits whose margin straddles zero
+    (`reports/undercut_backtest_2024_diagnosis.md`, ROADMAP W5)."""
     worst = min((attacker.reliability, defender.reliability), key=_RELIABILITY_RANK.__getitem__)
     if worst is Reliability.GOOD:
         return Confidence.HIGH
-    if worst is Reliability.THIN:
-        return Confidence.MEDIUM
     return Confidence.LOW
 
 

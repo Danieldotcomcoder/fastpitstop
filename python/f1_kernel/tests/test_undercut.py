@@ -357,7 +357,9 @@ def test_missing_driver_row_yields_unknown(params: KernelParams) -> None:
     assert any("no completed lap" in reason for reason in result.reasons)
 
 
-def test_a_thin_fit_caps_confidence_at_medium(params: KernelParams) -> None:
+def test_a_thin_fit_caps_confidence_at_low(params: KernelParams) -> None:
+    """Thin fits scored below unreliable ones on the 2024 backtest, so a
+    thin fit no longer earns medium (ROADMAP W5)."""
     decision = 20
     state = _pair_state(decision, gap_s=2.0)
     fits = [
@@ -368,7 +370,7 @@ def test_a_thin_fit_caps_confidence_at_medium(params: KernelParams) -> None:
     result = undercut_window(state, "44", "1", fits, params, decision_lap=decision)
 
     assert result.window is not WindowState.UNKNOWN
-    assert result.confidence is Confidence.MEDIUM
+    assert result.confidence is Confidence.LOW
     assert any("attacker fit is thin" in reason for reason in result.reasons)
 
 

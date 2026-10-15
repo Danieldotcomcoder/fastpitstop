@@ -846,10 +846,36 @@ Drawing them found two bugs, both fixed:
   (so it stopped first) was left waiting for a second stop. Scored rows
   are unchanged.
 
+*Diagnosis on 2024 (2026-10-16),* `just w5-diagnose`, committed as
+`reports/undercut_backtest_2024_diagnosis.md` and
+`reports/rejoin_backtest_2024_dev.md`:
+- **Undercut confidence: a thin fit is now low, not medium.** Neither
+  rule the plan offered passed on 2024 (undercut calls only):
+  - the old rule: high 84.3%, medium 60.2%, low 64.0%;
+  - the sign check at the rival's real stop lap: high 88.2%, medium
+    62.5%, low 64.0%. It also needs the real stop, which is not known
+    live, so it could never run on the desk.
+
+  The cause was the fit floor. A thin fit (too few laps; its interval is
+  never checked) scored 58%, below an unreliable one (70%), yet it made
+  a call medium. Now only two good fits earn medium or high, and medium
+  means two good fits whose margin straddles zero. On 2024: high 84.3%,
+  medium 67.9%, low 57.8% (all calls: 89.4%, 71.4%, 64.0%). Swapping
+  the two weak tiers also passed, but it would claim an unreliable fit
+  beats a thin one, against the ranking the rest of the product shows.
+- **Rejoin: thresholds and void rule unchanged.** Pit loss is measured
+  on 2024 itself (`--pit-loss-in-sample`), labelled in the report: F1's
+  archive answers 401 since October 2026, so 2023 cannot be fetched.
+  High 78.2%, medium 63.6%, low 46.8%; clear air rises steadily through
+  the 1 and 2 sigma thresholds. `another_car_pitted_around_the_rejoin`
+  voids 382 of 648 calls, but it is not too broad: scored anyway, those
+  calls hit 21% when a projected neighbour pitted and about 47 to 59%
+  when only a car it drops behind did, against 66% when nobody did.
+  They test the other cars' stops, not the projection.
+
 *Waiting on you:*
 - approving the W5 mockups, before step 5 (the screens);
-- `just w5-diagnose` (2024 undercut diagnosis and rejoin development
-  report), then, with the rules settled, `just w5-holdout` (2025).
+- `just w5-holdout` (2025), now that the rules are settled.
 
 ### W6. Sync 2.0 (signature)
 

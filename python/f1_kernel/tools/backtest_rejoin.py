@@ -13,6 +13,11 @@ backfill), never on it: the shipped circuit files are calibrated on
 partly built from. 2024 is the development run (the confidence thresholds
 are read there); 2025 is held out and run once those are settled.
 
+`--pit-loss-in-sample` measures pit loss on the seasons under test
+instead, for the 2024 development run only: F1's static archive has
+answered 401 since October 2026, so 2023 can no longer be fetched. The
+report says so. Never use it for the held-out run.
+
 Dev-only: needs `data/historical/` populated. Never imported at runtime.
 """
 
@@ -50,6 +55,11 @@ def main(argv: list[str]) -> int:
         default=None,
         help="seasons pit loss is measured on (default: every season before --seasons)",
     )
+    parser.add_argument(
+        "--pit-loss-in-sample",
+        action="store_true",
+        help="measure pit loss on --seasons itself (development run only, see above)",
+    )
     parser.add_argument("--min-stops", type=int, default=8, help="pit-loss floor per circuit")
     parser.add_argument("--out", default=str(OUTPUT_PATH))
     args = parser.parse_args(argv[1:])
@@ -63,13 +73,21 @@ def main(argv: list[str]) -> int:
     if not races:
         print(f"no backfilled races for {args.seasons} under {args.root}", file=sys.stderr)
         return 1
-    loss_seasons = args.pit_loss_seasons or [
-        ref.session_key.year
-        for ref in list_historical_sessions(args.root)
-        if ref.session_key.year < min(args.seasons)
-    ]
+    if args.pit_loss_in_sample and args.pit_loss_seasons:
+        print("--pit-loss-in-sample and --pit-loss-seasons are exclusive", file=sys.stderr)
+        return 1
+    loss_seasons = (
+        list(args.seasons)
+        if args.pit_loss_in_sample
+        else args.pit_loss_seasons
+        or [
+            ref.session_key.year
+            for ref in list_historical_sessions(args.root)
+            if ref.session_key.year < min(args.seasons)
+        ]
+    )
     loss_seasons = sorted(set(loss_seasons))
-    if set(loss_seasons) & set(args.seasons):
+    if set(loss_seasons) & set(args.seasons) and not args.pit_loss_in_sample:
         print("pit loss must not be measured on the seasons under test", file=sys.stderr)
         return 1
     loss_sessions = [
@@ -92,7 +110,14 @@ def main(argv: list[str]) -> int:
     labels = [f"{ref.label} ({ref.event_name})" for ref in races]
     result = Backtest(source, params=params).run(rows_with(estimates), races, raise_on_error=False)
     print(result.summary())
-    report = render_report(labels, result.errors, result.table, loss_seasons, estimates)
+    report = render_report(
+        labels,
+        result.errors,
+        result.table,
+        loss_seasons,
+        estimates,
+        in_sample=args.pit_loss_in_sample,
+    )
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
@@ -203,6 +228,8 @@ def render_report(
     table: pl.DataFrame,
     loss_seasons: Sequence[int],
     estimates: Mapping[str, PitLossEstimate],
+    *,
+    in_sample: bool = False,
 ) -> str:
     measured = sum(1 for e in estimates.values() if e.sigma_s is not None)
     lines = [
@@ -213,7 +240,14 @@ def render_report(
         "that lap only, and scored on who was directly ahead at the end of the out-lap. "
         f"Pit loss and its single-stop spread come from {', '.join(map(str, loss_seasons))} "
         f"only ({measured} circuit(s) measured, {len(estimates) - measured} under the "
-        "sample floor), never from the season under test.",
+        "sample floor), "
+        + (
+            "MEASURED ON THE SEASON UNDER TEST: in-sample, a development run only. The "
+            "single-stop spread is then measured on the very stops being called, so the "
+            "margins in sigmas read tighter than they will out of sample."
+            if in_sample
+            else "never from the season under test."
+        ),
         "",
         "## Corpus",
         "",

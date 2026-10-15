@@ -343,9 +343,10 @@ def _why_confidence_sections(scored: pl.DataFrame) -> list[str]:
     return [
         "## Why each call got its confidence",
         "",
-        "The confidence rule starts from the worse of the two degradation fits, caps at "
-        "medium when the immediate-cover margin changes sign across the fits' 95% "
-        "intervals, and caps at low when the decision lap was not green. A call is "
+        "The confidence rule starts from the worse of the two degradation fits (high when "
+        "both are good, low otherwise), caps at medium when the immediate-cover margin "
+        "changes sign across the fits' 95% intervals, and caps at low when the decision "
+        "lap was not green. A call is "
         "scored at the rival's REAL stop lap, so the same sign check there is shown "
         "beside it. The margin's size is not read by the rule today.",
         "",
@@ -373,13 +374,27 @@ def _why_confidence_sections(scored: pl.DataFrame) -> list[str]:
 
 
 _RANK = {"low": 0, "medium": 1, "high": 2}
-_FROM_FIT = {"good": "high", "thin": "medium", "unreliable": "low"}
+# The kernel's rule (`f1_kernel.undercut._reliability_confidence`): a thin
+# fit (too few laps; its interval is never checked) earns no more than an
+# unreliable one (too wide an interval), so only two good fits can make a
+# call medium or high.
+_FROM_FIT = {"good": "high", "thin": "low", "unreliable": "low"}
+# The rule before ROADMAP W5 step 3, kept so the report shows why it changed.
+_FROM_FIT_BEFORE_W5 = {"good": "high", "thin": "medium", "unreliable": "low"}
+# The two weak tiers swapped, for comparison.
+_FROM_FIT_SWAPPED = {"good": "high", "thin": "low", "unreliable": "medium"}
 
 
-def _candidate(scored: pl.DataFrame, *, sign_check: str | None) -> pl.DataFrame:
-    """Confidence recomputed from the fit floor with the sign cap read
-    from `sign_check` (or no sign cap at all), and the not-green cap kept."""
-    level = pl.col("fit_floor").replace_strict(_FROM_FIT, default=None)
+def _candidate(
+    scored: pl.DataFrame,
+    *,
+    sign_check: str | None,
+    from_fit: dict[str, str] = _FROM_FIT,
+) -> pl.DataFrame:
+    """Confidence recomputed from the fit floor (mapped by `from_fit`) with
+    the sign cap read from `sign_check` (or no sign cap at all), and the
+    not-green cap kept."""
+    level = pl.col("fit_floor").replace_strict(from_fit, default=None)
     if sign_check is not None:
         level = (
             pl.when(pl.col(sign_check).fill_null(False) & (level == "high"))
@@ -410,16 +425,35 @@ def _candidate_rule_sections(scored: pl.DataFrame) -> list[str]:
         "",
     ]
     undercuts = scored.filter(pl.col("kind") == "undercut")
-    for title, check in (
-        ("Today's rule, rebuilt from the columns (sanity check)", "covered_band_crosses_zero"),
-        ("Sign check at the real stop lap instead", "scored_band_crosses_zero"),
-        ("No sign check", None),
+    for title, check, from_fit in (
+        (
+            "Today's rule, rebuilt from the columns (sanity check)",
+            "covered_band_crosses_zero",
+            _FROM_FIT,
+        ),
+        (
+            "The rule before W5 (a thin fit is medium)",
+            "covered_band_crosses_zero",
+            _FROM_FIT_BEFORE_W5,
+        ),
+        (
+            "The rule before W5, sign check at the real stop lap instead "
+            "(hindsight: the real stop is not known live)",
+            "scored_band_crosses_zero",
+            _FROM_FIT_BEFORE_W5,
+        ),
+        ("The rule before W5, no sign check", None, _FROM_FIT_BEFORE_W5),
+        (
+            "Thin and unreliable swapped (thin low, unreliable medium)",
+            "covered_band_crosses_zero",
+            _FROM_FIT_SWAPPED,
+        ),
     ):
         lines += [f"### {title}", ""]
         for label, frame in (("All calls", scored), ("Undercut calls only", undercuts)):
             if frame.is_empty():
                 continue
-            table = _candidate(frame, sign_check=check)
+            table = _candidate(frame, sign_check=check, from_fit=from_fit)
             lines += [
                 f"{label}:",
                 "",
