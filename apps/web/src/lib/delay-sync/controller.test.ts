@@ -89,13 +89,13 @@ describe('DelaySyncController — spoiler-safety gate', () => {
 describe('DelaySyncController — calibration', () => {
 	it('setDelaySeconds clamps into [min, max] and marks the state synced', () => {
 		const controller = new DelaySyncController({ minDelaySeconds: 0, maxDelaySeconds: 120 });
-		expect(controller.delayState.get()).toEqual({ delaySeconds: 0, synced: false });
+		expect(controller.delayState.get()).toMatchObject({ delaySeconds: 0, synced: false });
 
 		controller.setDelaySeconds(999);
-		expect(controller.delayState.get()).toEqual({ delaySeconds: 120, synced: true });
+		expect(controller.delayState.get()).toMatchObject({ delaySeconds: 120, synced: true });
 
 		controller.setDelaySeconds(-40);
-		expect(controller.delayState.get()).toEqual({ delaySeconds: 0, synced: true });
+		expect(controller.delayState.get()).toMatchObject({ delaySeconds: 0, synced: true });
 	});
 
 	it('calibrateFromTap derives and applies the delay from a simulated tap', () => {
@@ -106,7 +106,7 @@ describe('DelaySyncController — calibration', () => {
 		const applied = controller.calibrateFromTap(tapWallMs, lightsOutUtc);
 
 		expect(applied).toBeCloseTo(47, 9);
-		expect(controller.delayState.get()).toEqual({ delaySeconds: applied, synced: true });
+		expect(controller.delayState.get()).toMatchObject({ delaySeconds: applied, synced: true });
 	});
 
 	it('clamps a tap-derived delay that falls outside the configured range', () => {

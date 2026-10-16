@@ -13,12 +13,7 @@
   line says which one the viewer is looking at.
 -->
 <script lang="ts">
-	import {
-		playbackClockMs,
-		serverClockOffsetMs,
-		serverNowMs,
-		type DelaySyncController
-	} from '$lib/delay-sync';
+	import { serverClockOffsetMs, serverNowMs, type DelaySyncController } from '$lib/delay-sync';
 	import { colorForTeam } from '$lib/teams';
 	import type { DriverRow } from '$lib/timing-tower';
 	import {
@@ -310,7 +305,7 @@
 		const state = controller.visibleState.get();
 		progress.update(state.events);
 		measuredPositions.update(state.positionFrames);
-		const clockMs = playbackClockMs(frameWallMs, controller.delayState.get().delaySeconds);
+		const clockMs = controller.clockMs(frameWallMs);
 		const measured = measuredPositions.hasPositions;
 		estimated = !measured;
 		const drawMs = measured

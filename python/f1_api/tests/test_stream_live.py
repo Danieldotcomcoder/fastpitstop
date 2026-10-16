@@ -396,6 +396,44 @@ def test_a_late_joiner_gets_old_gap_history_compacted_and_nothing_else_lost() ->
     assert last_old == {"1": "PT3M20S", "63": "PT3M20S"}, last_old
 
 
+def test_a_viewer_running_far_behind_live_gets_its_whole_gap_history() -> None:
+    """Sync 2.0 (ROADMAP W6): a viewer watching from lights out, or back
+    from a long pause, runs further behind live than the compaction window.
+    Asked for that much history, the hub sends every gap in it, so the tower
+    moves at each gap's own moment, exactly as in a replay."""
+    from f1_api.stream.live import JOIN_GAP_HISTORY_S
+    from f1_domain import GapUpdated
+
+    now = datetime.now(UTC)
+    old = now - timedelta(seconds=JOIN_GAP_HISTORY_S + 600)
+    source = FakeCursorSource()
+    seq = 0
+    for i in range(50):
+        for driver in ("1", "63"):
+            seq += 1
+            source.append(
+                GapUpdated(
+                    session_key=KEY,
+                    ts_utc=old + timedelta(seconds=i),
+                    source_seq=seq,
+                    driver=driver,
+                    gap_to_leader=timedelta(seconds=1.0 + i),
+                )
+            )
+    hub = _hub(source)
+    try:
+        deadline = time.monotonic() + 5
+        while len(hub.since(0)) < seq and time.monotonic() < deadline:
+            time.sleep(0.05)
+        compacted, _ = hub.join(now=now)
+        whole, _ = hub.join(now=now, history_s=JOIN_GAP_HISTORY_S + 700)
+    finally:
+        hub.stop()
+
+    assert len(compacted) == 2
+    assert len(whole) == seq
+
+
 def test_a_worker_restart_does_not_freeze_the_live_stream() -> None:
     """The 2026 Bahrain GP qualifying regression: the recorder restarted,
     its sequence numbers started again from zero, and a hub following by

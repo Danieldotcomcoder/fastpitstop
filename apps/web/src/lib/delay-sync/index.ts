@@ -1,6 +1,27 @@
 export { delaySecondsFromTap } from './calibration';
 export { clamp, playbackClockMs } from './clock';
-export { type DelayState, type DelaySyncOptions, DelaySyncController } from './controller';
+export {
+	type DelayCarry,
+	type DelayState,
+	type DelaySyncOptions,
+	DelaySyncController,
+	type SyncMethod
+} from './controller';
+export {
+	crossingOf,
+	leaderCrossings,
+	nearestCrossing,
+	type Crossing,
+	type PickedCrossing
+} from './resync';
+export {
+	FEED_BEHIND_MS,
+	SYNC_FRESH_MS,
+	syncQuality,
+	type SyncLevel,
+	type SyncQuality,
+	type SyncQualityInput
+} from './quality';
 export {
 	CAR_POSITIONS_KIND,
 	eventTimeMs,

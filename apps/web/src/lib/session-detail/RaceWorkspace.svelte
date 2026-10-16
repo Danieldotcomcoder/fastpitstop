@@ -23,9 +23,9 @@
 		DelaySyncController,
 		EMPTY_VISIBLE_STATE,
 		measureServerOffset,
-		playbackClockMs,
 		serverNowMs,
 		setServerClockOffsetMs,
+		type DelayCarry,
 		type VisibleSessionState
 	} from '$lib/delay-sync';
 	import QualifyingBoard from '$lib/qualifying/QualifyingBoard.svelte';
@@ -190,6 +190,10 @@
 
 	/** Qualifying and sprint qualifying get the qualifying board in place of
 	 * the race tower, pit board and race analytics. */
+	/** A race or sprint: the leader's crossings line a TV up (W6). */
+	let isRace = $derived(
+		session.session_key.session_type === 'race' || session.session_key.session_type === 'sprint'
+	);
 	let isQualifying = $derived(
 		session.session_key.session_type === 'qualifying' ||
 			session.session_key.session_type === 'sprint_qualifying'
@@ -375,10 +379,7 @@
 	 * clock has just reached: joining a race late never replays a backlog
 	 * of them. */
 	$effect(() => {
-		const fresh = moments.take(
-			visible.events,
-			playbackClockMs(serverNowMs(), controller.delayState.get().delaySeconds)
-		);
+		const fresh = moments.take(visible.events, controller.clockMs(serverNowMs()));
 		for (const t of fresh) toasts.push(t.text, Date.now(), t.kicker);
 		if (fresh.length > 0) toastRevision++;
 	});
@@ -453,7 +454,11 @@
 		reconnectTimer = null;
 	}
 
-	function connect(delay = controller.delayState.get().delaySeconds) {
+	/** (Re)opens the stream on a fresh controller. `carry` is the sync to
+	 * carry on with (the current one by default: a reconnect, a new replay
+	 * speed, a restart), so a pause or a tap survives it; `initialDelay`
+	 * only for the first connect, from the link. */
+	function connect(carry: DelayCarry | null = controller.carry(), initialDelay = 0) {
 		disconnect();
 		for (const reducer of [
 			tower,
@@ -471,10 +476,19 @@
 		visible = EMPTY_VISIBLE_STATE;
 		lightsOutUtc = null;
 		firstEventUtc = null;
-		const c = new DelaySyncController({ initialDelaySeconds: delay, now: serverNowMs });
+		const c = new DelaySyncController(
+			carry ? { carry, now: serverNowMs } : { initialDelaySeconds: initialDelay, now: serverNowMs }
+		);
+		// How far behind live the clock really runs (a pause in progress
+		// included): a live stream sends gap history in full that far back.
+		const behindLiveS = (serverNowMs() - c.clockMs(serverNowMs())) / 1000;
 		controller = c;
 		connection = 'Connecting';
-		const stream = new SessionStream(session.key, { mode: isLive ? 'live' : 'replay', speed });
+		const stream = new SessionStream(session.key, {
+			mode: isLive ? 'live' : 'replay',
+			speed,
+			historySeconds: behindLiveS + 60
+		});
 		stream.onMessage((e) => {
 			// Tap-to-sync needs the instant the lights went out: the race's own
 			// start. Read off the incoming stream (its timestamp only, never its
@@ -522,7 +536,7 @@
 			if (!clockKnown) return;
 			c.tick();
 			if (isQualifying) {
-				playbackMs = playbackClockMs(serverNowMs(), c.delayState.get().delaySeconds);
+				playbackMs = c.clockMs(serverNowMs());
 			}
 		}, 100);
 	}
@@ -561,6 +575,18 @@
 		return params.has('delay') && Number.isFinite(d) ? d : 0;
 	}
 
+	/** Catch-up (ROADMAP W6): the viewer presses as the lights go out on
+	 * their recording, so the page runs that far behind live. It has already
+	 * shown the race as far as the old clock, which cannot be taken back, so
+	 * the page is rebuilt from the start on the new clock. */
+	function catchUp(): void {
+		// The race's own start only: on a live stream the first event can be
+		// pre-race messages an hour earlier (the rehearsal of 2026-10-16).
+		if (lightsOutUtc === null) return;
+		controller.catchUpFrom(serverNowMs(), lightsOutUtc);
+		connect(controller.carry());
+	}
+
 	function setSpeed(next: number): void {
 		speed = next;
 		connect();
@@ -574,7 +600,7 @@
 		untrack(() => {
 			generation++;
 			focus = null;
-			connect(readUrlOptions());
+			connect(null, readUrlOptions());
 			void loadLaps(key);
 			void loadCircuit(key);
 		});
@@ -697,8 +723,11 @@
 		{speed}
 		{status}
 		lightsOutUtc={lightsOutUtc ?? firstEventUtc}
+		raceStartUtc={lightsOutUtc}
+		{isRace}
 		onSpeed={setSpeed}
 		onRestart={() => connect()}
+		onCatchUp={catchUp}
 	/>
 
 	{#if qualiBoard}
