@@ -29,7 +29,10 @@ export const KERNEL_SNAPSHOT_KIND = 'kernel_snapshot';
 export interface KernelSnapshotPayload {
 	decision_lap: number | null;
 	crossovers: unknown[];
+	/** Each car's rejoin projection; empty unless rejoin calls are served. */
 	rejoins?: unknown[];
+	/** The call kinds the stream serves (ROADMAP W5). */
+	call_kinds?: unknown[];
 }
 
 export function isKernelSnapshot(envelope: Envelope): boolean {

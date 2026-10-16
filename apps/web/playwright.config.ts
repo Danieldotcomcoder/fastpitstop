@@ -17,7 +17,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
-import { API_PORT, RADIO_API_PORT, RADIO_WEB_PORT, WEB_PORT } from './e2e/ports';
+import {
+	API_PORT,
+	CALLS_API_PORT,
+	CALLS_WEB_PORT,
+	RADIO_API_PORT,
+	RADIO_WEB_PORT,
+	WEB_PORT
+} from './e2e/ports';
 
 // This config lives at apps/web/playwright.config.ts — two directory levels
 // below the repo root (apps/web -> apps -> repo root), NOT one: a single
@@ -32,6 +39,8 @@ const API_BASE_URL = `http://127.0.0.1:${API_PORT}`;
 const WEB_BASE_URL = `http://127.0.0.1:${WEB_PORT}`;
 const RADIO_API_BASE_URL = `http://127.0.0.1:${RADIO_API_PORT}`;
 const RADIO_WEB_BASE_URL = `http://127.0.0.1:${RADIO_WEB_PORT}`;
+const CALLS_API_BASE_URL = `http://127.0.0.1:${CALLS_API_PORT}`;
+const CALLS_WEB_BASE_URL = `http://127.0.0.1:${CALLS_WEB_PORT}`;
 const REUSE_EXISTING = !process.env.CI;
 
 export default defineConfig({
@@ -120,6 +129,33 @@ export default defineConfig({
 				// `src/lib/features.ts`.
 				PUBLIC_SHOW_RADIO: '1'
 			},
+			reuseExistingServer: REUSE_EXISTING,
+			timeout: 60_000,
+			stdout: 'pipe',
+			stderr: 'pipe'
+		},
+		// ROADMAP W5's pair (`calls.spec.ts`): the Phase 3 fixture with both
+		// call kinds served, which production holds back until a kind passes
+		// its held-out backtest (`f1_kernel.CLEARED_CALL_KINDS`).
+		{
+			command: `uv run f1-api --port ${CALLS_API_PORT}`,
+			cwd: REPO_ROOT,
+			url: `${CALLS_API_BASE_URL}/health`,
+			env: {
+				F1_API_HISTORICAL_ROOT: 'python/f1_kernel/tests/fixtures/historical',
+				F1_API_SCHEDULE_FIXTURE: 'python/f1_api/tests/fixtures/e2e_schedule.json',
+				F1_API_CORS_ORIGINS: '*',
+				F1_API_CALL_KINDS: 'undercut,rejoin'
+			},
+			reuseExistingServer: REUSE_EXISTING,
+			timeout: 60_000,
+			stdout: 'pipe',
+			stderr: 'pipe'
+		},
+		{
+			command: `pnpm exec vite dev --port ${CALLS_WEB_PORT} --host 127.0.0.1 --strictPort`,
+			url: CALLS_WEB_BASE_URL,
+			env: { PUBLIC_F1_API_BASE_URL: CALLS_API_BASE_URL },
 			reuseExistingServer: REUSE_EXISTING,
 			timeout: 60_000,
 			stdout: 'pipe',

@@ -766,8 +766,9 @@ medium beats low), with the report committed.**
 scorecard reproduces the backtest numbers on replayed races, and no call
 ever appears ahead of the playback clock (property test).
 
-**Status (2026-10-16): steps 1 to 4 of 5 done; the held-out check
-failed for both call types, so none ships. Waiting on your decision.**
+**Status (2026-10-16): all five steps built. The held-out check failed
+for both call types, so the screens stay behind the gate. Waiting on
+your decision.**
 
 *Found first:* the committed 2025 undercut report fails W5's own bar.
 Medium scores 65.8% (79 calls) and low 67.4% (43), so medium is below
@@ -892,10 +893,49 @@ depends on it. 2025 is now spent; tuning on it again would no longer be
 a held-out test. A fresh held-out season would be 2026 as recorded live
 by our own pipeline, which no rule has been read on.
 
-*Waiting on you:*
-- what to do with W5 given the result (a 2026 held-out run, a different
-  rule read from 2024, or shipping a call type with fewer levels);
-- approving the W5 mockups, before step 5 (the screens).
+*Step 5, the screens (2026-10-16),* from the approved mockups. Built
+and tested, and hidden in production: nothing shows until a call kind
+is cleared.
+- **The gate reaches the stream.** Each car's rejoin projection IS the
+  rejoin call, so the per-lap snapshot carries projections only when
+  rejoin calls are served, plus the kinds served (`call_kinds`), which
+  is how the desk knows which panels to show. Before this, every
+  snapshot carried every car's projection whatever the gate said.
+- **Race desk:** "If Pérez boxes at the end of this lap: P5, 1.1 s
+  behind Russell" leads "What could happen next", drawn against one and
+  two times how much a stop varies here, with the kernel's own
+  confidence and reason (`$lib/calls/RejoinStrip`). The undercut keeps
+  its call and numbers under it, its two charts dropped so the board
+  still fits. "Our calls today" and the latest calls sit under the
+  board (`$lib/desk/CallsPanel`); without them the desk's layout is
+  unchanged, area for area.
+- **Phone:** the Strategy tab leads with the rejoin strip, the score
+  and the latest calls.
+- **Pit board:** its "Rejoins" figure is the kernel's projection when
+  rejoin calls are served, its own tower estimate otherwise.
+- **Ledger page** (`/sessions/{year}/{round}/calls?upto=`): held to the
+  lap watched, sharing the story page's remembered lap, never showing
+  the race's length; counted, waiting and not counted, each with its
+  reason; how a call is scored. With no kind cleared it says so and
+  shows the 2025 record. Kept out of search.
+- **2025 record:** `$lib/calls/record.ts`, checked against both reports
+  by `record.test.ts`; shown with a "not cleared" line for a kind that
+  has not passed.
+- **Checks:** `calls.spec.ts` in `just verify-phase3`, against a third
+  server pair with `F1_API_CALL_KINDS=undercut,rejoin`: the gate (the
+  default pair shows no calls); the desk at the flag; no call card ahead
+  of the playback clock, sampled through a delayed replay; the ledger at
+  lap 16 (3 counted, 3 waiting, 7 not counted, none past lap 16, no race
+  length); the phone tab at 390 px. Twelve new visual baselines (desk
+  with calls and the ledger, every width, both themes). Making them
+  found that the desk's baseline could be taken before the replay had
+  finished (a lull of 2 s); it now waits for the stream's end, and the
+  desk baselines approved earlier on 2026-10-16 were retaken.
+
+*Waiting on you:* what to do with W5 given the held-out result (a 2026
+held-out run on our own live-recorded races, a different rule read from
+2024, or shipping a call type with fewer levels). Until then the screens
+stay behind the gate.
 
 ### W6. Sync 2.0 (signature)
 
@@ -1183,9 +1223,9 @@ Each milestone ships between race weekends and passes W0 before deploy.
     verify-real`, and the side-by-side review against the competitor
     screenshots.
   - S6 share images: built 2026-10-15 (see S6).
-- **M4:** W5 steps 1 to 4 done 2026-10-16 (see W5): neither call type
-  passed the 2025 held-out check, waiting on your decision. W6 not
-  started.
+- **M4:** W5 built 2026-10-16 (see W5), all five steps; neither call
+  type passed the 2025 held-out check, so its screens stay behind the
+  gate, waiting on your decision. W6 not started.
 - **M5:** not started.
 
 ## Parked (needs a decision)

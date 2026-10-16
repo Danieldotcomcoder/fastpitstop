@@ -30,3 +30,16 @@ export const REAL_WEB_PORT = 4321;
  * a fixed-date calendar, and the production build pointed at it. */
 export const VISUAL_API_PORT = 8842;
 export const VISUAL_WEB_PORT = 4322;
+
+/** ROADMAP W5's pair (`calls.spec.ts`, in `just verify-phase3`): `f1_api`
+ * over the same kernel fixture with `F1_API_CALL_KINDS=undercut,rejoin`,
+ * so the calls the production gate holds back can be tested, and its own
+ * frontend. */
+export const CALLS_API_PORT = 8846;
+export const CALLS_WEB_PORT = 4326;
+
+/** The visual baselines' calls pair: an API serving both call kinds, and
+ * the visual config's own production build served a second time against
+ * it (`playwright.visual.config.ts`). */
+export const VISUAL_CALLS_API_PORT = 8848;
+export const VISUAL_CALLS_WEB_PORT = 4328;

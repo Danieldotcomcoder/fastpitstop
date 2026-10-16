@@ -265,13 +265,31 @@ def domain_event_envelope(
     return StreamEnvelope(event_time_utc=ts, kind=event.kind, payload=payload)
 
 
-def kernel_snapshot_envelope(event_time: datetime, report: KernelReport) -> StreamEnvelope:
+def kernel_snapshot_envelope(
+    event_time: datetime, report: KernelReport, call_kinds: Collection[CallKind] = ()
+) -> StreamEnvelope:
+    """One lap's analysis. `call_kinds` are the kinds this stream serves
+    (`f1_api.calls.enabled_call_kinds`), sent so the desk knows which call
+    panels to show. Each car's rejoin projection IS the rejoin call, so it
+    goes out only when that kind is served: a kind that has not passed its
+    held-out backtest never reaches a screen (ROADMAP W5)."""
     payload = {
         "decision_lap": report.decision_lap,
         "crossovers": [c.model_dump(mode="json") for c in crossover_rows(report.crossovers)],
-        "rejoins": [r.model_dump(mode="json") for r in rejoin_rows(report.rejoins)],
+        "rejoins": (
+            [r.model_dump(mode="json") for r in rejoin_rows(report.rejoins)]
+            if CallKind.REJOIN in call_kinds
+            else []
+        ),
+        "call_kinds": sorted(kind.value for kind in call_kinds),
     }
     return StreamEnvelope(event_time_utc=event_time, kind=KERNEL_SNAPSHOT_KIND, payload=payload)
+
+
+def has_snapshot_news(report: KernelReport, call_kinds: Collection[CallKind]) -> bool:
+    """Whether a lap's analysis is worth an envelope: a crossover, or a
+    rejoin projection when rejoin calls are served."""
+    return bool(report.crossovers) or (CallKind.REJOIN in call_kinds and bool(report.rejoins))
 
 
 def radio_clip_envelope(
@@ -485,9 +503,15 @@ class _SnapshotWorker:
     early cannot happen. Reports come back in lap order; one thread, one
     feed."""
 
-    def __init__(self, feed: LapSnapshotFeed, calls: CallTracker | None = None) -> None:
+    def __init__(
+        self,
+        feed: LapSnapshotFeed,
+        calls: CallTracker | None = None,
+        call_kinds: Collection[CallKind] = (),
+    ) -> None:
         self._feed = feed
         self._calls = calls
+        self._call_kinds = tuple(call_kinds)
         self._last_ts: datetime | None = None
         self._closed = threading.Event()
         self._inbox: queue.SimpleQueue[tuple[DomainEvent, datetime] | None] = queue.SimpleQueue()
@@ -533,8 +557,8 @@ class _SnapshotWorker:
                 continue
             if report is None:
                 continue
-            if report.crossovers:
-                self._ready.append(kernel_snapshot_envelope(live_ts, report))
+            if has_snapshot_news(report, self._call_kinds):
+                self._ready.append(kernel_snapshot_envelope(live_ts, report, self._call_kinds))
             if self._calls is not None:
                 try:
                     for call in self._calls.update(report):
@@ -715,6 +739,7 @@ def replay_envelopes(
     snapshots = _SnapshotWorker(
         LapSnapshotFeed(session_key, total_laps=race_distance_laps(events), event_name=event_name),
         CallTracker(tuple(call_kinds)) if call_kinds else None,
+        call_kinds,
     )
     try:
         start_wall = clock()
@@ -866,6 +891,7 @@ __all__ = [
     "domain_event_envelope",
     "envelope_for_event",
     "explanation_envelope",
+    "has_snapshot_news",
     "kernel_snapshot_envelope",
     "live_position_frames",
     "radio_clip_envelope",

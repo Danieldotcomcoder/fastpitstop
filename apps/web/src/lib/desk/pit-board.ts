@@ -4,10 +4,13 @@
  * Every number comes from the kernel's own `kernel_snapshot` crossover,
  * already released through Delay Sync: the window state, the margin once
  * both cars have stopped and its 95% band, the stop lap, the calibrated
- * pit loss. The one thing derived here is where the attacker would rejoin,
- * read off the released timing tower (gap to leader + that same pit loss),
- * exactly as the design does and labelled as traffic, not as a forecast. */
+ * pit loss. Where the attacker would rejoin is the kernel's own rejoin
+ * projection (`f1_kernel.rejoin`, in the same snapshot) when the stream
+ * serves rejoin calls; otherwise it is read off the released timing tower
+ * (gap to leader + that same pit loss), exactly as the design does and
+ * labelled as traffic, not as a forecast. */
 import type { components } from '$lib/api/client';
+import type { RejoinProjection } from '$lib/calls';
 import type { DriverRow } from '$lib/timing-tower';
 import type { FocusPair } from './focus';
 import { compoundName } from './format';
@@ -129,6 +132,17 @@ export function rejoinAfterStop(
 	};
 }
 
+/** The kernel's projection, in the board's shape. */
+export function rejoinFromKernel(projection: RejoinProjection): Rejoin {
+	const gapS = projection.car_ahead !== null ? projection.gap_to_ahead_s : null;
+	return {
+		position: projection.position,
+		behind: projection.car_ahead,
+		gapS,
+		inTraffic: gapS !== null && gapS < TRAFFIC_S
+	};
+}
+
 /** The car ahead on rejoin, named by its code as the board shows it. */
 function withCode(rejoin: Rejoin | null, codes: Record<string, string>): Rejoin | null {
 	if (rejoin === null || rejoin.behind === null) return rejoin;
@@ -150,7 +164,8 @@ export function buildBoard(
 	rows: readonly DriverRow[],
 	pair: FocusPair | null,
 	crossover: Crossover | null,
-	codes: Record<string, string>
+	codes: Record<string, string>,
+	kernelRejoin: RejoinProjection | null = null
 ): BoardModel {
 	const empty: BoardModel = {
 		state: 'waiting',
@@ -218,7 +233,12 @@ export function buildBoard(
 		marginS: margin,
 		lowS: crossover.projected_gap_if_covered_low_s ?? null,
 		highS: crossover.projected_gap_if_covered_high_s ?? null,
-		rejoin: withCode(rejoinAfterStop(rows, pair.a, crossover.pit_loss_s), codes)
+		rejoin: withCode(
+			kernelRejoin !== null && kernelRejoin.driver === pair.a
+				? rejoinFromKernel(kernelRejoin)
+				: rejoinAfterStop(rows, pair.a, crossover.pit_loss_s),
+			codes
+		)
 	};
 
 	if (crossover.window === 'open') {

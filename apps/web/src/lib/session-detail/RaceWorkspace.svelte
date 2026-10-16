@@ -36,6 +36,13 @@
 	import { raceLap } from '$lib/race-lap';
 	import { TimingTowerReducer } from '$lib/timing-tower';
 	import { ExplanationLaneReducer } from '$lib/why';
+	import {
+		CallLedgerReducer,
+		callKindsFromSnapshot,
+		rejoinsFromSnapshot,
+		stripModel
+	} from '$lib/calls';
+	import CallsPanel from '$lib/desk/CallsPanel.svelte';
 	import DeskAnalytics from '$lib/desk/DeskAnalytics.svelte';
 	import DeskIcons from '$lib/desk/DeskIcons.svelte';
 	import DeskMap, { type DeskCircuit } from '$lib/desk/DeskMap.svelte';
@@ -59,6 +66,7 @@
 	import { RaceFeedReducer, trackStatusChip } from '$lib/desk/race-feed';
 	import { SnapshotHistory } from '$lib/desk/snapshot-history';
 	import { latestWeather, weatherReadings } from '$lib/desk/weather';
+	import { surname } from '$lib/desk/format';
 	import BottomNav from '$lib/ui/BottomNav.svelte';
 
 	type Session = components['schemas']['SessionSummaryOut'];
@@ -176,6 +184,7 @@
 	const quali = new QualifyingReducer();
 	const raceHistory = new RaceHistoryReducer();
 	const moments = new MomentToasts();
+	const callLedger = new CallLedgerReducer();
 	const toasts = new ToastQueue();
 	let toastRevision = $state(0);
 
@@ -199,6 +208,7 @@
 		why.update(visible.events);
 		feed.update(visible.events);
 		raceHistory.update(visible.events);
+		callLedger.update(visible.events);
 		if (isQualifying) quali.update(visible.events);
 		// Fresh copies: the reducer mutates rows in place, and Svelte only
 		// re-renders a keyed row whose value changed identity.
@@ -267,7 +277,45 @@
 
 	let pair = $derived(focusPair(rows, focus));
 	let crossover = $derived(pair ? crossoverFor(crossovers, pair) : null);
-	let board = $derived(buildBoard(rows, pair, crossover, codes));
+
+	// --- calls (ROADMAP W5) ------------------------------------------------------
+	// The kinds the stream serves come with each lap's snapshot; a kind that
+	// has not passed its held-out backtest is never served in production, so
+	// nothing below shows there until one does.
+	let callKinds = $derived(callKindsFromSnapshot(visible.latestSnapshot));
+	let rejoins = $derived(rejoinsFromSnapshot(visible.latestSnapshot));
+	/** The car the board follows: the one tapped, else the battle's attacker. */
+	let followed = $derived(focus ?? pair?.a ?? null);
+	let followedRejoin = $derived(rejoins.find((r) => r.driver === followed) ?? null);
+	const callName = (driver: string) => surname(names[driver]) ?? codes[driver] ?? driver;
+	const callCode = (driver: string) => codes[driver] ?? driver;
+	const callTeam = (driver: string) => teams[driver] ?? null;
+	let strip = $derived(
+		followedRejoin ? stripModel(followedRejoin, callName, callCode, callTeam) : null
+	);
+	let calls = $derived.by(() => {
+		void revision;
+		return callLedger.calls;
+	});
+	let callScore = $derived.by(() => {
+		void revision;
+		return callLedger.scorecard;
+	});
+	let ledgerHref = $derived.by(() => {
+		const k = session.session_key;
+		const which = k.session_type === 'race' ? '' : `session=${k.session_type}&`;
+		return resolve(`/sessions/${k.year}/${k.round}/calls?${which}upto=${completedLaps}`);
+	});
+
+	let board = $derived(
+		buildBoard(
+			rows,
+			pair,
+			crossover,
+			codes,
+			rejoins.find((r) => r.driver === pair?.a)
+		)
+	);
 	let spark = $derived.by(() => {
 		void visible.latestSnapshot;
 		return pair ? history.points(pair.a, pair.b) : [];
@@ -407,7 +455,18 @@
 
 	function connect(delay = controller.delayState.get().delaySeconds) {
 		disconnect();
-		for (const reducer of [tower, reveal, records, why, feed, history, quali, raceHistory, moments])
+		for (const reducer of [
+			tower,
+			reveal,
+			records,
+			why,
+			feed,
+			history,
+			quali,
+			raceHistory,
+			moments,
+			callLedger
+		])
 			reducer.reset();
 		visible = EMPTY_VISIBLE_STATE;
 		lightsOutUtc = null;
@@ -722,6 +781,19 @@
 					model={board}
 					{spark}
 					focusName={focus ? (names[focus] ?? null) : pair ? (names[pair.a] ?? null) : null}
+					strip={isPhone ? null : strip}
+				/>
+			{/if}
+			{#if callKinds.length > 0 && shows('strategy') && inFull()}
+				<CallsPanel
+					{calls}
+					scorecard={callScore}
+					kinds={callKinds}
+					strip={isPhone ? strip : null}
+					final={finished}
+					{ledgerHref}
+					name={callName}
+					team={callTeam}
 				/>
 			{/if}
 			{#if shows('strategy') && inFull()}

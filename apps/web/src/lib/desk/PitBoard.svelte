@@ -1,9 +1,13 @@
 <!--
   Undercut watch: the design's dark pit board, the one loud object on the
   page. Reads a `BoardModel` (see pit-board.ts): every number is the
-  kernel's own crossover, released on the viewer's clock.
+  kernel's own crossover, released on the viewer's clock. When the stream
+  serves rejoin calls (ROADMAP W5), where the focused car comes out if it
+  boxes now leads the board.
 -->
 <script lang="ts">
+	import RejoinStrip from '$lib/calls/RejoinStrip.svelte';
+	import type { StripModel } from '$lib/calls';
 	import { colorForTeam } from '$lib/teams';
 	import ConfBadge from './ConfBadge.svelte';
 	import { sgn, surname } from './format';
@@ -16,9 +20,11 @@
 		model: BoardModel;
 		spark: SparkPoint[];
 		focusName: string | null;
+		/** The focused car's rejoin call; null unless rejoin calls are served. */
+		strip?: StripModel | null;
 	}
 
-	let { model, spark, focusName }: Props = $props();
+	let { model, spark, focusName, strip = null }: Props = $props();
 
 	let hasNumbers = $derived(model.marginS !== null && model.state !== 'pitting');
 	let a = $derived(model.attacker);
@@ -153,14 +159,24 @@
 
 <section
 	class="panel p-undercut"
+	class:with-rejoin={strip !== null}
 	aria-labelledby="ucTitle"
 	id="undercut"
 	data-testid="undercut-panel"
 >
 	<div class="board-top">
 		<h2 class="caps" id="ucTitle" style="margin:0">What could happen next</h2>
-		{#if model.confidence && hasNumbers}<ConfBadge level={model.confidence} />{/if}
+		{#if model.confidence && hasNumbers && !strip}<ConfBadge level={model.confidence} />{/if}
 	</div>
+	{#if strip}
+		<div class="board-rejoin"><RejoinStrip model={strip} /></div>
+		{#if b}
+			<div class="board-top board-then">
+				<span class="caps">Undercut on {b.code}</span>
+				{#if model.confidence && hasNumbers}<ConfBadge level={model.confidence} />{/if}
+			</div>
+		{/if}
+	{/if}
 	{#if a && b}
 		<div class="pair">
 			<span class="who"><i style:background={colorForTeam(a.team)}></i>{a.code}</span><span
@@ -428,3 +444,27 @@
 	</p>
 	<p class="board-record" data-testid="model-record">{modelRecordLine()}</p>
 </section>
+
+<style>
+	.board-rejoin {
+		margin-top: 12px;
+		padding-bottom: 14px;
+		border-bottom: 1px solid var(--board-rule);
+	}
+	.board-then {
+		margin-top: 14px;
+	}
+	/* With the rejoin call leading (the W5 mockup), the undercut keeps its
+	   call and its numbers, the 95% interval as text in the stats, and
+	   drops the two charts so the board still fits its slot. */
+	.with-rejoin .ci-wrap,
+	.with-rejoin .spark-wrap,
+	.with-rejoin .pair,
+	.with-rejoin .tyres-line {
+		display: none;
+	}
+	.with-rejoin .headline {
+		font-size: 26px;
+		margin-top: 6px;
+	}
+</style>
