@@ -421,11 +421,11 @@ calibration check if `high` does not beat `low`. On the full 2024 corpus
 (628 evaluated duels, 429 scored calls) the walk-forward hit rate is
 75.3% overall — **89.3% on high-confidence calls vs 69.7% on low**. The
 committed report runs the same protocol on 2025, a season no parameter
-was calibrated on: over the backfilled rounds (2-11 at generation time),
-267 evaluated duels, 192 scored, 73.4% overall and **85.7% high vs 67.4%
-low** — the confidence signal survives out-of-sample. Re-run the tool (or
-`tools/run_backtest_suite.py`, see "Backtest suite" below) as more of 2025
-lands.
+was calibrated on: over the backfilled rounds (2-11), 257 evaluated
+duels, 185 scored, 73.5% overall and **85.3% high vs 64.5% low** — the
+confidence signal survives out-of-sample. Regenerated 2026-10-16 with ROADMAP
+W5's rule that a thin fit makes a call low; F1's static archive now answers
+401, so no more of 2025 can be backfilled.
 
 ```sh
 uv run python python/f1_kernel/tools/backtest_undercut.py --seasons 2025

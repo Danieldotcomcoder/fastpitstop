@@ -35,8 +35,8 @@ app.formula1dashboard.com, f1livedata.com and MultiViewer.
 
 **What nobody else has**
 
-- Predictions with published, backtested accuracy (85.7% on high-confidence
-  undercut calls, over 2025 races the model never saw) and a confidence
+- Predictions with published, backtested accuracy (85.3% on high-confidence
+  undercut and overcut calls, over 2025 races the model never saw) and a confidence
   label on every number.
 - A delay gate that covers everything: timing, predictions, radio and
   explanations, with the phone clock corrected against the server.
@@ -365,7 +365,7 @@ and replays. What it adds that the desk lacked:
 - **One line on the field** beside the map: who leads by how much, how
   many cars are on the lead lap and how spread out they are.
 - **What could happen next** keeps the undercut board and quotes the
-  model's held-out record (85.7% of 70 high-confidence calls, 10 races
+  model's held-out record (85.3% of 68 high-confidence calls, 10 races
   of 2025). `model-record.test.ts` checks it against the committed
   report. This race's own scorecard is W5, not built.
 - **Layout:** three columns at 1320 px and up (tower; battle, ribbon,
@@ -744,8 +744,9 @@ approved the same day):
 
 Forward-looking calls, released through Delay Sync like everything else:
 
-- *"LEC's undercut window opens in 2 laps."* (Exists today; 85.7% on
-  high-confidence calls.)
+- *"LEC's undercut window opens in 2 laps."* (Exists today; 85.3% on
+  high-confidence calls in the 2025 report, 71.4% on undercut calls
+  alone.)
 - *"Box now and HAM rejoins P6, in traffic behind RUS."* Rejoin
   projection; the pit board already computes it.
 - *"VER's pit window opens around lap 31."* New: the crossover of
@@ -765,8 +766,9 @@ medium beats low), with the report committed.**
 scorecard reproduces the backtest numbers on replayed races, and no call
 ever appears ahead of the playback clock (property test).
 
-**Status (2026-10-15): steps 1 to 3 of 5 built, blocked on your desktop
-runs.**
+**Status (2026-10-16): all five steps built. The held-out check failed
+for both call types, so the screens stay behind the gate. Waiting on
+your decision.**
 
 *Found first:* the committed 2025 undercut report fails W5's own bar.
 Medium scores 65.8% (79 calls) and low 67.4% (43), so medium is below
@@ -846,10 +848,94 @@ Drawing them found two bugs, both fixed:
   (so it stopped first) was left waiting for a second stop. Scored rows
   are unchanged.
 
-*Waiting on you:*
-- approving the W5 mockups, before step 5 (the screens);
-- `just w5-diagnose` (2024 undercut diagnosis and rejoin development
-  report), then, with the rules settled, `just w5-holdout` (2025).
+*Diagnosis on 2024 (2026-10-16),* `just w5-diagnose`, committed as
+`reports/undercut_backtest_2024_diagnosis.md` and
+`reports/rejoin_backtest_2024_dev.md`:
+- **Undercut confidence: a thin fit is now low, not medium.** Neither
+  rule the plan offered passed on 2024 (undercut calls only):
+  - the old rule: high 84.3%, medium 60.2%, low 64.0%;
+  - the sign check at the rival's real stop lap: high 88.2%, medium
+    62.5%, low 64.0%. It also needs the real stop, which is not known
+    live, so it could never run on the desk.
+
+  The cause was the fit floor. A thin fit (too few laps; its interval is
+  never checked) scored 58%, below an unreliable one (70%), yet it made
+  a call medium. Now only two good fits earn medium or high, and medium
+  means two good fits whose margin straddles zero. On 2024: high 84.3%,
+  medium 67.9%, low 57.8% (all calls: 89.4%, 71.4%, 64.0%). Swapping
+  the two weak tiers also passed, but it would claim an unreliable fit
+  beats a thin one, against the ranking the rest of the product shows.
+- **Rejoin: thresholds and void rule unchanged.** Pit loss is measured
+  on 2024 itself (`--pit-loss-in-sample`), labelled in the report: F1's
+  archive answers 401 since October 2026, so 2023 cannot be fetched.
+  High 78.2%, medium 63.6%, low 46.8%; clear air rises steadily through
+  the 1 and 2 sigma thresholds. `another_car_pitted_around_the_rejoin`
+  voids 382 of 648 calls, but it is not too broad: scored anyway, those
+  calls hit 21% when a projected neighbour pitted and about 47 to 59%
+  when only a car it drops behind did, against 66% when nobody did.
+  They test the other cars' stops, not the projection.
+
+*Held-out check on 2025 (2026-10-16),* `just w5-holdout`, run once with
+the rules above, committed as `reports/undercut_backtest.md` and
+`reports/rejoin_backtest.md`. **Neither call type passed, so neither
+ships;** `CLEARED_CALL_KINDS` stays empty.
+- **Undercut calls:** high 71.4% (28), medium 66.7% (21), low 66.7%
+  (42). Medium ties low. All calls together now pass (85.3%, 70.7%,
+  64.5%; before the rule change medium was below low), and so do
+  overcut calls (95.0%, 75.0%, 61.8%), but the desk shows undercuts.
+- **Rejoin:** high 87.9% (33), medium 22.2% (9), low 51.0% (49).
+
+The corpus is the 10 races of 2025 on disk (rounds 2 to 11), so the
+middle buckets hold 9 to 21 calls with intervals 30 to 50 points wide.
+It cannot grow: F1's static archive answers 401 to every request since
+October 2026, from the desktop and from the VM, and `f1-backfill`
+depends on it. 2025 is now spent; tuning on it again would no longer be
+a held-out test. A fresh held-out season would be 2026 as recorded live
+by our own pipeline, which no rule has been read on.
+
+*Step 5, the screens (2026-10-16),* from the approved mockups. Built
+and tested, and hidden in production: nothing shows until a call kind
+is cleared.
+- **The gate reaches the stream.** Each car's rejoin projection IS the
+  rejoin call, so the per-lap snapshot carries projections only when
+  rejoin calls are served, plus the kinds served (`call_kinds`), which
+  is how the desk knows which panels to show. Before this, every
+  snapshot carried every car's projection whatever the gate said.
+- **Race desk:** "If Pérez boxes at the end of this lap: P5, 1.1 s
+  behind Russell" leads "What could happen next", drawn against one and
+  two times how much a stop varies here, with the kernel's own
+  confidence and reason (`$lib/calls/RejoinStrip`). The undercut keeps
+  its call and numbers under it, its two charts dropped so the board
+  still fits. "Our calls today" and the latest calls sit under the
+  board (`$lib/desk/CallsPanel`); without them the desk's layout is
+  unchanged, area for area.
+- **Phone:** the Strategy tab leads with the rejoin strip, the score
+  and the latest calls.
+- **Pit board:** its "Rejoins" figure is the kernel's projection when
+  rejoin calls are served, its own tower estimate otherwise.
+- **Ledger page** (`/sessions/{year}/{round}/calls?upto=`): held to the
+  lap watched, sharing the story page's remembered lap, never showing
+  the race's length; counted, waiting and not counted, each with its
+  reason; how a call is scored. With no kind cleared it says so and
+  shows the 2025 record. Kept out of search.
+- **2025 record:** `$lib/calls/record.ts`, checked against both reports
+  by `record.test.ts`; shown with a "not cleared" line for a kind that
+  has not passed.
+- **Checks:** `calls.spec.ts` in `just verify-phase3`, against a third
+  server pair with `F1_API_CALL_KINDS=undercut,rejoin`: the gate (the
+  default pair shows no calls); the desk at the flag; no call card ahead
+  of the playback clock, sampled through a delayed replay; the ledger at
+  lap 16 (3 counted, 3 waiting, 7 not counted, none past lap 16, no race
+  length); the phone tab at 390 px. Twelve new visual baselines (desk
+  with calls and the ledger, every width, both themes). Making them
+  found that the desk's baseline could be taken before the replay had
+  finished (a lull of 2 s); it now waits for the stream's end, and the
+  desk baselines approved earlier on 2026-10-16 were retaken.
+
+*Waiting on you:* what to do with W5 given the held-out result (a 2026
+held-out run on our own live-recorded races, a different rule read from
+2024, or shipping a call type with fewer levels). Until then the screens
+stay behind the gate.
 
 ### W6. Sync 2.0 (signature)
 
@@ -1137,8 +1223,9 @@ Each milestone ships between race weekends and passes W0 before deploy.
     verify-real`, and the side-by-side review against the competitor
     screenshots.
   - S6 share images: built 2026-10-15 (see S6).
-- **M4:** W5 steps 1 to 3 built 2026-10-15 (see W5), waiting on your
-  desktop backtest runs. W6 not started.
+- **M4:** W5 built 2026-10-16 (see W5), all five steps; neither call
+  type passed the 2025 held-out check, so its screens stay behind the
+  gate, waiting on your decision. W6 not started.
 - **M5:** not started.
 
 ## Parked (needs a decision)

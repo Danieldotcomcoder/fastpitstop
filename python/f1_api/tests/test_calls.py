@@ -181,10 +181,32 @@ def test_kernel_snapshots_carry_every_cars_rejoin_projection() -> None:
         clock=fake.now,
         sleep=fake.sleep,
         wall_clock=lambda: FAKE_WALL_START,
+        call_kinds=(CallKind.REJOIN,),
     )
     snapshot = next(e for e in envelopes if e.kind == "kernel_snapshot")
 
+    assert snapshot.payload["call_kinds"] == ["rejoin"]
     rejoins = snapshot.payload["rejoins"]
     assert rejoins
     assert {"driver", "position", "car_ahead", "margin_s", "confidence"} <= set(rejoins[0])
     assert [r["position_now"] for r in rejoins] == sorted(r["position_now"] for r in rejoins)
+
+
+def test_no_rejoin_projection_reaches_the_stream_unless_rejoin_calls_are_served() -> None:
+    """The projection is the rejoin call: a kind that has not passed its
+    held-out backtest never reaches a screen (ROADMAP W5)."""
+    fake = _FakeClock()
+    envelopes = replay_envelopes(
+        HistoricalSource(HISTORICAL_ROOT),
+        _key(SESSION_KEY),
+        speed=0,
+        clock=fake.now,
+        sleep=fake.sleep,
+        wall_clock=lambda: FAKE_WALL_START,
+        call_kinds=(CallKind.UNDERCUT,),
+    )
+    snapshots = [e for e in envelopes if e.kind == "kernel_snapshot"]
+
+    assert snapshots
+    assert all(e.payload["rejoins"] == [] for e in snapshots)
+    assert all(e.payload["call_kinds"] == ["undercut"] for e in snapshots)

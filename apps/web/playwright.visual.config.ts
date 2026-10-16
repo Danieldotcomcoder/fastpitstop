@@ -10,12 +10,22 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
-import { VISUAL_API_PORT, VISUAL_WEB_PORT } from './e2e/ports';
+import {
+	VISUAL_API_PORT,
+	VISUAL_CALLS_API_PORT,
+	VISUAL_CALLS_WEB_PORT,
+	VISUAL_WEB_PORT
+} from './e2e/ports';
 
 const CONFIG_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(CONFIG_DIR, '..', '..');
 const API_BASE_URL = `http://127.0.0.1:${VISUAL_API_PORT}`;
 const WEB_BASE_URL = `http://127.0.0.1:${VISUAL_WEB_PORT}`;
+const CALLS_API_BASE_URL = `http://127.0.0.1:${VISUAL_CALLS_API_PORT}`;
+const CALLS_WEB_BASE_URL = `http://127.0.0.1:${VISUAL_CALLS_WEB_PORT}`;
+/** Waits for the first web server, which builds, then serves the same
+ * build again: the app reads its API address at runtime. */
+const AFTER_BUILD = `node -e "const go=()=>fetch('${WEB_BASE_URL}').then(()=>{},()=>new Promise(r=>setTimeout(r,1000)).then(go));go()"`;
 
 export default defineConfig({
 	testDir: './e2e-visual',
@@ -75,6 +85,35 @@ export default defineConfig({
 				PORT: String(VISUAL_WEB_PORT),
 				HOST: '127.0.0.1',
 				ORIGIN: WEB_BASE_URL
+			},
+			reuseExistingServer: false,
+			timeout: 300_000
+		},
+		// ROADMAP W5's screens: both call kinds served, which production holds
+		// back until a kind passes its held-out backtest.
+		{
+			command: `uv run f1-api --port ${VISUAL_CALLS_API_PORT}`,
+			cwd: REPO_ROOT,
+			url: `${CALLS_API_BASE_URL}/health`,
+			env: {
+				F1_API_HISTORICAL_ROOT: 'python/f1_kernel/tests/fixtures/historical',
+				F1_API_SCHEDULE_FIXTURE: 'python/f1_api/tests/fixtures/visual_schedule.json',
+				F1_API_CORS_ORIGINS: '*',
+				F1_API_CALL_KINDS: 'undercut,rejoin'
+			},
+			reuseExistingServer: false,
+			timeout: 120_000,
+			stdout: 'pipe',
+			stderr: 'pipe'
+		},
+		{
+			command: `${AFTER_BUILD} && node build/index.js`,
+			url: CALLS_WEB_BASE_URL,
+			env: {
+				PUBLIC_F1_API_BASE_URL: CALLS_API_BASE_URL,
+				PORT: String(VISUAL_CALLS_WEB_PORT),
+				HOST: '127.0.0.1',
+				ORIGIN: CALLS_WEB_BASE_URL
 			},
 			reuseExistingServer: false,
 			timeout: 300_000

@@ -7,8 +7,8 @@
 export const MODEL_RECORD = {
 	season: 2025,
 	races: 10,
-	highConfidenceCalls: 70,
-	highConfidenceHitRatePct: 85.7
+	highConfidenceCalls: 68,
+	highConfidenceHitRatePct: 85.3
 } as const;
 
 export function modelRecordLine(): string {

@@ -436,6 +436,10 @@
 .desk-page .p-undercut {
 	order: 4;
 }
+/* Our calls (ROADMAP W5): at the top of the phone's Strategy tab. */
+.desk-page .p-calls {
+	order: 0;
+}
 .desk-page .p-ribbon,
 .desk-page .p-analytics {
 	order: 5;
@@ -448,7 +452,7 @@
 	.desk-page[data-tab='race'] .desk > :not(.p-glance),
 	.desk-page[data-tab='battle'] .desk > :not(.p-undercut),
 	.desk-page[data-tab='map'] .desk > :not(.p-map),
-	.desk-page[data-tab='strategy'] .desk > :not(.p-tower, .p-ribbon, .p-analytics),
+	.desk-page[data-tab='strategy'] .desk > :not(.p-tower, .p-ribbon, .p-analytics, .p-calls),
 	.desk-page[data-tab='story'] .desk > :not(.p-why, .p-radio) {
 		display: none;
 	}
@@ -543,6 +547,20 @@
 	.desk-page .p-radio {
 		grid-area: radio;
 	}
+	/* Only while the stream serves a call kind (ROADMAP W5): without the
+	   panel the desk keeps the layout above, area for area. */
+	.desk-page .desk:has(> .p-calls) {
+		grid-template-areas:
+			'tower battle'
+			'tower ribbon'
+			'tower undercut'
+			'tower calls'
+			'radio map'
+			'why analytics';
+	}
+	.desk-page .p-calls {
+		grid-area: calls;
+	}
 	.desk-page .tower-more {
 		display: none !important;
 	}
@@ -562,6 +580,13 @@
 			'tower map why'
 			'radio analytics why';
 		align-items: stretch;
+	}
+	.desk-page .desk:has(> .p-calls) {
+		grid-template-areas:
+			'tower battle undercut'
+			'tower ribbon undercut'
+			'tower map calls'
+			'radio analytics why';
 	}
 	.desk-page .p-battle,
 	.desk-page .p-ribbon {

@@ -51,7 +51,7 @@ test('the battle leads the desk at the flag, with its trend, verdict and the fie
 	await expect(hero.getByRole('img', { name: /^Gap from / })).toBeVisible();
 	await expect(page.getByTestId('battle-verdict')).not.toBeEmpty();
 	await expect(page.getByTestId('field-note')).toContainText(/leads/);
-	await expect(page.getByTestId('model-record')).toContainText('85.7%');
+	await expect(page.getByTestId('model-record')).toContainText('85.3%');
 	// The fixture race's safety car (laps 18 to 21) is shaded on the ribbon.
 	await expect(page.getByTestId('race-ribbon').locator('rect.band')).toHaveCount(1);
 	await expect(page.getByTestId('race-ribbon').locator('polyline')).toHaveCount(8);

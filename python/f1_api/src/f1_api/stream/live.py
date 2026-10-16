@@ -50,6 +50,7 @@ from f1_api.stream.replay import (
     car_positions_envelope,
     envelope_for_event,
     explanation_envelope,
+    has_snapshot_news,
     kernel_snapshot_envelope,
     live_position_frames,
 )
@@ -455,6 +456,7 @@ class _LiveAnalysis:
         self._radio_index = radio_index
         self._feed = LapSnapshotFeed(session_key, event_name=event_name)
         kinds = enabled_call_kinds(settings)
+        self._call_kinds = kinds
         self._calls = CallTracker(kinds) if kinds else None
         self._considered: set[str] = set()
         self._told: dict[str, str] = {}
@@ -485,8 +487,10 @@ class _LiveAnalysis:
                 report = self._feed.feed(event)
                 if report is None:
                     continue
-                if report.crossovers:
-                    self._ready.append(kernel_snapshot_envelope(event.ts_utc, report))
+                if has_snapshot_news(report, self._call_kinds):
+                    self._ready.append(
+                        kernel_snapshot_envelope(event.ts_utc, report, self._call_kinds)
+                    )
                 self._track_calls(report, event.ts_utc)
                 self._explain(report)
             except Exception:

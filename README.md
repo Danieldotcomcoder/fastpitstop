@@ -249,7 +249,7 @@ verification step:
 - **Undercut predictor:** tested on 10 races from 2025 that the model was
   never tuned on. Predictions are made the lap before each real stop, using
   only data available up to that lap. High-confidence calls were right
-  **85.7%** of the time and low-confidence calls **67.4%**, so the
+  **85.3%** of the time and low-confidence calls **64.5%**, so the
   confidence levels track real accuracy
   ([report](python/f1_kernel/reports/undercut_backtest.md)).
 - **Pit-lane time loss:** measured from 410 green-flag stops across the 2024

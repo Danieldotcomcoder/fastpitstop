@@ -261,6 +261,22 @@ export function seoFor(
 			};
 		}
 	}
+	const ledger = /^\/sessions\/(\d{4})\/(\d{1,2})\/calls$/.exec(path);
+	if (ledger) {
+		const year = Number(ledger[1]);
+		const roundNo = Number(ledger[2]);
+		const session = sessionForRound(sessions, year, roundNo);
+		const name = eventTitle(year, session?.eventName ?? null, roundNo);
+		// Only reachable while a call kind is served (ROADMAP W5): not for
+		// search engines until one has passed its held-out backtest.
+		return {
+			...page(
+				`Our calls in the ${name} | ${brand.name}`,
+				`Every strategy call we made in the ${name}, settled as right, wrong or not counted, held back to the lap you have watched.`
+			),
+			noindex: true
+		};
+	}
 	const round = /^\/sessions\/(\d{4})\/(\d{1,2})$/.exec(path);
 	if (round) {
 		const year = Number(round[1]);
