@@ -119,12 +119,12 @@
 		{/if}
 
 		<header class="hero">
-			<p class="kicker">Unofficial F1 dashboard</p>
-			<h1>F1 live timing that never spoils the race</h1>
+			<p class="kicker">Unofficial · free · live timing</p>
+			<h1>The F1 dashboard that never spoils the race</h1>
 			<p class="lede">
-				{brand.name} is a free second-screen dashboard for Formula 1. It shows live timing, tyre wear,
-				pit strategy and undercut predictions, and holds every number back to match your TV delay so you
-				never see a moment before it happens on screen.
+				{brand.name} is a free F1 dashboard for your second screen. It shows live timing, tyre wear, pit
+				strategy and undercut predictions, and holds every number back to match your TV delay so you never
+				see a moment before it happens on screen.
 			</p>
 			<p class="actions">
 				<a class="primary" href={resolve('/live')}>Open the live dashboard</a>
@@ -289,6 +289,7 @@
 		font-size: var(--font-size-2xl);
 		line-height: 1.15;
 		margin: var(--space-2) 0 var(--space-4);
+		text-wrap: balance;
 	}
 
 	.kicker {

@@ -1210,6 +1210,29 @@ past sessions are test material, and live comes first (your call,
   this season's and last season's pages are in the sitemap. The home
   page's next race links to it. Checked by `e2e/races.spec.ts` in
   `verify-phase3`.
+- **Search fixes (2026-10-17):** searching the name found the site on
+  Google and Bing, but Bing showed no logo and no description, and the
+  site did not appear for "F1 dashboard". Checked on production:
+  - **No logo on Bing:** `/favicon.ico` answered 404 (Bing asks for it by
+    name) and the only icon was an SVG. Now a real `favicon.ico` (16, 32,
+    48 px) and 48, 96 and 192 px PNGs declared with their sizes, all
+    rendered from `static/favicon.svg` by `scripts/build-icons.mjs`.
+  - **No logo in the structured data:** the home page now carries an
+    `Organization` with its 512 px logo as the `WebSite`'s publisher.
+    `PROFILES` in `$lib/seo` lists the site's public profiles for
+    `sameAs`, empty until one exists.
+  - **The exact phrase:** "F1 dashboard" now leads the title ("FastPitStop
+    — F1 Dashboard: Live Timing, Tyres & Strategy"), the H1 and the first
+    paragraph of the home page, and its description.
+  - **Bing hears of new pages at once:** IndexNow on every deploy and every
+    6 hours (DEPLOY.md, "IndexNow").
+
+  Ranking for a broad phrase like "F1 dashboard" rests mostly on what the
+  code cannot do: links and mentions from F1 and tech sites (S8), and
+  time. Search Console's Performance report, filtered to queries
+  containing "dashboard", says which: impressions at positions 30 to 80
+  mean relevant but lacking authority (links help); none at all means not
+  yet considered for the phrase.
 - **Analytics (2026-10-12):** Google Analytics 4 (`G-BVQJWG5QPX`) in
   `app.html`, so every page carries it, loaded only on `fastpitstop.online`
   itself so local runs and the browser tests send nothing. In-app page
