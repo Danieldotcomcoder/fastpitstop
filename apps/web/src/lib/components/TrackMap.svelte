@@ -8,7 +8,7 @@
 	 * this component is the thin glue — canvas sizing, the render loop, and
 	 * `prefers-reduced-motion`. */
 	import { onDestroy } from 'svelte';
-	import { playbackClockMs, type DelaySyncController } from '$lib/delay-sync';
+	import type { DelaySyncController } from '$lib/delay-sync';
 	import Panel from './Panel.svelte';
 	import {
 		buildArcLengthTable,
@@ -53,8 +53,7 @@
 		const { events } = controller.visibleState.get();
 		reducer.update(events);
 		lapProgress.update(events);
-		const delaySeconds = controller.delayState.get().delaySeconds;
-		const renderTsMs = playbackClockMs(Date.now(), delaySeconds);
+		const renderTsMs = controller.clockMs(Date.now());
 		// Measured positions always win. Only when the feed gave us none —
 		// every unauthenticated live session, and every historical replay —
 		// do we fall back to positions derived from lap timing.

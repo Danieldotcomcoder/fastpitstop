@@ -956,6 +956,86 @@ the existing core:
 **Done when** the property tests pass and a VM rehearsal proves pause,
 resume and catch-up on a recorded race played as live.
 
+**Status (2026-10-17): built; property tests and the VM rehearsal pass.**
+
+*Built* (`$lib/delay-sync/`, pure TypeScript):
+- **The controller owns the clock** (`clockMs`): wall time minus the
+  delay, or frozen where a pause began. Resuming adds exactly the time
+  spent paused to the delay, so the clock carries on from where it
+  stopped. Every reader goes through it: the release gate, the strip's
+  clock, the maps, moments, the qualifying clock.
+- **Re-sync on the leader** (`resync.ts`): the leader's crossing of lap N
+  is the first `lap_completed` for lap N, by the stream's own timestamps.
+  A tap picks the crossing nearest the current delay, so a delay off by
+  less than half a lap picks the right one.
+- **Catch-up** (`catchUpFrom`): the lights out tap with no slider cap. The
+  page has already shown the race to the old clock, which cannot be taken
+  back, so it is rebuilt from the start on the new one. Live only, and
+  only from the race's own start status.
+- **Carrying a sync over** (`carry`): a reconnect, a new replay speed or a
+  restart keeps the delay, how it was set, and a pause in progress.
+  Before, each rebuilt the controller from the delay alone.
+- **Sync quality** (`quality.ts`): paused; not synced; in sync (a tap in
+  the last 20 minutes); check (set by hand, or a tap that has aged); feed
+  behind your picture (live, nothing delivered for 20 s of the clock; a
+  red flag goes quiet too, and the wording says so).
+- **The server:** `/stream/{key}?mode=live&history=<s>` sends gap history
+  in full that far back. A late joiner otherwise gets gaps older than 5
+  minutes reduced to each driver's latest, which is exact for the
+  2-minute slider but left a catch-up, or a phone back from a long pause,
+  with no intervals for the early laps. The desk asks for how far behind
+  live its clock really runs.
+- **The strip:** Pause/Resume stays on a phone's folded line;
+  "Leader crossed the line" (races and sprints); "Watching from the
+  start" (live); the quality label, with its reason as the shield's
+  tooltip on a wide screen and under the controls on a phone. On a wide
+  screen the strip now wraps to two lines; on a phone Pause is the icon
+  alone, so the folded strip stays one line at 390 px.
+
+*Checks:*
+- **Property test** (`sync2.test.ts`): 200 seeded schedules of pauses,
+  resumes, slider moves and leader taps against an independent model of
+  the viewer's TV: nothing released ahead of it, and a paused clock never
+  moves on a plain tick. A clock that ignores the pause fails it.
+- **Browser** (`sync.spec.ts`, in `just verify-phase3`): pause on a replay
+  freezes the lap, the released log and the clock, and resume carries on;
+  a leader tap re-syncs; on a phone pause stays on the folded strip.
+- **Server:** a viewer asking for long history gets every gap.
+
+*Rehearsal (2026-10-17),* the recorded 2026 Singapore race played as live
+at 4x on the VM (`deploy/rehearse_live.py` into the real `f1-pipeline
+live`, a scratch `pitwall_rehearsal` database, a second API container),
+driven through an SSH tunnel by `apps/web/rehearsal/sync-w6.mjs`. All
+eleven checks passed:
+- **Pause:** caught up to live, then 30 s paused with the lap, the clock
+  and the released log frozen and nothing past the pause released; resume
+  grew the delay by the pause (30.9 s) and the race carried on, never
+  ahead of the clock.
+- **Catch-up:** a viewer at lap 13 pressed "Watching from the start": the
+  page rebuilt from lights out 5 min 11 s behind live, "In sync", and by
+  lap 4 of the catch-up showed intervals for 21 cars, never ahead of the
+  clock. (311 s is only just past the 5-minute window: the full-history
+  path is proven by the server test, the rehearsal proves the wiring.)
+
+The first run found two things, both fixed: the stand-in replayed the
+feed's own `Utc` fields unchanged, so lights out sat days before every
+other event (it now moves them onto the replay's clock); and catch-up fell
+back to the stream's first event, which on a live stream can be an hour
+of pre-race messages earlier (it now needs the race's own start).
+
+*Runbook:* upload `python/` and `deploy/rehearse_live.py` to
+`/root/rehearsal` on the VM; create `pitwall_rehearsal` in `pitwall-db-1`;
+run the api image twice with `/root/rehearsal/python` mounted over
+`/app/python` and `F1_STORE_DSN` on the scratch database: once as
+`f1-api` on `127.0.0.1:18000` with `F1_API_WHY_FIXTURE=1`, once as
+`python /app/deploy/rehearse_live.py --recording
+/data/recordings/<folder> --speed 4` with the data volume read-only. A
+recording is named after the session the worker connected in and holds
+the ones after it (the Singapore race is in
+`2026_Singapore_Grand_Prix_Qualifying`). Tunnel 18000, run `vite dev`
+against it on 4340, run the driver. Remove the containers, the database
+and `/root/rehearsal` afterwards.
+
 ### W7. Phone glance mode and installable app
 
 - **Bottom tabs:** Race · Battle · Map · Strategy · Story. The default view
@@ -1225,7 +1305,8 @@ Each milestone ships between race weekends and passes W0 before deploy.
   - S6 share images: built 2026-10-15 (see S6).
 - **M4:** W5 built 2026-10-16 (see W5), all five steps; neither call
   type passed the 2025 held-out check, so its screens stay behind the
-  gate, waiting on your decision. W6 not started.
+  gate. On hold by your decision (2026-10-17). W6 built 2026-10-17; its
+  property tests and VM rehearsal pass (see W6).
 - **M5:** not started.
 
 ## Parked (needs a decision)

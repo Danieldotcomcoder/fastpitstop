@@ -13,10 +13,12 @@ import { type Envelope, eventTimeMs } from './envelope';
 export class TimelineBuffer {
 	private readonly pending: Envelope[] = [];
 	private readonly releasedLog: Envelope[] = [];
+	private newest: number | null = null;
 
 	/** Insert into `pending`, kept sorted ascending by `event_time_utc`. */
 	ingest(envelope: Envelope): void {
 		const ms = eventTimeMs(envelope);
+		if (this.newest === null || ms > this.newest) this.newest = ms;
 		let low = 0;
 		let high = this.pending.length;
 		while (low < high) {
@@ -48,6 +50,11 @@ export class TimelineBuffer {
 			this.releasedLog.push(next);
 		}
 		return releasedNow;
+	}
+
+	/** The newest event time ever ingested (epoch ms), released or not. */
+	get newestEventMs(): number | null {
+		return this.newest;
 	}
 
 	get pendingCount(): number {

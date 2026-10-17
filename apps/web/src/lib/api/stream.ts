@@ -25,6 +25,10 @@ export interface SessionStreamOptions {
 	mode?: StreamMode;
 	/** Only meaningful for `mode: 'replay'`. `0` = as fast as possible, `1` = real time. */
 	speed?: number;
+	/** Only meaningful for `mode: 'live'`: how far behind live the viewer
+	 * runs, in seconds (their Delay Sync delay). The server sends gap
+	 * history in full this far back (ROADMAP W6: catch-up, long pauses). */
+	historySeconds?: number;
 }
 
 type MessageListener = (envelope: StreamEnvelope) => void;
@@ -52,10 +56,13 @@ export class SessionStream {
 
 	connect(): void {
 		if (this.socket) return;
-		const { mode = 'replay', speed = 1 } = this.options;
+		const { mode = 'replay', speed = 1, historySeconds } = this.options;
 		const url = new URL(`${wsBaseUrl()}/stream/${encodeURIComponent(this.sessionKey)}`);
 		url.searchParams.set('mode', mode);
 		url.searchParams.set('speed', String(speed));
+		if (mode === 'live' && historySeconds !== undefined && historySeconds > 0) {
+			url.searchParams.set('history', String(Math.ceil(historySeconds)));
+		}
 
 		const socket = new WebSocket(url);
 		socket.addEventListener('message', (event: MessageEvent<string>) => {

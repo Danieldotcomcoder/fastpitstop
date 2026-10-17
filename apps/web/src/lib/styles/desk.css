@@ -230,6 +230,7 @@
 }
 .desk-page .delay-ctl {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px;
 	flex: 1 1 260px;
@@ -478,6 +479,11 @@
 	.desk-page .sync .sync-toggle {
 		min-height: 44px;
 		order: 4;
+	}
+	/* Pause stays on the folded line: the TV pauses without warning (W6). */
+	.desk-page .sync .pause-btn {
+		min-height: 44px;
+		order: 3;
 	}
 	.desk-page .sync .shield {
 		flex: 1;

@@ -203,14 +203,20 @@ class LiveHub:
         with self._lock:
             return [entry.text for entry in self._backlog[index:]]
 
-    def join(self, now: datetime | None = None) -> tuple[list[str], int]:
+    def join(self, now: datetime | None = None, *, history_s: float = 0.0) -> tuple[list[str], int]:
         """What a viewer joining now receives first, and the index its tail
         starts from: the session so far, with gap history older than
         `JOIN_GAP_HISTORY_S` reduced to each driver's last update (see
-        there for why that changes nothing the viewer can see)."""
+        there for why that changes nothing the viewer can see).
+
+        `history_s` is how far behind live the viewer runs (their Delay Sync
+        delay, ROADMAP W6): full history is kept back to whichever reaches
+        further, so a viewer watching from lights out, or back from a long
+        pause, sees every gap at its own moment, as a replay would."""
         with self._lock:
             entries = list(self._backlog)
-        cutoff = (now or datetime.now(UTC)) - timedelta(seconds=JOIN_GAP_HISTORY_S)
+        window_s = max(JOIN_GAP_HISTORY_S, history_s)
+        cutoff = (now or datetime.now(UTC)) - timedelta(seconds=window_s)
 
         def superseded_gap(entry: _Published) -> bool:
             return entry.kind == GAP_KIND and entry.driver is not None and entry.event_time < cutoff

@@ -105,7 +105,14 @@
 	// The `$effect` below overwrites this synchronously on mount and on every
 	// later `controller` reassignment, since `Store.subscribe` always calls
 	// its listener immediately with the current value.
-	let delayState = $state<DelayState>({ delaySeconds: DEFAULT_DELAY_SECONDS, synced: false });
+	let delayState = $state<DelayState>({
+		delaySeconds: DEFAULT_DELAY_SECONDS,
+		synced: false,
+		paused: false,
+		method: 'default',
+		setAtMs: null,
+		anchorLap: null
+	});
 
 	$effect(() => {
 		// Re-subscribes whenever `controller` is reassigned (a new session

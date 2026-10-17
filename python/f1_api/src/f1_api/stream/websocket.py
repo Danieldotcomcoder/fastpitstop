@@ -90,6 +90,16 @@ async def stream(
             "combined, and no shipped view consumes it off this stream)."
         ),
     ),
+    history: float = Query(
+        0.0,
+        ge=0.0,
+        le=24 * 3600.0,
+        description=(
+            "mode=live only: how far behind live the viewer runs, in seconds "
+            "(their Delay Sync delay). Gap history this far back arrives in "
+            "full; older gaps are reduced to each driver's latest."
+        ),
+    ),
     anchor_to_first_lap: bool = Query(
         True,
         description=(
@@ -168,7 +178,7 @@ async def stream(
         lambda: _make_live_hub(settings, session_key, entry.event_name, kinds),
     )
     try:
-        await _stream_live(websocket, hub)
+        await _stream_live(websocket, hub, history_s=history)
     finally:
         LIVE_HUBS.release(hub)
 
@@ -370,13 +380,17 @@ async def _stream_replay(
 
 
 async def _stream_live(
-    websocket: WebSocket, hub: LiveHub, *, interval_s: float = LIVE_FANOUT_INTERVAL_S
+    websocket: WebSocket,
+    hub: LiveHub,
+    *,
+    history_s: float = 0.0,
+    interval_s: float = LIVE_FANOUT_INTERVAL_S,
 ) -> None:
     """One viewer of a live session: everything the hub has published so
     far (the race as it stands, every snapshot and explanation already
     made), then the tail as it grows. Joining at lap 40 costs one burst of
     sends, not forty kernel recomputes."""
-    first, sent = hub.join()
+    first, sent = hub.join(history_s=history_s)
     gone = asyncio.ensure_future(_client_gone(websocket))
     try:
         for text in first:
