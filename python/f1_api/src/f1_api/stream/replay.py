@@ -152,7 +152,7 @@ from f1_kernel import (
 )
 from f1_radio.search import SearchIndex
 from f1_radio.store import TranscriptRecord, TranscriptStore
-from f1_replay import pacing_offset_s, sleep_until
+from f1_replay import pacing_offset_s
 from f1_why import Anomaly, Explanation, ExplanationStore, Narrator
 
 _log = logging.getLogger(__name__)
@@ -592,24 +592,127 @@ def _event_pacing_ts(event: DomainEvent) -> datetime:
     return event.ts_utc
 
 
+class ReplayPace:
+    """Where on the wall clock each moment of the replay goes out, at a
+    speed the viewer can change mid-stream: a new speed carries on from the
+    current moment of the race instead of restarting it.
+
+    Until the first change this is exactly `f1_replay`'s timing model
+    (`pacing_offset_s`: `delay + elapsed / speed`). A change re-anchors the
+    line at the moment of the race reached on the wall clock now, so the
+    replay carries on from there at the new rate. Offsets handed out never
+    go backwards, even when a change lands while the producer runs late,
+    so envelopes stay stamped in send order for Delay Sync. A change also
+    wakes a producer waiting for its next moment, so it takes effect at
+    once. Thread-safe: the WebSocket sets the speed, the producer thread
+    reads it. `speed <= 0` is as fast as possible."""
+
+    def __init__(self, speed: float, *, delay: float = 0.0) -> None:
+        self._lock = threading.Lock()
+        self._changed = threading.Event()
+        self._speed = speed
+        self._delay = delay
+        self._anchor_elapsed = 0.0
+        self._anchor_offset = delay
+        self._re_anchored = False
+        self._last_offset = float("-inf")
+        self._last_elapsed = 0.0
+        self._start_wall: float | None = None
+        self._clock: Callable[[], float] = time.monotonic
+
+    def begin(self, start_wall: float, clock: Callable[[], float]) -> None:
+        """The replay starts now: `start_wall` on `clock`, the moment
+        offsets are counted from."""
+        with self._lock:
+            self._start_wall = start_wall
+            self._clock = clock
+
+    @property
+    def speed(self) -> float:
+        with self._lock:
+            return self._speed
+
+    def _offset_locked(self, elapsed_s: float) -> float:
+        if not self._re_anchored:
+            return pacing_offset_s(elapsed_s, speed=self._speed, delay=self._delay)
+        ahead = elapsed_s - self._anchor_elapsed
+        return self._anchor_offset + (ahead / self._speed if self._speed > 0 else 0.0)
+
+    def offset(self, elapsed_s: float) -> float:
+        """The wall-clock offset (seconds after the replay began) that
+        `elapsed_s` of the session goes out at, before monotonicity."""
+        with self._lock:
+            return self._offset_locked(elapsed_s)
+
+    def set_speed(self, speed: float, *, now_offset_s: float | None = None) -> None:
+        """Carry on from the moment of the race reached now (or at
+        `now_offset_s`, wall time since the replay began) at `speed`. Before
+        the replay has begun, simply its starting speed."""
+        with self._lock:
+            if speed == self._speed:
+                return
+            if now_offset_s is None:
+                if self._start_wall is None:
+                    self._speed = speed
+                    return
+                now_offset_s = self._clock() - self._start_wall
+            if self._speed > 0:
+                base_elapsed = self._anchor_elapsed if self._re_anchored else 0.0
+                base_offset = self._anchor_offset if self._re_anchored else self._delay
+                reached = base_elapsed + (now_offset_s - base_offset) * self._speed
+            else:
+                reached = self._last_elapsed
+            self._anchor_elapsed = max(reached, self._last_elapsed)
+            self._anchor_offset = max(now_offset_s, self._last_offset)
+            self._re_anchored = True
+            self._speed = speed
+        self._changed.set()
+
+    def wait_for(
+        self,
+        elapsed_s: float,
+        *,
+        start_wall: float,
+        clock: Callable[[], float],
+        sleep: Callable[[float], None] | None,
+    ) -> float:
+        """Block until `elapsed_s` is due, then return its offset. With a
+        `sleep` given (the tests), sleep with it; otherwise wait on this
+        pace, so a speed change wakes the wait."""
+        while True:
+            with self._lock:
+                target = self._offset_locked(elapsed_s)
+            remaining = start_wall + target - clock()
+            if remaining <= 0:
+                break
+            if sleep is not None:
+                sleep(remaining)
+                continue
+            if self._changed.wait(timeout=remaining):
+                self._changed.clear()
+        with self._lock:
+            offset = max(self._offset_locked(elapsed_s), self._last_offset)
+            self._last_offset = offset
+            self._last_elapsed = max(self._last_elapsed, elapsed_s)
+            return offset
+
+
 def _emit_paced(
     *,
     pacing_ts: datetime,
     pacing_anchor_ts: datetime,
     start_wall: float,
     start_wall_utc: datetime,
-    speed: float,
-    delay: float,
+    pace: ReplayPace,
     clock: Callable[[], float],
-    sleep: Callable[[float], None],
+    sleep: Callable[[float], None] | None,
 ) -> datetime:
-    """Sleep until `pacing_ts` on the replay timeline and return the
+    """Wait until `pacing_ts` on the replay timeline and return the
     remapped wall-clock `event_time_utc` for the envelope about to be
     yielded — shared by domain events and explanation envelopes so both
     pass the exact same Delay Sync arithmetic."""
     elapsed_s = (pacing_ts - pacing_anchor_ts).total_seconds()
-    target_offset = pacing_offset_s(elapsed_s, speed=speed, delay=delay)
-    sleep_until(start_wall, target_offset, clock=clock, sleep=sleep)
+    target_offset = pace.wait_for(elapsed_s, start_wall=start_wall, clock=clock, sleep=sleep)
     return start_wall_utc + timedelta(seconds=target_offset)
 
 
@@ -622,10 +725,9 @@ def _flush_explanations_upto(
     pacing_anchor_ts: datetime,
     start_wall: float,
     start_wall_utc: datetime,
-    speed: float,
-    delay: float,
+    pace: ReplayPace,
     clock: Callable[[], float],
-    sleep: Callable[[float], None],
+    sleep: Callable[[float], None] | None,
 ) -> tuple[int, list[StreamEnvelope]]:
     """Emit every still-pending explanation whose `anomaly_time` is at or
     before `upto`, advancing `index`. Returns the new index and the
@@ -638,8 +740,7 @@ def _flush_explanations_upto(
             pacing_anchor_ts=pacing_anchor_ts,
             start_wall=start_wall,
             start_wall_utc=start_wall_utc,
-            speed=speed,
-            delay=delay,
+            pace=pace,
             clock=clock,
             sleep=sleep,
         )
@@ -667,8 +768,9 @@ def replay_envelopes(
     event_name: str | None = None,
     positions: pl.DataFrame | None = None,
     call_kinds: Collection[CallKind] = (),
+    pace: ReplayPace | None = None,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
     wall_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> Generator[StreamEnvelope]:
     """Yield one envelope per `DomainEvent` (in `ts_utc` order), paced by
@@ -709,10 +811,18 @@ def replay_envelopes(
     when the caller already has the track (the WebSocket looks in the
     post-session archive too), otherwise from the source itself.
 
-    Synchronous and real-sleeping (like `f1_replay.replay`), so a caller in
+    `pace` lets the caller change the speed while the replay runs (the
+    viewer picking 1x/4x/16x): the replay carries on from the current
+    moment at the new rate (`ReplayPace`). Without one, `speed` and `delay`
+    fix it for the whole replay. `sleep`, when given (the tests), replaces
+    the real wait, which a speed change interrupts.
+
+    Synchronous and really waiting (like `f1_replay.replay`), so a caller in
     an async context must run this in a thread — see
     `f1_api.stream.websocket`.
     """
+    pace = pace if pace is not None else ReplayPace(speed, delay=delay)
+    speed = pace.speed
     event_kinds = None if kinds is None else frozenset(kinds) - {POSITION_KIND}
     events: list[DomainEvent] = sorted(
         (
@@ -744,6 +854,7 @@ def replay_envelopes(
     try:
         start_wall = clock()
         start_wall_utc = wall_clock()
+        pace.begin(start_wall, clock)
         pacing_anchor_ts = _pacing_anchor_ts(events, anchor_to_first_lap=anchor_to_first_lap)
 
         # Explanations arrive one of two ways. `explanation_schedule` is the
@@ -793,8 +904,7 @@ def replay_envelopes(
                     pacing_anchor_ts=pacing_anchor_ts,
                     start_wall=start_wall,
                     start_wall_utc=start_wall_utc,
-                    speed=speed,
-                    delay=delay,
+                    pace=pace,
                     clock=clock,
                     sleep=sleep,
                 )
@@ -804,8 +914,7 @@ def replay_envelopes(
                     pacing_anchor_ts=pacing_anchor_ts,
                     start_wall=start_wall,
                     start_wall_utc=start_wall_utc,
-                    speed=speed,
-                    delay=delay,
+                    pace=pace,
                     clock=clock,
                     sleep=sleep,
                 )
@@ -823,8 +932,7 @@ def replay_envelopes(
                 pacing_anchor_ts=pacing_anchor_ts,
                 start_wall=start_wall,
                 start_wall_utc=start_wall_utc,
-                speed=speed,
-                delay=delay,
+                pace=pace,
                 clock=clock,
                 sleep=sleep,
             )
@@ -835,8 +943,7 @@ def replay_envelopes(
                 pacing_anchor_ts=pacing_anchor_ts,
                 start_wall=start_wall,
                 start_wall_utc=start_wall_utc,
-                speed=speed,
-                delay=delay,
+                pace=pace,
                 clock=clock,
                 sleep=sleep,
             )
@@ -867,8 +974,7 @@ def replay_envelopes(
                 pacing_anchor_ts=pacing_anchor_ts,
                 start_wall=start_wall,
                 start_wall_utc=start_wall_utc,
-                speed=speed,
-                delay=delay,
+                pace=pace,
                 clock=clock,
                 sleep=sleep,
             )
@@ -887,6 +993,7 @@ __all__ = [
     "POSITION_STALE_AFTER_S",
     "RADIO_CLIP_KIND",
     "LapSnapshotFeed",
+    "ReplayPace",
     "car_positions_envelope",
     "domain_event_envelope",
     "envelope_for_event",

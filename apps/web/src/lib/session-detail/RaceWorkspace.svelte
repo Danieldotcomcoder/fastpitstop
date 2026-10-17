@@ -90,7 +90,8 @@
 	let isLive = $derived(session.live === true);
 
 	const SPEEDS = [0, 1, 4, 5, 16, 20, 50];
-	let speed = $state(16);
+	/** Replays start in real time; 4x and 16x are a tap away. */
+	let speed = $state(1);
 	let controller = $state(new DelaySyncController({ initialDelaySeconds: 0, now: serverNowMs }));
 	// Raw, not deep: the released state is replaced, never mutated, and a
 	// deep proxy made every reducer's read of every event a proxy trap
@@ -587,9 +588,11 @@
 		connect(controller.carry());
 	}
 
+	/** A new speed carries the replay on from where it is: nothing is
+	 * reloaded or shown again (the server re-paces the same stream). */
 	function setSpeed(next: number): void {
 		speed = next;
-		connect();
+		socket?.setSpeed(next);
 	}
 
 	// One effect per session, keyed on `session.key`, so a `/live` session

@@ -44,6 +44,8 @@ export class SessionStream {
 	private readonly messageListeners = new Set<MessageListener>();
 	private readonly errorListeners = new Set<ErrorListener>();
 	private readonly closeListeners = new Set<CloseListener>();
+	/** A replay speed asked for before the socket opened, sent on open. */
+	private pendingSpeed: number | null = null;
 
 	constructor(
 		private readonly sessionKey: string,
@@ -69,6 +71,10 @@ export class SessionStream {
 			const envelope = JSON.parse(event.data) as StreamEnvelope;
 			for (const listener of this.messageListeners) listener(envelope);
 		});
+		socket.addEventListener('open', () => {
+			if (this.pendingSpeed !== null) this.sendSpeed(this.pendingSpeed);
+			this.pendingSpeed = null;
+		});
 		socket.addEventListener('error', (event) => {
 			for (const listener of this.errorListeners) listener(event);
 		});
@@ -91,6 +97,19 @@ export class SessionStream {
 	onClose(listener: CloseListener): () => void {
 		this.closeListeners.add(listener);
 		return () => this.closeListeners.delete(listener);
+	}
+
+	/** Change a replay's speed without restarting it: the server carries on
+	 * from the current moment at the new rate (`f1_api.stream.replay.
+	 * ReplayPace`). A connection opened later starts at this speed too. */
+	setSpeed(speed: number): void {
+		this.options.speed = speed;
+		if (this.socket?.readyState === WebSocket.OPEN) this.sendSpeed(speed);
+		else this.pendingSpeed = speed;
+	}
+
+	private sendSpeed(speed: number): void {
+		this.socket?.send(JSON.stringify({ type: 'speed', speed }));
 	}
 
 	close(): void {
