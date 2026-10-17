@@ -177,8 +177,8 @@ export function seoFor(
 
 	if (path === '/') {
 		return page(
-			`${brand.name} — F1 Live Timing Dashboard & Race Strategy`,
-			'Free, unofficial F1 live timing dashboard: gaps, tyre degradation, undercut predictions and pit strategy, held back to your TV delay so the race is never spoiled.',
+			`${brand.name} — F1 Dashboard: Live Timing, Tyres & Strategy`,
+			'Free, unofficial F1 dashboard with live timing: gaps, tyre degradation, undercut predictions and pit strategy, held back to your TV delay so the race is never spoiled.',
 			homeJsonLd()
 		);
 	}
@@ -293,13 +293,41 @@ export function seoFor(
 	return page(brand.name, `${brand.name} — ${brand.tagline}. Unofficial fan project.`);
 }
 
+/** The site's public profiles, for `Organization.sameAs`: add one here
+ * when it exists (a GitHub repository, a Reddit or X account). Empty is
+ * fine: the field is then left out. */
+export const PROFILES: readonly string[] = [];
+
+const ORGANIZATION_ID = `${SITE_URL}/#organization`;
+
+/** Who publishes the site, with the logo search engines show beside it
+ * (square, 512 px, from `static/favicon.svg` like every other icon). */
+function organizationJsonLd(): Record<string, unknown> {
+	return {
+		'@context': 'https://schema.org',
+		'@type': 'Organization',
+		'@id': ORGANIZATION_ID,
+		name: brand.name,
+		url: `${SITE_URL}/`,
+		logo: {
+			'@type': 'ImageObject',
+			url: `${SITE_URL}/icon-512.png`,
+			width: 512,
+			height: 512
+		},
+		...(PROFILES.length > 0 ? { sameAs: [...PROFILES] } : {})
+	};
+}
+
 function homeJsonLd(): Record<string, unknown>[] {
 	return [
+		organizationJsonLd(),
 		{
 			'@context': 'https://schema.org',
 			'@type': 'WebSite',
 			name: brand.name,
-			url: `${SITE_URL}/`
+			url: `${SITE_URL}/`,
+			publisher: { '@id': ORGANIZATION_ID }
 		},
 		{
 			'@context': 'https://schema.org',
@@ -311,7 +339,7 @@ function homeJsonLd(): Record<string, unknown>[] {
 			isAccessibleForFree: true,
 			offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 			description:
-				'Unofficial F1 live timing dashboard with tyre degradation, undercut predictions and pit strategy, synced to your broadcast delay.'
+				'Unofficial F1 dashboard with live timing, tyre degradation, undercut predictions and pit strategy, synced to your broadcast delay.'
 		},
 		{
 			'@context': 'https://schema.org',

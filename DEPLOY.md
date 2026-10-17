@@ -209,6 +209,21 @@ if this release added a migration:
 ssh $DEPLOY_USER@$DEPLOY_HOST "cd $DEPLOY_PATH && docker compose -f compose.yml -f compose.prod.yml run --rm worker f1-store-migrate"
 ```
 
+### IndexNow (new pages to Bing)
+
+`just deploy-host` (and the GitHub deploy, which runs the same script) ends
+by running `deploy/indexnow.py` on the VM and writing
+`/etc/cron.d/pitwall-indexnow`, which runs it again every 6 hours. It reads
+the live sitemap and submits to IndexNow (Bing, Yandex, Seznam, Naver)
+every page not sent before, plus the home page, `/live`, `/sessions` and
+`/standings` once a day. What was sent is kept in
+`/var/lib/pitwall/indexnow.json`; the log is `/var/log/pitwall-indexnow.log`.
+It is best effort and never fails a deploy. The key it proves ownership
+with is public by design and served as
+`apps/web/static/57292a32e8821e25ebc9e3b711477fcf.txt`; changing it means
+changing both that file and `KEY` in the script. Google does not use
+IndexNow: it reads the sitemap submitted in Search Console.
+
 ## Running a live recording session in production
 
 The recorder (`worker`, `command: f1-record` by default, `restart:

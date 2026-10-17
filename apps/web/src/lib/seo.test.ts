@@ -49,14 +49,34 @@ const sessions: SeoSession[] = [
 describe('seoFor', () => {
 	it('gives the home page a keyword title, description and structured data', () => {
 		const seo = seoFor('/');
-		expect(seo.title).toMatch(/F1 Live Timing Dashboard/);
+		expect(seo.title).toMatch(/F1 Dashboard/);
+		expect(seo.title).toMatch(/Live Timing/);
 		expect(seo.title.length).toBeLessThanOrEqual(70);
 		expect(seo.description.length).toBeGreaterThan(80);
 		expect(seo.description.length).toBeLessThanOrEqual(170);
 		expect(seo.description).toMatch(/unofficial/i);
 		const types = seo.jsonLd.map((item) => item['@type']);
-		expect(types).toEqual(['WebSite', 'WebApplication', 'FAQPage']);
+		expect(types).toEqual(['Organization', 'WebSite', 'WebApplication', 'FAQPage']);
 		expect(seo.noindex).toBe(false);
+	});
+
+	it('names the publisher, with a square logo search engines can show', () => {
+		const [organization, website] = seoFor('/').jsonLd as [
+			Record<string, unknown>,
+			Record<string, unknown>
+		];
+		expect(organization).toMatchObject({
+			'@type': 'Organization',
+			name: 'FastPitStop',
+			logo: { url: 'https://fastpitstop.online/icon-512.png', width: 512, height: 512 }
+		});
+		expect(website.publisher).toEqual({ '@id': organization['@id'] });
+		// No profile is listed until one exists.
+		expect(organization).not.toHaveProperty('sameAs');
+	});
+
+	it('says "F1 dashboard" in the description', () => {
+		expect(seoFor('/').description).toMatch(/F1 dashboard/);
 	});
 
 	it('names a weekend by its event and venue, never a result', () => {

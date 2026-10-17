@@ -152,6 +152,14 @@ def _remote_script(path: str, *, build: bool) -> str:
         "docker compose -f compose.yml -f compose.prod.yml up -d --wait\n"
         "docker compose -f compose.yml -f compose.prod.yml run --rm worker f1-store-migrate\n"
         "docker compose -f compose.yml -f compose.prod.yml ps\n"
+        # Tell Bing about new pages now (IndexNow, deploy/indexnow.py), and
+        # every 6 hours from here on, so a new race or replay reaches it
+        # without a deploy. Best effort: it never fails the deploy.
+        "mkdir -p /var/lib/pitwall\n"
+        "python3 deploy/indexnow.py --state /var/lib/pitwall/indexnow.json || true\n"
+        f"echo '17 */6 * * * root cd {path} && python3 deploy/indexnow.py"
+        " --state /var/lib/pitwall/indexnow.json >> /var/log/pitwall-indexnow.log 2>&1'"
+        " > /etc/cron.d/pitwall-indexnow\n"
     )
 
 
