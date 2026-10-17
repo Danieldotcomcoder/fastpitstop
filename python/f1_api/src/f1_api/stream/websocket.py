@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
+import math
 import threading
-from collections.abc import Collection, Generator
-from typing import Annotated, Literal
+from collections.abc import Callable, Collection, Generator
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
@@ -30,6 +32,7 @@ from f1_api.stream.live import LIVE_HUBS, LiveDeps, LiveHub
 from f1_api.stream.replay import (
     DEFAULT_STREAM_KINDS,
     POSITION_KIND,
+    ReplayPace,
     replay_envelopes,
 )
 from f1_api.why import (
@@ -53,8 +56,34 @@ LIVE_FANOUT_INTERVAL_S = 0.25
 A read of an in-memory list: costs nothing next to the hub's own poll."""
 
 
-async def _client_gone(websocket: WebSocket) -> None:
-    """Completes when the client disconnects.
+MAX_REPLAY_SPEED = 100.0
+"""The fastest a viewer can ask a replay to run, as a speed message."""
+
+
+def replay_speed_from(text: str) -> float | None:
+    """The speed in a client's `{"type": "speed", "speed": N}` message, or
+    None for anything else (ignored, never an error: the socket carries
+    no other client messages)."""
+    try:
+        message = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(message, dict):
+        return None
+    fields = cast(dict[str, object], message)
+    if fields.get("type") != "speed":
+        return None
+    value = fields.get("speed")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    if not math.isfinite(value) or value < 0 or value > MAX_REPLAY_SPEED:
+        return None
+    return float(value)
+
+
+async def _client_gone(websocket: WebSocket, on_text: Callable[[str], None] | None = None) -> None:
+    """Completes when the client disconnects, handing any text the client
+    sends meanwhile to `on_text` (a replay's speed changes).
 
     `WebSocketDisconnect` is only ever raised from a RECEIVE, and the live
     loop never receives -- so before this existed, every browser tab that
@@ -65,7 +94,12 @@ async def _client_gone(websocket: WebSocket) -> None:
     """
     try:
         while True:
-            await websocket.receive()
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+            text = message.get("text")
+            if on_text is not None and isinstance(text, str):
+                on_text(text)
     except Exception:
         return
 
@@ -311,6 +345,16 @@ async def _stream_replay(
     )
     explainer.start()
 
+    # The viewer can change the speed mid-replay ("speed" messages, see
+    # `replay_speed_from`): the replay carries on from the current moment at
+    # the new rate instead of starting again.
+    pace = ReplayPace(speed)
+
+    def on_text(text: str) -> None:
+        new_speed = replay_speed_from(text)
+        if new_speed is not None:
+            pace.set_speed(new_speed)
+
     # Set when the viewer is gone: the producer stops at its next envelope
     # instead of pacing out the rest of the race into a queue nobody reads
     # (up to two hours of it at 1x, for every tab ever closed mid-replay).
@@ -331,6 +375,7 @@ async def _stream_replay(
                     source,
                     session_key,
                     speed=speed,
+                    pace=pace,
                     kinds=kinds,
                     anchor_to_first_lap=anchor_to_first_lap,
                     radio_store=radio_store,
@@ -356,7 +401,7 @@ async def _stream_replay(
     # raised exception" and carries on. Without watching the receive side a
     # replay outlived its tab by the rest of the race, as `_stream_live`
     # once did (see `_client_gone`).
-    gone = asyncio.ensure_future(_client_gone(websocket))
+    gone = asyncio.ensure_future(_client_gone(websocket, on_text))
     try:
         while True:
             pending = asyncio.ensure_future(queue.get())

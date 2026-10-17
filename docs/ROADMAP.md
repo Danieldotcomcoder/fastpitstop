@@ -499,9 +499,11 @@ team logos, driver headshots.
 **Done when:**
 - every D5 screen matches its approved mockup;
 - the screens pass W0 in both themes at all three widths;
-- WCAG AA contrast is met throughout;
-- a side-by-side review against the competitor screenshots is signed off by
-  you.
+- WCAG AA contrast is met throughout.
+
+**Status (2026-10-17): done.** Mockups approved, `verify-visual` approved,
+`verify-real` passing. You dropped the planned side-by-side review against
+competitor screenshots: other dashboards are inspiration, not a gate.
 
 ### W3. Weekend hub: never empty
 
@@ -1023,6 +1025,18 @@ other event (it now moves them onto the replay's clock); and catch-up fell
 back to the stream's first event, which on a live stream can be an hour
 of pre-race messages earlier (it now needs the race's own start).
 
+*Replay speed (2026-10-17, your request):* replays start at 1x, and
+picking 4x or 16x carries the race on from where it is instead of
+restarting it. The browser sends `{"type": "speed", "speed": N}` over the
+open stream; the server's `ReplayPace` re-anchors the replay at the moment
+of the race reached and paces on at the new rate (race events, car
+positions and story cards alike), waking a wait in progress so the change
+is immediate. Timestamps never go backwards, so Delay Sync and a pause are
+unaffected. Restart still restarts. Checked by `test_replay_pace.py`
+(1x to 16x mid-race on the fixture: in order, no restart, each rate held)
+and `sync.spec.ts` (one connection, the lap and the released log only
+grow).
+
 *Runbook:* upload `python/` and `deploy/rehearse_live.py` to
 `/root/rehearsal` on the VM; create `pitwall_rehearsal` in `pitwall-db-1`;
 run the api image twice with `/root/rehearsal/python` mounted over
@@ -1250,7 +1264,7 @@ Each milestone ships between race weekends and passes W0 before deploy.
 | **M0: now** (done) | No deploys this weekend. You: S1 (Search Console and Bing). | Site verified, sitemap submitted |
 | **M1: Trust** | W0 release gate; W1 Story 2.0; W2 mockups (D6 steps 1–2) | Story meets its eval targets; mockup direction chosen |
 | **M2: Never empty, never thin** | W3 weekend hub; W4 completeness; W8 archive; W2 design system v2 components; S2 circuit pages; S3 Grand Prix pages | No empty states; tower checked against official timing; circuit and Grand Prix pages indexed |
-| **M3: Feel** | W2 screen redesigns and motion; W7 phone glance mode and app; S6 share images | Screens match mockups and pass W0 at all sizes and themes |
+| **M3: Feel** (done) | W2 screen redesigns and motion; W7 phone glance mode and app; S6 share images | Screens match mockups and pass W0 at all sizes and themes |
 | **M4: Signature** | W5 strategy radar and scorecard; W6 Sync 2.0 | Backtests committed; sync rehearsal passed |
 | **M5: Reach** | S4 guides; S8 launch | Launch posts live; Search Console trend tracked |
 
@@ -1297,11 +1311,7 @@ Each milestone ships between race weekends and passes W0 before deploy.
   Pages report.
 - **M3:**
   - W7 is done (see W7's status).
-  - W2's screen redesigns were built 2026-10-14 and 15 (see W2) but are
-    not done until you review them. That means approving the new
-    mockups, `just verify-visual` and `visual-approve`, `just
-    verify-real`, and the side-by-side review against the competitor
-    screenshots.
+  - W2's screen redesigns: done 2026-10-17 (see W2).
   - S6 share images: built 2026-10-15 (see S6).
 - **M4:** W5 built 2026-10-16 (see W5), all five steps; neither call
   type passed the 2025 held-out check, so its screens stay behind the

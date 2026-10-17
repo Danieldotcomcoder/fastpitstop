@@ -69,3 +69,37 @@ test('on a phone, pause stays on the folded strip', async ({ page }) => {
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test('a replay starts at 1x, and a new speed carries on without restarting', async ({ page }) => {
+	test.setTimeout(150_000);
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const sockets: string[] = [];
+	page.on('websocket', (ws) => {
+		if (ws.url().includes('/stream/')) sockets.push(ws.url());
+	});
+	await page.goto('/sessions/2024/1?delay=0');
+	const speeds = page.getByRole('group', { name: 'Replay speed' });
+	await expect(speeds.getByRole('button', { name: '1×' })).toHaveAttribute('aria-pressed', 'true');
+	await expect.poll(() => lapOf(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(1);
+	const before = await lapOf(page);
+
+	await speeds.getByRole('button', { name: '16×' }).click();
+	await expect(speeds.getByRole('button', { name: '16×' })).toHaveAttribute('aria-pressed', 'true');
+	// The race moves on from where it was: the lap and the released log only
+	// ever grow, and the page keeps its one connection.
+	let lap = before;
+	let count = await released(page);
+	for (let sample = 0; sample < 30; sample++) {
+		await page.waitForTimeout(1_000);
+		const [l, c] = [await lapOf(page), await released(page)];
+		expect(l).toBeGreaterThanOrEqual(lap);
+		expect(c).toBeGreaterThanOrEqual(count);
+		[lap, count] = [l, c];
+	}
+	expect(lap).toBeGreaterThanOrEqual(before + 2);
+	await speeds.getByRole('button', { name: '4×' }).click();
+	await page.waitForTimeout(2_000);
+	expect(await lapOf(page)).toBeGreaterThanOrEqual(lap);
+	expect(sockets).toHaveLength(1);
+	expect(sockets[0]).toContain('speed=1');
+});
