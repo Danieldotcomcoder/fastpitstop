@@ -3,6 +3,8 @@
 // Search engines read these: Google shows a square icon in multiples of
 // 48 px (it is offered 48 and 96), and Bing, like many other clients, asks
 // for `/favicon.ico` by name (16, 32 and 48 px inside, each a PNG). The
+// .ico is served by `src/routes/favicon.ico/+server.ts`, not from static/:
+// adapter-node's file server knows no type for .ico and sent none. The
 // 192 and 512 px app icons and the apple-touch icon come from the same
 // mark and are left as they are.
 import { Resvg } from '@resvg/resvg-js';
@@ -44,5 +46,6 @@ function ico(sizes) {
 	return Buffer.concat([header, ...entries, ...images.map((image) => image.data)]);
 }
 
-writeFileSync(join(STATIC, 'favicon.ico'), ico([16, 32, 48]));
-console.log('wrote icon-48.png, icon-96.png and favicon.ico');
+const SERVER = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'lib', 'server');
+writeFileSync(join(SERVER, 'favicon.ico'), ico([16, 32, 48]));
+console.log('wrote icon-48.png, icon-96.png and src/lib/server/favicon.ico');

@@ -1226,6 +1226,14 @@ past sessions are test material, and live comes first (your call,
     paragraph of the home page, and its description.
   - **Bing hears of new pages at once:** IndexNow on every deploy and every
     6 hours (DEPLOY.md, "IndexNow").
+  - **Found deploying it (2026-10-23):** the deploy sends its script to
+    bash on stdin, and `docker compose run` (the migration) read that
+    stdin, so nothing after the migration had ever run: not the `ps`, not
+    IndexNow. Now `run -T ... </dev/null`. The first submission and the
+    cron entry were run by hand on the VM (120 pages, HTTP 202). And
+    `favicon.ico` went out with an empty Content-Type (adapter-node knows
+    no type for .ico); it is now served by `routes/favicon.ico` as
+    `image/x-icon`.
 
   Ranking for a broad phrase like "F1 dashboard" rests mostly on what the
   code cannot do: links and mentions from F1 and tech sites (S8), and
