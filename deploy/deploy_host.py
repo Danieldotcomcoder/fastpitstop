@@ -150,7 +150,12 @@ def _remote_script(path: str, *, build: bool) -> str:
         "sed -i 's/\r$//' .env\n"
         f"{build_step}"
         "docker compose -f compose.yml -f compose.prod.yml up -d --wait\n"
-        "docker compose -f compose.yml -f compose.prod.yml run --rm worker f1-store-migrate\n"
+        # `-T` and </dev/null: this script reaches bash on stdin, and `docker
+        # compose run` reads stdin by default, so it swallowed every line
+        # after it. Until 2026-10-23 nothing past the migration (the `ps`,
+        # IndexNow) had ever run.
+        "docker compose -f compose.yml -f compose.prod.yml run --rm -T worker"
+        " f1-store-migrate </dev/null\n"
         "docker compose -f compose.yml -f compose.prod.yml ps\n"
         # Tell Bing about new pages now (IndexNow, deploy/indexnow.py), and
         # every 6 hours from here on, so a new race or replay reaches it
