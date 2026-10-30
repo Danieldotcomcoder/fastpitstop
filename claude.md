@@ -717,6 +717,19 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   - phone tabs mounted on first open;
   - `/live` lazy-loading the desk;
   - `f1_api.response_cache` for `/laps` and `/circuit`.
+- Shared replays (2026-10-30, blocked the launch posts): each replay
+  viewer loaded and analysed the whole race itself (100-280 MB each; 32
+  viewers took the API to 3.4 GB and delivered nothing). Now one
+  `ReplayHub` per session (`f1_api.stream.replay_hub`, the `LiveHub`
+  pattern for replays) builds a `ReplayTimeline` once, every envelope
+  serialized on the race clock, and each viewer is a non-blocking
+  `ReplayCursor` with its own pace and stamps, run on the event loop. The
+  story evidence and kernel pass run in a spawned worker process
+  (`f1_api.stream.replay_worker`): on a thread they held the GIL against
+  the event loop (50 viewers waited 10.7 s for data, pages 13.6 s). At
+  most two builds and two analyses at once. 50 viewers at 1x: under 800 MB
+  with the worker running, first data 3.5 s, worst page 2.6 s
+  (docs/PHASE3.md, "Replays are shared between viewers").
 - (next) Phase 3's one remaining gap is the live SignalR->API wiring —
   `mode=live` only polls today and is exercisable only during a real live
   session, the same reality `f1_ingest`'s own connection layer lives with.

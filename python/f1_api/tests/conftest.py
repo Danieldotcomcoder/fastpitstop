@@ -8,6 +8,7 @@ documents in docs/PHASE2.md.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,7 @@ from api_fixture import HISTORICAL_ROOT  # noqa: E402
 from f1_api.config import Settings  # noqa: E402
 from f1_api.main import create_app  # noqa: E402
 from f1_api.routes import sessions as session_routes  # noqa: E402
+from f1_api.stream.replay_hub import REPLAY_HUBS  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +32,14 @@ def empty_response_caches() -> None:
     test that counts computations) never depend on another's."""
     session_routes.laps_cache.clear()
     session_routes.circuit_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_shared_replays() -> Iterator[None]:
+    """Replays are shared per process (`REPLAY_HUBS`); none outlives the
+    test that started it."""
+    yield
+    REPLAY_HUBS.stop_all()
 
 
 @pytest.fixture
