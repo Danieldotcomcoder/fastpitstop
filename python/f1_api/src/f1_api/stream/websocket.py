@@ -16,8 +16,7 @@ import contextlib
 import json
 import logging
 import math
-import threading
-from collections.abc import Callable, Collection, Generator
+from collections.abc import Callable, Collection, Generator, Hashable
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -26,17 +25,21 @@ from f1_api.calls import enabled_call_kinds
 from f1_api.config import Settings, get_settings
 from f1_api.geometry import session_positions
 from f1_api.radio import radio_store_cm
-from f1_api.schemas import StreamEnvelope
 from f1_api.sessions import parse_session_key, resolve_session
 from f1_api.stream.live import LIVE_HUBS, LiveDeps, LiveHub
 from f1_api.stream.replay import (
     DEFAULT_STREAM_KINDS,
     POSITION_KIND,
+    ReplayCursor,
     ReplayPace,
-    replay_envelopes,
+    ReplayTimeline,
 )
+from f1_api.stream.replay_hub import REPLAY_HUBS, ReplayHub, WorkerPlan
+from f1_api.stream.replay_worker import WorkerJob
 from f1_api.why import (
     ExplanationSchedule,
+    ScheduledExplanation,
+    narrate_story,
     precompute_session_explanations,
     why_stream_deps_cm,
 )
@@ -44,8 +47,7 @@ from f1_domain import SessionKey
 from f1_kernel import EventSource
 from f1_kernel.circuit import circuit_for_session
 from f1_radio.search import SearchIndex
-from f1_radio.store import TranscriptStore
-from f1_why import ExplanationStore, Narrator
+from f1_why import EvidenceBundle, ExplanationStore, Narrator
 
 _log = logging.getLogger(__name__)
 
@@ -102,10 +104,6 @@ async def _client_gone(websocket: WebSocket, on_text: Callable[[str], None] | No
                 on_text(text)
     except Exception:
         return
-
-
-class _Done:
-    """Sentinel closing the producer-thread queue in `_stream_replay`."""
 
 
 @router.websocket("/stream/{key}")
@@ -171,27 +169,33 @@ async def stream(
             await websocket.close(code=4404, reason="session not found")
             return
         entry = resolved.entry
-        if mode == "replay":
-            with (
-                radio_store_cm(settings) as radio_store,
-                why_stream_deps_cm(settings) as (model, store, radio_index),
-            ):
-                await _stream_replay(
-                    websocket,
-                    resolved.source,
-                    session_key,
-                    settings=settings,
-                    event_name=entry.event_name,
-                    speed=speed,
-                    kinds=kinds,
-                    anchor_to_first_lap=anchor_to_first_lap,
-                    radio_store=radio_store,
-                    narration_model=model,
-                    explanation_store=store,
-                    radio_index=radio_index,
-                    circuit_name=entry.circuit_name or entry.location,
-                )
+
+    if mode == "replay":
+        # Every viewer of a finished session walks one shared replay (see
+        # `f1_api.stream.replay_hub`). A session still running is replayed
+        # as it stands now, for this viewer alone: its events are still
+        # arriving, so nobody else's copy would be the same.
+        replay = _ReplaySpec(
+            settings,
+            session_key,
+            event_name=entry.event_name,
+            circuit_name=entry.circuit_name or entry.location,
+            kinds=kinds,
+            anchor_to_first_lap=anchor_to_first_lap,
+        )
+        if entry.live:
+            hub = replay.make_hub(shared=False)
+            try:
+                await _stream_replay(websocket, hub, speed=speed)
+            finally:
+                hub.close()
             return
+        hub = REPLAY_HUBS.acquire(replay.key, lambda: replay.make_hub(shared=True))
+        try:
+            await _stream_replay(websocket, hub, speed=speed)
+        finally:
+            REPLAY_HUBS.release(hub)
+        return
 
     # Live: the session's connection is released above. Every viewer reads
     # the one shared hub for this session (see `f1_api.stream.live`), so a
@@ -289,138 +293,160 @@ def _build_explanation_schedule(
         schedule.fail(exc)
 
 
-async def _stream_replay(
-    websocket: WebSocket,
-    source: EventSource,
-    session_key: SessionKey,
-    *,
-    settings: Settings,
-    event_name: str | None,
-    speed: float,
-    kinds: Collection[str] | None,
-    anchor_to_first_lap: bool,
-    radio_store: TranscriptStore | None,
-    narration_model: Narrator,
-    explanation_store: ExplanationStore,
-    radio_index: SearchIndex | None,
-    circuit_name: str | None = None,
-) -> None:
-    """`replay_envelopes` is synchronous and really sleeps (it shares
-    `f1_replay`'s timing model), so it runs on a background thread; the
-    thread hands items back to THIS coroutine's own event loop via
-    `call_soon_threadsafe` rather than `run_in_executor` — the latter
-    would borrow from the loop's shared default thread-pool executor,
-    which a long-lived blocking `queue.get()` can starve out from under
-    other work on the same loop.
+class _ReplaySpec:
+    """What one replay is (a session, as some settings serve it, with some
+    stream kinds and anchor), and how to build its hub."""
 
-    Still unbounded, still no backpressure on `queue`/`websocket.send_json`
-    below — that was fine when this only ran against the checked-in test
-    fixture (a genuine few-thousand-event race), but excluding
-    `car_telemetry` by default (`kinds`, see `f1_api.stream.replay`'s
-    module docstring) is what actually brings a REAL historical race back
-    into that few-thousand-event range; it does not add backpressure. A
-    client that still cannot keep up with the default (telemetry-excluded)
-    stream, or a caller that opts into `include_telemetry=true`, can still
-    starve the browser tab and, downstream, this coroutine's
-    `websocket.send_json` calls the same way — that gap is real and not
-    addressed here; see docs/PHASE3.md's "what's not covered yet".
-    """
-    loop = asyncio.get_running_loop()
-    queue: asyncio.Queue[StreamEnvelope | _Done | BaseException] = asyncio.Queue()
+    def __init__(
+        self,
+        settings: Settings,
+        session_key: SessionKey,
+        *,
+        event_name: str | None,
+        circuit_name: str | None,
+        kinds: Collection[str] | None,
+        anchor_to_first_lap: bool,
+    ) -> None:
+        self.settings = settings
+        self.session_key = session_key
+        self.event_name = event_name
+        self.circuit_name = circuit_name
+        self.kinds = kinds
+        self.anchor_to_first_lap = anchor_to_first_lap
 
-    # Kicked off first and never waited on: the event stream below starts
-    # flowing immediately and picks these up whenever they land.
-    schedule = ExplanationSchedule()
-    explainer = threading.Thread(
-        target=_build_explanation_schedule,
-        args=(schedule, settings, session_key),
-        kwargs={
-            "event_name": event_name,
-            "narration_model": narration_model,
-            "explanation_store": explanation_store,
-            "radio_index": radio_index,
-        },
-        name="f1-api-explanations",
-        daemon=True,
-    )
-    explainer.start()
+    @property
+    def key(self) -> Hashable:
+        # The settings are part of it: they decide where the session's data
+        # comes from (the tests serve the same key from different fixtures).
+        kinds = frozenset(self.kinds) if self.kinds is not None else None
+        return (self.settings, self.session_key, kinds, self.anchor_to_first_lap)
 
+    def make_hub(self, *, shared: bool) -> ReplayHub:
+        if shared:
+            # Analysed in a worker process, which reads the events again
+            # itself, so the timeline need not hold them.
+            return ReplayHub(
+                self.session_key,
+                build=lambda: self._build(keep_events=False),
+                worker=WorkerPlan(job=self._job, narrate=self._narrate),
+            )
+        # A running session is still growing: a worker reading it again
+        # would find more events than the timeline holds. Analysed here.
+        return ReplayHub(
+            self.session_key,
+            build=lambda: self._build(keep_events=True),
+            explain=self._explain,
+        )
+
+    def _build(self, *, keep_events: bool) -> ReplayTimeline:
+        """On the build pool, with its own source: a store source wraps one
+        database connection, never shared between threads."""
+        settings, session_key = self.settings, self.session_key
+        with resolve_session(settings, session_key) as resolved:
+            if resolved is None:
+                return ReplayTimeline.empty(session_key)
+            source = resolved.source
+            wants_positions = self.kinds is None or POSITION_KIND in self.kinds
+            positions = (
+                session_positions(
+                    settings,
+                    source,
+                    session_key,
+                    circuit_for_session(self.event_name, self.circuit_name),
+                )[1]
+                if wants_positions
+                else None
+            )
+            with radio_store_cm(settings) as radio_store:
+                return ReplayTimeline.build(
+                    source,
+                    session_key,
+                    kinds=self.kinds,
+                    anchor_to_first_lap=self.anchor_to_first_lap,
+                    radio_store=radio_store,
+                    event_name=self.event_name,
+                    positions=positions,
+                    call_kinds=enabled_call_kinds(settings),
+                    keep_events=keep_events,
+                )
+
+    def _job(self, timeline: ReplayTimeline) -> WorkerJob:
+        kinds = frozenset(self.kinds) if self.kinds is not None else None
+        return WorkerJob(self.settings, timeline.spec(), kinds, story=True)
+
+    def _narrate(self, bundles: list[EvidenceBundle]) -> list[ScheduledExplanation]:
+        with why_stream_deps_cm(self.settings) as (model, store, _radio_index):
+            return narrate_story(self.session_key, bundles, model, store)
+
+    def _explain(self, schedule: ExplanationSchedule) -> None:
+        with why_stream_deps_cm(self.settings) as (model, store, radio_index):
+            _build_explanation_schedule(
+                schedule,
+                self.settings,
+                self.session_key,
+                event_name=self.event_name,
+                narration_model=model,
+                explanation_store=store,
+                radio_index=radio_index,
+            )
+
+
+async def _stream_replay(websocket: WebSocket, hub: ReplayHub, *, speed: float) -> None:
+    """One viewer of a replay: wait for the hub's timeline, then walk it at
+    this viewer's own pace, on the event loop. No thread per viewer: the
+    cursor never blocks, it says how long until the next envelope is due,
+    and the wait wakes early for a speed change or the viewer leaving.
+    Sending straight from here also means a client that reads slowly slows
+    its own replay, never the server's memory."""
     # The viewer can change the speed mid-replay ("speed" messages, see
     # `replay_speed_from`): the replay carries on from the current moment at
     # the new rate instead of starting again.
     pace = ReplayPace(speed)
+    woken = asyncio.Event()
 
     def on_text(text: str) -> None:
         new_speed = replay_speed_from(text)
         if new_speed is not None:
             pace.set_speed(new_speed)
+            woken.set()
 
-    # Set when the viewer is gone: the producer stops at its next envelope
-    # instead of pacing out the rest of the race into a queue nobody reads
-    # (up to two hours of it at 1x, for every tab ever closed mid-replay).
-    stop = threading.Event()
-
-    def produce() -> None:
-        try:
-            wants_positions = kinds is None or POSITION_KIND in kinds
-            positions = (
-                session_positions(
-                    settings, source, session_key, circuit_for_session(event_name, circuit_name)
-                )[1]
-                if wants_positions
-                else None
-            )
-            with contextlib.closing(
-                replay_envelopes(
-                    source,
-                    session_key,
-                    speed=speed,
-                    pace=pace,
-                    kinds=kinds,
-                    anchor_to_first_lap=anchor_to_first_lap,
-                    radio_store=radio_store,
-                    explanation_schedule=schedule,
-                    radio_index=radio_index,
-                    event_name=event_name,
-                    positions=positions,
-                    call_kinds=enabled_call_kinds(settings),
-                )
-            ) as envelopes:
-                for envelope in envelopes:
-                    if stop.is_set():
-                        break
-                    loop.call_soon_threadsafe(queue.put_nowait, envelope)
-        except BaseException as exc:  # re-raised on the consumer side below
-            loop.call_soon_threadsafe(queue.put_nowait, exc)
-        finally:
-            loop.call_soon_threadsafe(queue.put_nowait, _Done())
-
-    thread = threading.Thread(target=produce, name="f1-api-replay-stream", daemon=True)
-    thread.start()
     # Sending into a closed socket does not raise: it logs "socket.send()
     # raised exception" and carries on. Without watching the receive side a
     # replay outlived its tab by the rest of the race, as `_stream_live`
     # once did (see `_client_gone`).
     gone = asyncio.ensure_future(_client_gone(websocket, on_text))
+    gone.add_done_callback(lambda _: woken.set())
     try:
-        while True:
-            pending = asyncio.ensure_future(queue.get())
-            done, _ = await asyncio.wait({pending, gone}, return_when=asyncio.FIRST_COMPLETED)
-            if pending not in done:
-                pending.cancel()
+        ready = asyncio.ensure_future(hub.timeline())
+        await asyncio.wait({ready, gone}, return_when=asyncio.FIRST_COMPLETED)
+        if not ready.done():
+            ready.cancel()
+            return
+        try:
+            timeline = ready.result()
+        except Exception:
+            _log.warning("replay of %s could not be built", hub.session_key, exc_info=True)
+            with contextlib.suppress(RuntimeError):
+                await websocket.close(code=1011, reason="replay unavailable")
+            return
+        cursor = ReplayCursor(timeline, pace)
+        while not gone.done():
+            # Cleared before looking, so a change while sending still wakes
+            # the wait below.
+            woken.clear()
+            due = cursor.due()
+            for text in due.texts:
+                await websocket.send_text(text)
+            if due.wait_s is None:
                 break
-            item = pending.result()
-            if isinstance(item, _Done):
-                break
-            if isinstance(item, BaseException):
-                raise item
-            await websocket.send_json(item.model_dump(mode="json"))
-    except WebSocketDisconnect:
+            if due.wait_s > 0:
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(woken.wait(), timeout=due.wait_s)
+    except (WebSocketDisconnect, RuntimeError, OSError):
+        # The viewer went away mid-send; their replay simply ends.
         pass
     finally:
-        stop.set()
         gone.cancel()
-        thread.join(timeout=1.0)
         await _safe_close(websocket)
 
 

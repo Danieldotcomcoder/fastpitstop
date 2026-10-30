@@ -870,16 +870,13 @@ previously guarded on the way IN.
 - No push-based live delivery (`LISTEN`/`NOTIFY`) — `mode=live` polls.
   Correct, not the last word on efficiency; revisit once a real live
   session exists to develop the push path against.
-- No backpressure on `/stream/{key}`'s send loop (`_stream_replay`'s
-  producer thread, `_stream_live`'s poll loop). Excluding `car_telemetry`
-  by default (see "WebSocket" above) brings a real historical race back
-  into the few-thousand-event range this was originally sized for, but a
-  client that still can't keep up with the default stream — or a caller
-  that opts into `include_telemetry=true` — can still stall consuming the
-  queue and, downstream, `websocket.send_json` itself. Logged as a real
-  gap, not fixed here: needs either a bounded queue with drop/slow-consumer
-  handling or a client-side ack, and neither has a session to develop
-  against yet that would actually stress it beyond the fixture.
+- No slow-consumer handling on `/stream/{key}` beyond the socket itself.
+  There is no queue between the server and a viewer any more: a replay is
+  sent from the viewer's own coroutine (see "Replays are shared between
+  viewers" below) and a live viewer reads the hub's backlog, so a client
+  that can't keep up falls behind on its own stream and holds nobody
+  else's. Nothing yet drops or skips ahead for such a client; a caller
+  that opts into `include_telemetry=true` is the likeliest to need it.
 - No real `car_position` data anywhere in this repo (a data-availability
   gap, not an architecture one — see the Track map section above) and no
   shipped circuit has a real outline yet — so the race dashboard's map
@@ -965,6 +962,61 @@ and nothing here can cause that.
 to list anomalies and then fetch one explanation per row, each of which
 re-ran `analyze_session` + `detect_anomalies` server-side. One route now
 detects once and returns ranked, narrated moments.
+
+## Replays are shared between viewers
+
+Every replay viewer used to do the whole replay for itself: load and sort
+the session's events, load its position track, run the kernel once per lap,
+build the story. That is 100-280 MB and about 25 s of CPU per viewer, in
+the one API process. The 2026-10-24 load test (2025 Suzuka at 1x, a fresh
+API per step) found 8 viewers at 1.3 GB with pages taking 20 s, 16 timing
+pages out, and 32 at 3.4 GB with no data delivered in two minutes.
+Production caps the API at 3 GB and 2 CPUs.
+
+None of that work differs between viewers, so it is now done once per
+session (`f1_api.stream.replay_hub`):
+
+- `ReplayTimeline` (`f1_api.stream.replay`) is the session's whole replay,
+  built once: every event and position frame serialized once, on the
+  race's own clock. A viewer is a `ReplayCursor` over it: its own speed,
+  its own wall-clock stamps (spliced onto the shared JSON, byte for byte
+  what pydantic writes), its own place in the race. Cursors never block;
+  the WebSocket waits on its event loop, so there is no thread per viewer
+  and no queue between the server and a client.
+- The analysis (the story's evidence, then the kernel pass) runs in a
+  worker process (`f1_api.stream.replay_worker`), which re-reads the
+  events, checks they are the ones the timeline holds, and streams each
+  result back as it is made. The API narrates the evidence, so a
+  narrator's request budget stays one budget. On a thread the analysis
+  held the GIL against the event loop: with sharing alone, 50 viewers
+  joining together waited 10.7 s for first data and pages took up to
+  13.6 s. A shorter GIL switch interval did not help; a process did.
+- `ReplayHubs` keeps one hub per (settings, session, stream kinds, anchor)
+  while anyone watches, plus two minutes' grace. A hub over an hour old
+  takes no new viewers, so data that changes (the positions import after a
+  race) is not served stale. A session still running is replayed for its
+  viewer alone, as before.
+- `ReplayLimits`: at most two timelines are built at once and at most two
+  sessions analysed at once. A viewer whose session's analysis is queued
+  already has the race; its snapshots and story arrive late, which is
+  spoiler-safe, as every envelope is stamped by the viewer's own pace and
+  released by its own Delay Sync clock.
+
+Measured on the same machine and race at 1x, all viewers joining in the
+same second (`data/loadtest/replay_loadtest.py`):
+
+| Viewers | Before | Shared, analysis on a thread | Shared, analysis in a worker |
+|---|---|---|---|
+| 1 | | 544 MB, first data 4.3 s, worst page 2.5 s | 794 MB, 2.5 s, 0.4 s |
+| 16 | 2.1 GB, pages time out | 546 MB, 7.9 s, 6.2 s | 776 MB, 2.8 s, 1.1 s |
+| 32 | 3.4 GB, no data in 2 min | 553 MB, 9.1 s, 9.4 s | |
+| 50 | | 559 MB, 10.7 s, 13.6 s | 799 MB, 3.5 s, 2.6 s |
+
+Memory is the API with its children, so the worker column includes the
+worker process while it runs (about 25 s); it exits once the session is
+analysed and gives its memory back. Envelopes paced after joining arrived
+within 0.03 s at the 95th percentile with the worker, against 10.5 s with
+the thread, at 50 viewers.
 
 ## The race story
 

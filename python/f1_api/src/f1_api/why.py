@@ -413,6 +413,30 @@ def precompute_session_explanations(
     sorted by `anomaly_time` for Delay Sync pacing. Live sessions call
     `explain_session_anomaly` per newly-seen moment instead — same cache
     either way."""
+    bundles = story_bundles(
+        source,
+        session_key,
+        radio_index=radio_index,
+        event_name=event_name,
+        max_explanations=max_explanations,
+    )
+    return narrate_story(session_key, bundles, model, store)
+
+
+def story_bundles(
+    source: EventSource,
+    session_key: SessionKey,
+    *,
+    radio_index: SearchIndex | None = None,
+    event_name: str | None = None,
+    max_explanations: int | None = None,
+) -> list[EvidenceBundle]:
+    """The story's moments with their evidence, ready to narrate: the
+    CPU-heavy half of `precompute_session_explanations` (a whole-session
+    analysis, detection, one evidence assembly per moment). Plain data, so
+    a shared replay computes it in a worker process (`f1_api.stream.
+    replay_worker`) and narrates in the API, where the narrator's request
+    budget is shared."""
     report, anomalies = detect_session_anomalies(source, session_key, event_name=event_name)
     sources = EvidenceSources(
         session_frames=report.frames,
@@ -421,7 +445,17 @@ def precompute_session_explanations(
         radio_index=radio_index,
     )
     picked = story_moments(anomalies, max_explanations)
-    bundles = [assemble_evidence(anomaly, sources, EvidenceParams()) for anomaly in picked]
+    return [assemble_evidence(anomaly, sources, EvidenceParams()) for anomaly in picked]
+
+
+def narrate_story(
+    session_key: SessionKey,
+    bundles: Sequence[EvidenceBundle],
+    model: Narrator,
+    store: ExplanationStore,
+) -> list[ScheduledExplanation]:
+    """Narrate `story_bundles`' moments and keep those worth a card, sorted
+    by `anomaly_time` for Delay Sync pacing."""
 
     # The model calls are independent network round trips, so they run side
     # by side. One after another, a twelve-moment story cost twelve serial
@@ -434,12 +468,12 @@ def precompute_session_explanations(
         explanations = list(pool.map(narrate, bundles))
     scheduled = [
         ScheduledExplanation(
-            anomaly=anomaly,
+            anomaly=bundle.anomaly,
             explanation=explanation,
             cited=cited_evidence_refs(session_key, bundle, explanation),
             bundle=bundle,
         )
-        for anomaly, bundle, explanation in zip(picked, bundles, explanations, strict=True)
+        for bundle, explanation in zip(bundles, explanations, strict=True)
         if worth_showing(explanation)
     ]
     scheduled.sort(key=lambda item: (item.anomaly.anomaly_time, why_anomaly_id(item.anomaly)))
@@ -520,9 +554,11 @@ __all__ = [
     "get_explanation_store",
     "get_narration_model",
     "most_salient",
+    "narrate_story",
     "parse_anomaly_id",
     "precompute_session_explanations",
     "reset_narration_model",
+    "story_bundles",
     "story_moments",
     "why_stream_deps_cm",
     "worth_showing",
