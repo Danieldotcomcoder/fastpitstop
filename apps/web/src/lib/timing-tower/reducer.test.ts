@@ -13,6 +13,24 @@ function envelope(kind: string, payload: Record<string, unknown>): Envelope {
 }
 
 describe('applyTowerEnvelope: driver_list_updated', () => {
+	it('leaves out the test, safety and medical cars the roster also lists', () => {
+		// The 2026 Mexico City GP's roster, abridged.
+		const state = createTimingTowerState();
+		applyTowerEnvelope(
+			state,
+			envelope('driver_list_updated', {
+				drivers: [
+					{ number: '44', code: 'HAM', team: 'Ferrari' },
+					{ number: '236', code: 'FM1', full_name: 'FOM TEST CAR 1' },
+					{ number: '241', code: 'SC1', full_name: 'FIA SAFETY CAR 1' },
+					{ number: '246', code: 'MC1', full_name: 'FIA MEDICAL CAR 1' }
+				]
+			})
+		);
+		applyTowerEnvelope(state, envelope('position_changed', { driver: '236', position: 1 }));
+		expect([...state.rows.keys()]).toEqual(['44']);
+	});
+
 	it('sets code/team and creates a row with every other field unknown', () => {
 		const state = createTimingTowerState();
 		applyTowerEnvelope(

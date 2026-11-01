@@ -31,13 +31,13 @@ from typing import Any
 
 import f1_api.stream.live as live_module
 from f1_api.config import Settings
-from f1_api.stream.live import LiveDeps, LiveHub, LiveHubs
+from f1_api.stream.live import LiveDeps, LiveHub, LiveHubs, latest_session
 
 # Reaching for the private viewer loop deliberately: it is the unit whose
 # lifetime this file pins, and driving it through the route would need a
 # live-provenance session a DB-free test cannot resolve.
 from f1_api.stream.websocket import _stream_live  # pyright: ignore[reportPrivateUsage]
-from f1_domain import DomainEvent, LapCompleted, SessionKey, SessionType
+from f1_domain import DomainEvent, LapCompleted, SessionKey, SessionStatusChanged, SessionType
 from f1_kernel import EventSource
 from f1_why import MemoryExplanationStore, MockNarrationModel, ModelNarration
 
@@ -227,6 +227,74 @@ async def _test_many_viewers_share_one_read_and_one_kernel() -> None:
     assert all(ws.laps() == [1, 2] for ws in sockets)
     assert all(ws.closed for ws in sockets)
     assert hub.stopped and hubs.active() == 0, "the last viewer out retires the hub"
+
+
+def _status(seq: int, status: str) -> DomainEvent:
+    return SessionStatusChanged(
+        session_key=KEY, ts_utc=T0 + timedelta(seconds=seq), source_seq=seq, status=status
+    )
+
+
+def _mexico_log() -> list[DomainEvent]:
+    """The 2026 Mexico City GP race log's shape: a Saturday session run and
+    ended, another started, then Sunday's race (laps 101 on)."""
+    return [
+        _status(1, "Started"),
+        _lap(2),
+        _status(3, "Finalised"),
+        _status(4, "Ends"),
+        _status(5, "Started"),
+        _lap(6),
+        _status(100, "Inactive"),
+        _status(101, "Started"),
+        _lap(102),
+        _lap(103),
+    ]
+
+
+def test_only_the_newest_session_in_a_log_is_served() -> None:
+    kept = latest_session(_mexico_log())
+    assert [getattr(e, "status", None) for e in kept[:2]] == ["Inactive", "Started"]
+    assert [e.lap_number for e in kept if isinstance(e, LapCompleted)] == [102, 103]
+
+
+def test_a_qualifying_that_rests_between_parts_is_served_whole() -> None:
+    """Between Q1 and Q2 the status can sit at "Inactive": that is not a new
+    session, and Q1 must stay."""
+    log = [
+        _status(1, "Started"),
+        _lap(2),
+        _status(3, "Inactive"),
+        _status(4, "Started"),
+        _lap(5),
+        _status(6, "Finished"),
+        _status(7, "Finalised"),
+    ]
+    assert latest_session(log) == log
+
+
+def test_a_viewer_never_sees_an_earlier_session_filed_under_the_same_key() -> None:
+    asyncio.run(_test_a_viewer_never_sees_an_earlier_session_filed_under_the_same_key())
+
+
+async def _test_a_viewer_never_sees_an_earlier_session_filed_under_the_same_key() -> None:
+    source = FakeCursorSource()
+    for event in _mexico_log():
+        source.append(event)
+    hub = _hub(source)
+    try:
+        await asyncio.sleep(0.3)
+        viewer = FakeWebSocket()
+        task = asyncio.create_task(_watch(viewer, hub))
+        await asyncio.sleep(0.3)
+        source.append(_lap(104))
+        await asyncio.sleep(0.3)
+        viewer.disconnect()
+        await asyncio.wait_for(task, timeout=3.0)
+    finally:
+        hub.stop()
+
+    assert viewer.laps() == [102, 103, 104]
 
 
 def test_a_viewer_joining_mid_race_gets_the_race_so_far() -> None:

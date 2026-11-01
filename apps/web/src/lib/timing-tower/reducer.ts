@@ -4,6 +4,7 @@
  * the same "nothing here Delay Sync hasn't already released" reasoning
  * `$lib/kernel-views/gap-stream.ts` gives for skipping `RevealTracker`. */
 import type { Envelope } from '$lib/delay-sync';
+import { isRaceCar } from '$lib/drivers';
 import { parseIsoDurationSeconds } from '$lib/kernel-views';
 import { retiredDrivers } from './retirements';
 import { createDriverRow, type DriverRow } from './types';
@@ -39,6 +40,8 @@ function asBoolean(value: unknown): boolean | null {
  * copy-on-write (up to ~20 drivers, re-read every render regardless). */
 export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope): void {
 	const payload = envelope.payload;
+	// Test, safety and medical cars are not in the race (`isRaceCar`).
+	if (typeof payload.driver === 'string' && !isRaceCar(payload.driver)) return;
 	switch (envelope.kind) {
 		case 'driver_list_updated': {
 			const drivers = payload.drivers;
@@ -47,7 +50,7 @@ export function applyTowerEnvelope(state: TimingTowerState, envelope: Envelope):
 				if (typeof ref !== 'object' || ref === null) continue;
 				const record = ref as Record<string, unknown>;
 				const number = asString(record.number);
-				if (number === null) continue;
+				if (number === null || !isRaceCar(number)) continue;
 				const row = rowOrDefault(state, number);
 				const code = asString(record.code);
 				const name = asString(record.full_name);
