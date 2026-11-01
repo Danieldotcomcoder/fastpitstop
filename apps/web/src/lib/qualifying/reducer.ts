@@ -8,6 +8,7 @@
  * reducer, so it cannot get ahead of the viewer's clock. The clock between
  * updates is extrapolated from the viewer's own playback time. */
 import type { Envelope } from '$lib/delay-sync';
+import { isRaceCar } from '$lib/drivers';
 import { parseIsoDurationSeconds } from '$lib/kernel-views';
 
 export interface QualiDriver {
@@ -63,6 +64,8 @@ function driverOf(state: QualiState, number: string): QualiDriver {
 
 export function applyQualiEnvelope(state: QualiState, envelope: Envelope): void {
 	const p = envelope.payload;
+	// Test, safety and medical cars are not in the session (`isRaceCar`).
+	if (typeof p.driver === 'string' && !isRaceCar(p.driver)) return;
 	const at = Date.parse(envelope.event_time_utc);
 	switch (envelope.kind) {
 		case 'qualifying_part_changed': {
@@ -122,7 +125,7 @@ export function applyQualiEnvelope(state: QualiState, envelope: Envelope): void 
 				if (typeof ref !== 'object' || ref === null) continue;
 				const r = ref as Record<string, unknown>;
 				const number = str(r.number);
-				if (number === null) continue;
+				if (number === null || !isRaceCar(number)) continue;
 				const d = driverOf(state, number);
 				d.code = str(r.code) ?? d.code;
 				d.team = str(r.team) ?? d.team;

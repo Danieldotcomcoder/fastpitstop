@@ -128,6 +128,16 @@ export function driverName(
 	const seasonCode = year === undefined ? undefined : SEASON_GRIDS[year]?.[driver];
 	return (seasonCode && NAMES[seasonCode]) || `Driver ${driver}`;
 }
+/** Whether a racing number is a competing car's. The feed's roster also
+ * lists FOM's test cars (236-240), the FIA safety cars (241-243) and medical
+ * cars (246-247) — the 2026 Mexico City GP's tower showed all ten as OUT.
+ * Race numbers run from 1 to 99. */
+export function isRaceCar(number: string): boolean {
+	if (!/^\d{1,2}$/.test(number)) return false;
+	const n = Number(number);
+	return n >= 1 && n <= 99;
+}
+
 export type DriverNames = Record<string, string>;
 export function lapTime(seconds: number | null): string {
 	if (seconds === null) return '—';
