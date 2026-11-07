@@ -503,8 +503,8 @@ export interface paths {
          * Get Standings
          * @description Drivers' and constructors' standings for `season` (default: this
          *     year) counting rounds up to `after_round` (default: every round with
-         *     results). Built from the backfilled results, so a round counts once
-         *     its Grand Prix has been archived.
+         *     results). Built from the backfilled results, and from Jolpica for a
+         *     finished round the backfill lacks (`f1_api.standings`).
          */
         get: operations["get_standings_standings_get"];
         put?: never;

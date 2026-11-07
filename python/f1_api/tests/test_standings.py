@@ -210,3 +210,69 @@ def test_a_tie_on_no_points_goes_by_the_full_finishing_order() -> None:
     )
     standings = compute_standings([RoundResults(1, None, race)])
     assert [d.code for d in standings.drivers] == ["ZZZ", "MMM", "AAA"]
+
+
+def _jolpica(results: list[tuple[str, str, str, float]], sprint: bool = False) -> object:
+    """A Jolpica answer: (code, constructor id, position text, points)."""
+    rows = [
+        {
+            "position": str(i),
+            "positionText": text,
+            "points": str(points),
+            "Driver": {"code": code, "familyName": code.title()},
+            "Constructor": {"constructorId": team, "name": team.title()},
+        }
+        for i, (code, team, text, points) in enumerate(results, start=1)
+    ]
+    key = "SprintResults" if sprint else "Results"
+    return {"MRData": {"RaceTable": {"Races": [{key: rows}] if rows else []}}}
+
+
+def _backfilled(team_id: str, name: str, color: str) -> RoundResults:
+    frame = _results([("AAA", name, 1, 25), ("BBB", name, 2, 18)])
+    frame["TeamId"] = team_id
+    frame["TeamColor"] = color
+    return RoundResults(1, "Round 1", frame)
+
+
+def test_a_round_the_backfill_lacks_comes_from_jolpica(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F1's archive closed in October 2026 and the standings stopped at
+    round 17. A finished round the backfill lacks is taken from Jolpica; its
+    teams keep the names and colours the backfill gives them."""
+    asked: list[str] = []
+
+    def fetch(url: str) -> object:
+        asked.append(url)
+        if "/sprint." in url:
+            return _jolpica([("BBB", "red_bull", "1", 8)], sprint=True)
+        return _jolpica([("BBB", "red_bull", "1", 25), ("AAA", "red_bull", "R", 0)])
+
+    def backfilled(*_args: object) -> list[RoundResults]:
+        return [_backfilled("red_bull", "Red Bull Racing", "3671C6")]
+
+    monkeypatch.setattr("f1_api.standings._backfilled_rounds", backfilled)
+    finished = ((1, None), (2, "Round 2"))
+    rounds = season_rounds(tmp_path, 2026, [(1, "Round 1")], finished=finished, fetch=fetch)
+    standings = compute_standings(rounds)
+
+    assert [r.round for r in rounds] == [1, 2]
+    assert all("/2026/2/" in url for url in asked), "a backfilled round is never asked for"
+    drivers = {d.code: (d.points, d.wins) for d in standings.drivers}
+    assert drivers == {"AAA": (25.0, 1), "BBB": (51.0, 1)}
+    (team,) = standings.constructors
+    assert (team.name, team.team_color, team.points) == ("Red Bull Racing", "#3671C6", 76.0)
+
+
+def test_jolpica_failing_leaves_the_round_out_and_never_breaks_the_page(tmp_path: Path) -> None:
+    def fetch(url: str) -> object:
+        raise OSError("Jolpica is down")
+
+    rounds = season_rounds(tmp_path, 2026, [], finished=((18, None),), fetch=fetch)
+    assert rounds == []
+
+
+def test_a_round_jolpica_has_no_results_for_yet_is_left_out(tmp_path: Path) -> None:
+    rounds = season_rounds(tmp_path, 2026, [], finished=((20, None),), fetch=lambda _: _jolpica([]))
+    assert rounds == []

@@ -4,7 +4,7 @@ you watched"; nothing past that round is counted or sent."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -31,6 +31,11 @@ from f1_kernel import HistoricalSource
 router = APIRouter(tags=["standings"])
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+RESULTS_AFTER = timedelta(hours=3)
+"""How long after a Grand Prix's start its results are looked for: the race
+itself, then the classification."""
 
 
 def _calendar(cache: ScheduleCacheDep, season: int) -> list[ScheduledEvent]:
@@ -73,8 +78,8 @@ def get_standings(
 ) -> StandingsOut:
     """Drivers' and constructors' standings for `season` (default: this
     year) counting rounds up to `after_round` (default: every round with
-    results). Built from the backfilled results, so a round counts once
-    its Grand Prix has been archived."""
+    results). Built from the backfilled results, and from Jolpica for a
+    finished round the backfill lacks (`f1_api.standings`)."""
     year = season if season is not None else datetime.now(UTC).year
     # The backfill's own catalog, not the merged session list: a race the
     # store serves (ingested live) is still backfilled, and its official
@@ -86,10 +91,18 @@ def get_standings(
             if ref.session_key.year == year and ref.session_key.session_type is SessionType.RACE
         }
     )
-    rounds = season_rounds(settings.historical_root, year, races)
-    standings = compute_standings(rounds, after_round)
     calendar = _calendar(cache, year)
     by_round = {event.round: event for event in calendar}
+    # A Grand Prix the backfill lacks (F1's archive closed in October 2026)
+    # comes from Jolpica once it has had time to publish.
+    now = datetime.now(UTC)
+    finished = tuple(
+        (event.round, event.event_name)
+        for event in calendar
+        if (start := _race_start(event)) is not None and now - start > RESULTS_AFTER
+    )
+    rounds = season_rounds(settings.historical_root, year, races, finished=finished)
+    standings = compute_standings(rounds, after_round)
     return StandingsOut(
         season=year,
         after_round=standings.after_round,

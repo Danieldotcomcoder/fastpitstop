@@ -4906,7 +4906,7 @@
     },
     "/standings": {
       "get": {
-        "description": "Drivers' and constructors' standings for `season` (default: this\nyear) counting rounds up to `after_round` (default: every round with\nresults). Built from the backfilled results, so a round counts once\nits Grand Prix has been archived.",
+        "description": "Drivers' and constructors' standings for `season` (default: this\nyear) counting rounds up to `after_round` (default: every round with\nresults). Built from the backfilled results, and from Jolpica for a\nfinished round the backfill lacks (`f1_api.standings`).",
         "operationId": "get_standings_standings_get",
         "parameters": [
           {

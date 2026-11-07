@@ -6,20 +6,42 @@ watched (the cutoff is the viewer's, the API only applies it).
 Points are the official ones the results carry (`Points`), never
 recomputed from positions: penalties and disqualifications are already in
 them. Ties are split the FIA way, by countback of Grand Prix finishing
-positions (sprints don't count)."""
+positions (sprints don't count).
+
+A round the backfill does not have comes from Jolpica (the Ergast
+successor) instead (`jolpica_round`): the backfill downloads results from
+F1's archive, which has refused every request since mid-October 2026, so
+the standings stopped at round 17 while rounds 18 and 19 were run. Rounds
+1-17 match Jolpica's official totals exactly."""
 
 from __future__ import annotations
 
+import json
+import logging
 import math
 import threading
+import time
+import urllib.error
+import urllib.request
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from f1_domain import SessionKey, SessionType
 from f1_historical_adapter.reader import session_directory
+
+_log = logging.getLogger(__name__)
+
+JOLPICA = "https://api.jolpi.ca/ergast/f1/{season}/{round}/{kind}.json?limit=40"
+JOLPICA_FRESH_S = 3600.0
+"""How long a round's Jolpica results are kept before they are asked for
+again: stewards' penalties can change them for a while after a race."""
+
+Fetch = Callable[[str], Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,10 +240,30 @@ def session_results(historical_root: Path, key: SessionKey) -> pd.DataFrame | No
 
 
 def season_rounds(
-    historical_root: Path, season: int, races: list[tuple[int, str | None]]
+    historical_root: Path,
+    season: int,
+    races: list[tuple[int, str | None]],
+    *,
+    finished: tuple[tuple[int, str | None], ...] = (),
+    fetch: Fetch | None = None,
 ) -> list[RoundResults]:
     """Every round of `season` with Grand Prix results, given the rounds the
-    backfill lists as `(round, event_name)`."""
+    backfill lists as `(round, event_name)`, and the calendar's `finished`
+    rounds, which come from Jolpica when the backfill lacks them."""
+    rounds = _backfilled_rounds(historical_root, season, races)
+    have = {r.round for r in rounds}
+    for round_number, event_name in finished:
+        if round_number in have:
+            continue
+        fallback = jolpica_round(season, round_number, event_name, rounds, fetch=fetch)
+        if fallback is not None:
+            rounds.append(fallback)
+    return sorted(rounds, key=lambda r: r.round)
+
+
+def _backfilled_rounds(
+    historical_root: Path, season: int, races: list[tuple[int, str | None]]
+) -> list[RoundResults]:
     rounds: list[RoundResults] = []
     for round_number, event_name in races:
         race = session_results(
@@ -238,11 +280,121 @@ def season_rounds(
     return rounds
 
 
+_jolpica_cache: dict[tuple[int, int], tuple[float, RoundResults | None]] = {}
+_jolpica_lock = threading.Lock()
+
+
+JOLPICA_SPACING_S = 1.0
+"""Jolpica turns away bursts (a 429 at the 22nd request 0.3 s apart), so
+every request this process makes is spaced at least this far apart, and
+one turned away is asked again once. Production needs about four an hour:
+two rounds the backfill lacks, race and sprint each, kept an hour."""
+_pace_lock = threading.Lock()
+_last_request = 0.0
+
+
+def _fetch_json(url: str) -> Any:
+    global _last_request
+    request = urllib.request.Request(url, headers={"User-Agent": "fastpitstop/1.0"})
+    for attempt in range(2):
+        with _pace_lock:
+            wait = _last_request + JOLPICA_SPACING_S - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            _last_request = time.monotonic()
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if error.code != 429 or attempt:
+                raise
+            time.sleep(2.0)
+    raise RuntimeError("unreachable")
+
+
+def _jolpica_frame(
+    results: list[dict[str, Any]], teams: dict[str, tuple[str, str | None]]
+) -> pd.DataFrame | None:
+    """Jolpica's results in the backfill's columns. A team keeps the name and
+    colour its backfilled rounds use (Jolpica says "Red Bull" where F1 says
+    "Red Bull Racing", and has no colours); the team ids are the same."""
+    rows: list[dict[str, Any]] = []
+    for result in results:
+        driver: dict[str, Any] = result.get("Driver") or {}
+        team: dict[str, Any] = result.get("Constructor") or {}
+        code = driver.get("code")
+        if not code:
+            continue
+        team_id = str(team.get("constructorId") or "unknown")
+        name, color = teams.get(team_id, (str(team.get("name") or team_id), None))
+        position = result.get("position")
+        rows.append(
+            {
+                "Abbreviation": str(code),
+                "LastName": driver.get("familyName"),
+                "TeamId": team_id,
+                "TeamName": name,
+                "TeamColor": color,
+                "Points": float(result.get("points") or 0),
+                "Position": float(position) if position else None,
+                "ClassifiedPosition": str(result.get("positionText") or ""),
+            }
+        )
+    return pd.DataFrame(rows) if rows else None
+
+
+def jolpica_round(
+    season: int,
+    round_number: int,
+    event_name: str | None,
+    known: list[RoundResults],
+    *,
+    fetch: Fetch | None = None,
+) -> RoundResults | None:
+    """One round's race (and sprint) results from Jolpica, or None when it
+    has none yet or cannot be reached. Kept `JOLPICA_FRESH_S`; when a
+    refresh fails, the last answer stands. Never raises: a missing round
+    leaves the standings where they were, it does not break the page."""
+    key = (season, round_number)
+    now = time.monotonic()
+    with _jolpica_lock:
+        cached = _jolpica_cache.get(key)
+    if cached is not None and now - cached[0] < JOLPICA_FRESH_S:
+        return cached[1]
+    get = fetch or _fetch_json
+    teams: dict[str, tuple[str, str | None]] = {}
+    for prior in sorted(known, key=lambda r: r.round):
+        for _, row in prior.race.iterrows():
+            team_id = _text(row, "TeamId")
+            if team_id:
+                teams[team_id] = (_text(row, "TeamName") or team_id, _color(row))
+    try:
+        races = get(JOLPICA.format(season=season, round=round_number, kind="results"))
+        races = races["MRData"]["RaceTable"]["Races"]
+        result: RoundResults | None = None
+        if races:
+            race = _jolpica_frame(races[0].get("Results") or [], teams)
+            sprints = get(JOLPICA.format(season=season, round=round_number, kind="sprint"))
+            sprints = sprints["MRData"]["RaceTable"]["Races"]
+            sprint = (
+                _jolpica_frame(sprints[0].get("SprintResults") or [], teams) if sprints else None
+            )
+            if race is not None:
+                result = RoundResults(round_number, event_name, race, sprint)
+    except Exception:
+        _log.warning("Jolpica results for %s round %s failed", season, round_number, exc_info=True)
+        return cached[1] if cached is not None else None
+    with _jolpica_lock:
+        _jolpica_cache[key] = (now, result)
+    return result
+
+
 __all__ = [
     "RoundResults",
     "Standing",
     "Standings",
     "compute_standings",
+    "jolpica_round",
     "race_max_points",
     "season_rounds",
     "session_results",

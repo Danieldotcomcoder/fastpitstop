@@ -20,6 +20,7 @@ if _TESTS_DIR not in sys.path:
 
 from api_fixture import HISTORICAL_ROOT  # noqa: E402
 
+import f1_api.standings as standings_module  # noqa: E402
 from f1_api.config import Settings  # noqa: E402
 from f1_api.main import create_app  # noqa: E402
 from f1_api.routes import sessions as session_routes  # noqa: E402
@@ -32,6 +33,18 @@ def empty_response_caches() -> None:
     test that counts computations) never depend on another's."""
     session_routes.laps_cache.clear()
     session_routes.circuit_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_jolpica(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The standings fall back to Jolpica for rounds the backfill lacks;
+    tests never reach it (a test that needs it passes its own fetch)."""
+
+    def offline(url: str) -> object:
+        raise OSError(f"no network in tests: {url}")
+
+    monkeypatch.setattr(standings_module, "_fetch_json", offline)
+    standings_module._jolpica_cache.clear()  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.fixture(autouse=True)
