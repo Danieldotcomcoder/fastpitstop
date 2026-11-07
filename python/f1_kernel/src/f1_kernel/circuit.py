@@ -91,6 +91,35 @@ class DrsZone(BaseModel):
         return max(0.0, lap_distance_m - self.start_m) + max(0.0, self.end_m)
 
 
+class MarshalSector(BaseModel):
+    """One marshal sector: the stretch a sector-scoped flag covers ("YELLOW
+    IN TRACK SECTOR 7"). It runs from `start_m` to the next sector's start;
+    the last runs on to sector 1's, which usually sits a few metres before
+    the line, so sector 1 crosses it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = Field(ge=1)
+    start_m: float = Field(ge=0)
+    """Reference-lap distance from the timing line, like a corner's."""
+
+
+class PaceProfile(BaseModel):
+    """How far round the lap a car is at each moment of a clean lap here:
+    `distance_fractions[i]` is the fraction of the lap covered after
+    `i / (len - 1)` of the lap time (`tools/build_pace_profiles.py`). It
+    turns timing into places on the track: a mini-sector completed, on
+    average, 31% of the way through a lap's time ends where this says a
+    car is then. Measured on clean laps, so slow in the corners and quick
+    on the straights, as a car is."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    distance_fractions: list[float]
+    """From 0.0 to 1.0, never decreasing."""
+    source: str = ""
+
+
 class TyreWear(BaseModel):
     """How fast one compound loses time here, measured (`tools/build_circuit_wear.py`)."""
 
@@ -167,6 +196,14 @@ class Circuit(BaseModel):
     """The pit lane, derived from the reference race's real pit stops by
     `tools/build_pit_lanes.py` (`f1_kernel.track_outline.derive_pit_lane`).
     None until that tool has run for the circuit."""
+    marshal_sectors: list[MarshalSector] = Field(default_factory=list[MarshalSector])
+    """Where each marshal sector starts (`tools/build_marshal_sectors.py`),
+    in number order. Empty until that tool has run for the circuit."""
+    marshal_sectors_source: str = ""
+    pace_profile: PaceProfile | None = None
+    """Where a car is at each moment of a clean lap here: what places the
+    timing screen's mini-sectors, and an estimated car, on the track. None
+    until `tools/build_pace_profiles.py` has run for the circuit."""
 
     def corner_at(self, distance_m: float) -> Corner | None:
         """The next corner at or after `distance_m`, or None past the last

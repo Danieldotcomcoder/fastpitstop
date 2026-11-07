@@ -20,6 +20,8 @@ from f1_domain import (
     GapUpdated,
     LapCompleted,
     LapCounterUpdated,
+    MiniSectorCompleted,
+    MiniSectorStatus,
     PitEntry,
     PitExit,
     PositionChanged,
@@ -217,6 +219,115 @@ class TestSectors:
         sm, feed = machine(), Feed()
         sm.apply(timing(feed, "44", {"Sectors": {"1": {"Value": "31.2"}}}))
         assert sm.apply(timing(feed, "44", {"Sectors": {"1": {"Value": "31.2"}}})) == []
+
+
+def _segment(sector: int, segment: int, status: int) -> JsonValue:
+    return {"Sectors": {str(sector): {"Segments": {str(segment): {"Status": status}}}}}
+
+
+def _lap_layout(laps: int) -> JsonValue:
+    """A lap of three sectors of two mini-sectors each, none run yet."""
+    blank: JsonValue = [{"Status": 0}, {"Status": 0}]
+    return {"NumberOfLaps": laps, "Sectors": [{"Segments": blank} for _ in range(3)]}
+
+
+def _reset_all_but_first() -> JsonValue:
+    """What the feed sends as a car completes a lap's first mini-sector:
+    every OTHER mini-sector zeroed. The first one's own code is left out
+    when it is the same as last lap's (only changed fields are sent)."""
+    zero: JsonValue = {"0": {"Status": 0}, "1": {"Status": 0}}
+    return {
+        "Sectors": {
+            "0": {"Segments": {"1": {"Status": 0}}},
+            "1": {"Segments": zero},
+            "2": {"Segments": zero},
+        }
+    }
+
+
+class TestMiniSectors:
+    def test_completion_carries_its_place_in_the_lap_and_its_colour(self):
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "44", _lap_layout(3)))
+        events = only(sm.apply(timing(feed, "44", _segment(1, 1, 2051))), MiniSectorCompleted)
+        assert len(events) == 1
+        e = events[0]
+        assert (e.lap_number, e.sector, e.segment, e.mini_sector) == (4, 2, 1, 3)
+        assert e.mini_sector_count == 6
+        assert (e.status, e.status_code) == (MiniSectorStatus.OVERALL_BEST, 2051)
+
+    def test_codes_map_to_colours_and_unknown_ones_are_kept(self):
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "44", _lap_layout(3)))
+        seen: list[MiniSectorCompleted] = []
+        for (sector, segment), code in zip(
+            [(0, 0), (0, 1), (1, 0), (1, 1)], [2048, 2049, 2064, 2052], strict=True
+        ):
+            seen += only(
+                sm.apply(timing(feed, "44", _segment(sector, segment, code))), MiniSectorCompleted
+            )
+        assert [(e.status, e.status_code) for e in seen] == [
+            (MiniSectorStatus.NORMAL, 2048),
+            (MiniSectorStatus.PERSONAL_BEST, 2049),
+            (MiniSectorStatus.PIT_LANE, 2064),
+            (MiniSectorStatus.OTHER, 2052),
+        ]
+
+    def test_resent_code_and_reset_are_not_events(self):
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "44", _lap_layout(3)))
+        sm.apply(timing(feed, "44", _segment(2, 0, 2048)))
+        assert only(sm.apply(timing(feed, "44", _segment(2, 0, 2048))), MiniSectorCompleted) == []
+        assert only(sm.apply(timing(feed, "44", _segment(2, 0, 0))), MiniSectorCompleted) == []
+
+    def test_the_reset_completes_the_first_mini_sector_even_with_its_code_unchanged(self):
+        """Yellow through the first mini-sector two laps running: the
+        message that zeroes the rest of the lap carries nothing else, and
+        it IS that mini-sector's completion (2026 Dutch GP: 254 of 414 laps
+        lost it before this)."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "44", _lap_layout(3)))
+        for sector, segment in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]:
+            sm.apply(timing(feed, "44", _segment(sector, segment, 2048)))
+        sm.apply(timing(feed, "44", {"NumberOfLaps": 4, "LastLapTime": {"Value": "1:20.0"}}))
+        events = only(sm.apply(timing(feed, "44", _reset_all_but_first())), MiniSectorCompleted)
+        assert [(e.lap_number, e.mini_sector, e.status_code) for e in events] == [(5, 0, 2048)]
+
+    def test_the_last_mini_sector_after_the_count_stays_on_its_lap(self):
+        """The count ticks at the line and the last mini-sector's code can
+        arrive a moment later; it belongs to the lap just finished, until
+        the feed resets for the next one."""
+        sm, feed = machine(), Feed()
+        sm.apply(timing(feed, "44", _lap_layout(3)))
+        for sector, segment in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0)]:
+            sm.apply(timing(feed, "44", _segment(sector, segment, 2048)))
+        sm.apply(timing(feed, "44", {"NumberOfLaps": 4, "LastLapTime": {"Value": "1:20.0"}}))
+        late = only(sm.apply(timing(feed, "44", _segment(2, 1, 2049))), MiniSectorCompleted)
+        first = only(sm.apply(timing(feed, "44", _reset_all_but_first())), MiniSectorCompleted)
+        assert [(e.lap_number, e.mini_sector) for e in late] == [(4, 5)]
+        assert [(e.lap_number, e.mini_sector) for e in first] == [(5, 0)]
+
+    def test_seeded_codes_are_the_baseline(self):
+        sm, feed = machine(), Feed()
+        snapshot: JsonValue = {
+            "TimingData": {
+                "Lines": {
+                    "44": {
+                        "NumberOfLaps": 3,
+                        "Sectors": [
+                            {"Segments": [{"Status": 2048}, {"Status": 2049}]},
+                            {"Segments": [{"Status": 0}, {"Status": 0}]},
+                            {"Segments": [{"Status": 0}, {"Status": 0}]},
+                        ],
+                    }
+                }
+            }
+        }
+        sm.seed(snapshot)
+        assert only(sm.apply(timing(feed, "44", _segment(0, 1, 2049))), MiniSectorCompleted) == []
+        assert (
+            len(only(sm.apply(timing(feed, "44", _segment(1, 0, 2048))), MiniSectorCompleted)) == 1
+        )
 
 
 class TestPitStops:
@@ -698,6 +809,23 @@ class TestSessionLevelTopics:
         )
         assert len(second) == 1
         assert sm.state.weather == second[0]
+
+    def test_a_sector_flag_keeps_its_marshal_sector(self):
+        sm, feed = machine(), Feed()
+        message: JsonValue = {
+            "Messages": [
+                {
+                    "Utc": "2026-08-23T13:40:00Z",
+                    "Category": "Flag",
+                    "Flag": "DOUBLE YELLOW",
+                    "Scope": "Sector",
+                    "Sector": 11,
+                    "Message": "DOUBLE YELLOW IN TRACK SECTOR 11",
+                }
+            ]
+        }
+        events = only(sm.apply(feed.record("RaceControlMessages", message)), RaceControlMessage)
+        assert [(e.flag, e.scope, e.sector) for e in events] == [("DOUBLE YELLOW", "Sector", 11)]
 
     def test_race_control_indexes_dedup_across_forms(self):
         sm, feed = machine(), Feed()

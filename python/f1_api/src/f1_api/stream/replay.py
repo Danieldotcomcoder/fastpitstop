@@ -186,6 +186,7 @@ DEFAULT_STREAM_KINDS: frozenset[str] = frozenset(
         "lap_completed",
         "lap_counter_updated",
         "sector_completed",
+        "mini_sector_completed",
         "car_position",
         "position_changed",
         "gap_updated",

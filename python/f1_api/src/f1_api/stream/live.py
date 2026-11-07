@@ -103,9 +103,14 @@ which reproduces the tower exactly for any Delay Sync delay up to the
 window (the slider stops at 120 s). Sending the whole history instead took
 long enough on a slow connection for the server's keepalive to drop the
 viewer, who then reconnected and started the download again, forever.
+
+Mini-sectors are compacted the same way, per driver and mini-sector: about
+as many as gap updates, and the map only ever shows each car's latest time
+through each one.
 """
 
 GAP_KIND = "gap_updated"
+MINI_SECTOR_KIND = "mini_sector_completed"
 
 SESSION_OVER = frozenset({"Finalised", "Ends"})
 """Statuses a session only reaches once it is over for good (not "Finished",
@@ -143,8 +148,24 @@ class _Published:
 
     text: str
     kind: str
-    driver: str | None
+    slot: tuple[str, ...] | None
+    """What a later envelope in the same slot supersedes (`_slot`), or None
+    for an envelope that is always sent."""
     event_time: datetime
+
+
+def _slot(envelope: StreamEnvelope) -> tuple[str, ...] | None:
+    """A driver's gap, or a driver's time through one mini-sector: only the
+    latest of each counts for anything the desk shows."""
+    driver = envelope.payload.get("driver")
+    if not isinstance(driver, str):
+        return None
+    if envelope.kind == GAP_KIND:
+        return (GAP_KIND, driver)
+    if envelope.kind == MINI_SECTOR_KIND:
+        index = envelope.payload.get("mini_sector")
+        return (MINI_SECTOR_KIND, driver, str(index)) if isinstance(index, int) else None
+    return None
 
 
 LiveDeps = tuple[TranscriptStore | None, Narrator, ExplanationStore, SearchIndex | None]
@@ -233,8 +254,8 @@ class LiveHub:
 
     def join(self, now: datetime | None = None, *, history_s: float = 0.0) -> tuple[list[str], int]:
         """What a viewer joining now receives first, and the index its tail
-        starts from: the session so far, with gap history older than
-        `JOIN_GAP_HISTORY_S` reduced to each driver's last update (see
+        starts from: the session so far, with gap and mini-sector history
+        older than `JOIN_GAP_HISTORY_S` reduced to the last of each (see
         there for why that changes nothing the viewer can see).
 
         `history_s` is how far behind live the viewer runs (their Delay Sync
@@ -246,24 +267,21 @@ class LiveHub:
         window_s = max(JOIN_GAP_HISTORY_S, history_s)
         cutoff = (now or datetime.now(UTC)) - timedelta(seconds=window_s)
 
-        def superseded_gap(entry: _Published) -> bool:
-            return entry.kind == GAP_KIND and entry.driver is not None and entry.event_time < cutoff
+        def old(entry: _Published) -> bool:
+            return entry.slot is not None and entry.event_time < cutoff
 
-        # The update to keep is each driver's LATEST by event time, not the
+        # The update to keep is each slot's LATEST by event time, not the
         # last published: Delay Sync applies events in event-time order, and
         # a batch can arrive carrying an older timestamp than the one before.
-        last_old_gap: dict[str, tuple[datetime, int]] = {}
+        last_old: dict[tuple[str, ...], tuple[datetime, int]] = {}
         for index, entry in enumerate(entries):
-            if superseded_gap(entry):
-                key = entry.driver or ""
-                kept = last_old_gap.get(key)
+            if entry.slot is not None and old(entry):
+                kept = last_old.get(entry.slot)
                 if kept is None or entry.event_time >= kept[0]:
-                    last_old_gap[key] = (entry.event_time, index)
-        keep = {index for _, index in last_old_gap.values()}
+                    last_old[entry.slot] = (entry.event_time, index)
+        keep = {index for _, index in last_old.values()}
         texts = [
-            entry.text
-            for index, entry in enumerate(entries)
-            if index in keep or not superseded_gap(entry)
+            entry.text for index, entry in enumerate(entries) if index in keep or not old(entry)
         ]
         return texts, len(entries)
 
@@ -271,11 +289,10 @@ class LiveHub:
         self._stop.set()
 
     def _publish(self, envelope: StreamEnvelope) -> None:
-        driver = envelope.payload.get("driver")
         entry = _Published(
             text=envelope.model_dump_json(),
             kind=envelope.kind,
-            driver=driver if isinstance(driver, str) else None,
+            slot=_slot(envelope),
             event_time=envelope.event_time_utc,
         )
         with self._lock:

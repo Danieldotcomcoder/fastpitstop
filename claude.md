@@ -117,6 +117,13 @@ Phase 1 packages (under python/, in dependency order):
   replaying the recorded 2026 Bahrain and Singapore races against the
   archive: wrong-compound laps 32 -> 2, tyre ages off by more than a lap
   767 -> 136 (ROADMAP W4).
+  Mini-sectors (2026-10-30): `MiniSectorCompleted` per car per timing-
+  screen segment (status = the timing colour), and race control's marshal
+  `sector` kept. A code surviving the lap's reset is a completion (the
+  feed omits an unchanged one), and one arriving between the count tick
+  and that reset stays on the old lap; checked on the recorded 2026 Dutch
+  GP, every lap seen whole carries all 24 (opt-in
+  `test_mini_sectors_recorded.py`). Sessions stored before have none.
 - f1_store (1.4): the TimescaleDB sink — append-only `events` log (source of
   truth) + typed materialized tables (laps, car_telemetry/car_positions
   hypertables, stints, pit_stops, race_control, weather, team_radio) +
@@ -717,6 +724,18 @@ Phase 3 packages (under python/ and packages/, in dependency order):
   - phone tabs mounted on first open;
   - `/live` lazy-loading the desk;
   - `f1_api.response_cache` for `/laps` and `/circuit`.
+- Map placed from timing (2026-10-30): with no measured positions, each
+  car is placed from its own latest mini-sector (or, stored before then,
+  sector) time, moved on at its own pace through the circuit's
+  `pace_profile` (`tools/build_pace_profiles.py`, OpenF1's free positions);
+  `$lib/track-map/mini-sectors.ts`, all in race time. The old gap estimate
+  moved the whole field when the leader crossed the line after an unusual
+  lap (the jump in the 2026 US GP replay). Against OpenF1's true positions,
+  profiles from the previous season: US 15 m median / 2 jumps an hour
+  (estimate 62 m / 50), Dutch with mini-sectors 29 m / 4. Yellow-flagged
+  marshal sectors glow on the map (`marshal_sectors` per circuit,
+  `tools/build_marshal_sectors.py`, MultiViewer's API), and the followed
+  car's lap lights up purple/green by mini-sector (docs/PHASE3.md).
 - Shared replays (2026-10-30, blocked the launch posts): each replay
   viewer loaded and analysed the whole race itself (100-280 MB each; 32
   viewers took the API to 3.4 GB and delivered nothing). Now one

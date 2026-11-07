@@ -464,6 +464,55 @@ def test_a_late_joiner_gets_old_gap_history_compacted_and_nothing_else_lost() ->
     assert last_old == {"1": "PT3M20S", "63": "PT3M20S"}, last_old
 
 
+def test_a_late_joiner_gets_each_cars_latest_time_through_each_old_mini_sector() -> None:
+    """Mini-sectors are about as many as gap updates; the map shows only
+    each car's latest through each one, so older ones are compacted the
+    same way, per car and mini-sector, and nothing inside the window is."""
+    from f1_api.stream.live import JOIN_GAP_HISTORY_S
+    from f1_domain import MiniSectorCompleted, MiniSectorStatus
+
+    now = datetime.now(UTC)
+    old = now - timedelta(seconds=JOIN_GAP_HISTORY_S + 600)
+    recent = now - timedelta(seconds=30)
+
+    def mini(seq: int, driver: str, at: datetime, lap: int, index: int) -> DomainEvent:
+        return MiniSectorCompleted(
+            session_key=KEY,
+            ts_utc=at + timedelta(seconds=lap * 80 + index * 3),
+            source_seq=seq,
+            driver=driver,
+            lap_number=lap,
+            mini_sector=index,
+            mini_sector_count=4,
+            status=MiniSectorStatus.NORMAL,
+        )
+
+    source = FakeCursorSource()
+    seq = 0
+    for lap in range(1, 6):  # five old laps of four mini-sectors, two cars
+        for index in range(4):
+            for driver in ("1", "63"):
+                seq += 1
+                source.append(mini(seq, driver, old, lap, index))
+    seq += 1
+    source.append(mini(seq, "1", recent, 0, 0))  # inside the window
+
+    hub = _hub(source)
+    try:
+        deadline = time.monotonic() + 5
+        while len(hub.since(0)) < seq and time.monotonic() < deadline:
+            time.sleep(0.05)
+        first, _ = hub.join(now=now)
+    finally:
+        hub.stop()
+
+    minis = [json.loads(text)["payload"] for text in first]
+    minis = [m for m in minis if "mini_sector" in m]
+    old_kept = {(m["driver"], m["mini_sector"]): m["lap_number"] for m in minis[:-1]}
+    assert old_kept == {(d, i): 5 for d in ("1", "63") for i in range(4)}, old_kept
+    assert len(minis) == 8 + 1
+
+
 def test_a_viewer_running_far_behind_live_gets_its_whole_gap_history() -> None:
     """Sync 2.0 (ROADMAP W6): a viewer watching from lights out, or back
     from a long pause, runs further behind live than the compaction window.

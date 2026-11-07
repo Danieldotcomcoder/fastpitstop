@@ -523,6 +523,13 @@
             "title": "Lap Distance M",
             "type": "number"
           },
+          "marshal_sectors": {
+            "items": {
+              "$ref": "#/components/schemas/MarshalSectorOut"
+            },
+            "title": "Marshal Sectors",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -531,6 +538,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pace_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaceProfileOut"
               },
               {
                 "type": "null"
@@ -593,6 +610,13 @@
             "title": "Lap Distance M",
             "type": "number"
           },
+          "marshal_sectors": {
+            "items": {
+              "$ref": "#/components/schemas/MarshalSectorOut"
+            },
+            "title": "Marshal Sectors",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -601,6 +625,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/TrackOutlineOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pace_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaceProfileOut"
               },
               {
                 "type": "null"
@@ -2531,6 +2565,47 @@
           "is_anomalous"
         ],
         "title": "LapSummaryRowOut",
+        "type": "object"
+      },
+      "MarshalSectorOut": {
+        "description": "`f1_kernel.MarshalSector`: where the stretch a sector-scoped flag\ncovers starts. It runs to the next sector's start; the last, on to\nsector 1's.",
+        "properties": {
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "start_m": {
+            "title": "Start M",
+            "type": "number"
+          }
+        },
+        "required": [
+          "number",
+          "start_m"
+        ],
+        "title": "MarshalSectorOut",
+        "type": "object"
+      },
+      "PaceProfileOut": {
+        "description": "`f1_kernel.PaceProfile`: the fraction of the lap a car has covered\nat each 1% of a clean lap's time, from 0.0 to 1.0. What places the\ntiming screen's mini-sectors, and an estimated car, on the track.",
+        "properties": {
+          "distance_fractions": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Distance Fractions",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "distance_fractions",
+          "source"
+        ],
+        "title": "PaceProfileOut",
         "type": "object"
       },
       "PitLaneOut": {

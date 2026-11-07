@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from f1_domain import SessionKey
 from f1_kernel import CallKind, CallStatus, Confidence, CrossoverKind, Reliability, WindowState
@@ -459,6 +459,24 @@ class PitLaneOut(BaseModel):
     source_stops: int
 
 
+class MarshalSectorOut(BaseModel):
+    """`f1_kernel.MarshalSector`: where the stretch a sector-scoped flag
+    covers starts. It runs to the next sector's start; the last, on to
+    sector 1's."""
+
+    number: int
+    start_m: float
+
+
+class PaceProfileOut(BaseModel):
+    """`f1_kernel.PaceProfile`: the fraction of the lap a car has covered
+    at each 1% of a clean lap's time, from 0.0 to 1.0. What places the
+    timing screen's mini-sectors, and an estimated car, on the track."""
+
+    distance_fractions: list[float]
+    source: str
+
+
 class ScheduleSessionOut(BaseModel):
     """One session of a calendar round (`f1_api.schedule.ScheduledSession`)."""
 
@@ -503,6 +521,8 @@ class CircuitOut(BaseModel):
     drs_zones: list[DrsZoneOut]
     outline: TrackOutlineOut | None
     pit_lane: PitLaneOut | None = None
+    marshal_sectors: list[MarshalSectorOut] = Field(default_factory=list[MarshalSectorOut])
+    pace_profile: PaceProfileOut | None = None
     geometry_from_session: bool = False
     """True when `outline` and `pit_lane` were derived from this session's
     own measured positions, because the circuit file's (from another

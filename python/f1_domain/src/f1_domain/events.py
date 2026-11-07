@@ -34,7 +34,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
-from f1_domain.identity import Compound, DriverRef, Provenance, SessionKey, TrackStatusKind
+from f1_domain.identity import (
+    Compound,
+    DriverRef,
+    MiniSectorStatus,
+    Provenance,
+    SessionKey,
+    TrackStatusKind,
+)
 
 
 class EventBase(BaseModel):
@@ -75,6 +82,32 @@ class SectorCompleted(EventBase):
     sector: int | None = None
     """1-based sector index (1, 2, 3)."""
     time: timedelta | None = None
+
+
+class MiniSectorCompleted(EventBase):
+    """A car finished one of the lap's mini-sectors: the timing screen's
+    segments, about two dozen a lap, each ending at a fixed timing point on
+    the circuit. Live only: the feed sends them, the archive does not.
+    Where each one ends on the track is circuit data
+    (`f1_kernel.circuit.Circuit.mini_sectors`), not part of the event."""
+
+    kind: Literal["mini_sector_completed"] = "mini_sector_completed"
+    driver: str | None = None
+    lap_number: int | None = None
+    sector: int | None = None
+    """1-based sector index (1, 2, 3)."""
+    segment: int | None = None
+    """0-based index within the sector."""
+    mini_sector: int | None = None
+    """0-based index across the lap: every earlier sector's segments, then
+    `segment`."""
+    mini_sector_count: int | None = None
+    """How many mini-sectors this session's lap has. The count can change
+    between seasons (the 2026 feed splits Zandvoort's last stretch in two),
+    so a consumer checks it against the circuit data before placing one."""
+    status: MiniSectorStatus | None = None
+    status_code: int | None = None
+    """The feed's own code, verbatim."""
 
 
 class CarTelemetry(EventBase):
@@ -169,6 +202,10 @@ class RaceControlMessage(EventBase):
     """e.g. "Track", "Sector", "Driver" - verbatim."""
     driver: str | None = None
     lap: int | None = None
+    sector: int | None = None
+    """The marshal sector a sector-scoped flag covers ("YELLOW IN TRACK
+    SECTOR 7"), 1-based. Events stored before 2026-10-30 lack it; the
+    message text carries the same number."""
 
 
 class WeatherSample(EventBase):
@@ -313,6 +350,7 @@ class UnknownEvent(EventBase):
 DomainEvent = Annotated[
     LapCompleted
     | SectorCompleted
+    | MiniSectorCompleted
     | CarTelemetry
     | CarPosition
     | PositionChanged

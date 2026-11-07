@@ -8,9 +8,17 @@
   glides between real samples (`MeasuredPositions`). Every replayed session
   has them once its positions are backfilled. A live session does not: the
   live feed withholds positions from our unauthenticated client, and F1
-  only publishes them after the session. Then each car is ESTIMATED from
-  lap timing and its gap on the timing screen (placement.ts). The summary
-  line says which one the viewer is looking at.
+  only publishes them after the session. Then each car is TIMED: placed
+  at the end of the mini-sector it last completed (the feed times about two
+  dozen a lap) and moved on at its own pace through the circuit's pace
+  profile (`MiniSectorTracker`). Without mini-sector timing (sessions
+  ingested before 2026-10-30, the backfill), each car is ESTIMATED from lap
+  timing and its gap on the timing screen (placement.ts). The summary line
+  says which one the viewer is looking at.
+
+  On the track: a yellow-flagged marshal sector glows yellow
+  (`SectorFlagTracker`), and the followed car's lap lights up mini-sector by
+  mini-sector, purple or green where it was quickest.
 -->
 <script lang="ts">
 	import { serverClockOffsetMs, serverNowMs, type DelaySyncController } from '$lib/delay-sync';
@@ -27,6 +35,8 @@
 		type ApiTrackOutline,
 		type Point
 	} from '$lib/track-map';
+	import { MiniSectorTracker, type MiniSectorStatus } from '$lib/track-map/mini-sectors';
+	import { SectorFlagTracker, flaggedStretches } from '$lib/track-map/sector-flags';
 	import type { FocusPair } from './focus';
 	import { placeCars } from './placement';
 
@@ -41,6 +51,10 @@
 		outline: ApiTrackOutline | null;
 		/** Pit entry to pit exit, from the reference race's real stops. */
 		pit_lane?: { points: readonly (readonly number[])[] } | null;
+		/** Where each stretch a sector-scoped flag covers starts. */
+		marshal_sectors?: { number: number; start_m: number }[];
+		/** Lap fraction covered at each 1% of a clean lap's time. */
+		pace_profile?: { distance_fractions: number[] } | null;
 	}
 
 	interface Props {
@@ -59,6 +73,8 @@
 		/** One line on the field (`fieldLine`): who leads, by how much, how
 		 * spread the lead lap is. Falls back to naming the leader. */
 		fieldNote?: string | null;
+		/** The car whose lap lights up mini-sector by mini-sector. */
+		followed?: string | null;
 	}
 
 	let {
@@ -70,7 +86,8 @@
 		codes,
 		timeScale,
 		estimate = true,
-		fieldNote = null
+		fieldNote = null,
+		followed = null
 	}: Props = $props();
 
 	const N = 720;
@@ -83,10 +100,27 @@
 	const GONE_AFTER_RACE_MS = 10_000;
 	const measuredPositions = new MeasuredPositions();
 	const progress = new LapProgressTracker();
+	const miniSectors = new MiniSectorTracker();
+	const sectorFlags = new SectorFlagTracker();
+	/** A placed car closes on a correction this fast (race time) instead of
+	 * hopping: a timing point a moment early or late, a burst of two, a gap
+	 * update. A bigger change than `SNAP_FRACTION` (a tenth of a lap: a pit
+	 * stop under the estimate) is taken at once. Measured on the recorded
+	 * 2026 Dutch GP at 60 fps (see the header comment). */
+	const EASE_RACE_MS = 300;
+	const SNAP_FRACTION = 0.1;
+	// Drawing state, read and written by the frame loop: never reactive.
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const shownFractions = new Map<string, { fraction: number; atMs: number }>();
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let wrap: HTMLDivElement | undefined = $state();
 	let estimated = $state(true);
+	/** How the cars on screen are placed (see the header comment). */
+	let placement = $state<'measured' | 'timed' | 'estimated'>('estimated');
+	let lapLit = $state(false);
+	let timedBy = $state<'mini_sectors' | 'sectors' | null>(null);
+	let profile = $derived(circuit?.pace_profile?.distance_fractions ?? null);
 	let pitCodes = $state<string[]>([]);
 
 	let outline = $derived(outlineFromApi(circuit?.outline ?? null));
@@ -109,14 +143,20 @@
 		return out.length >= 2 ? out : null;
 	});
 
+	function resetTimings(): void {
+		progress.reset();
+		miniSectors.reset();
+		sectorFlags.reset();
+		shownFractions.clear();
+	}
 	$effect(() => {
 		void outline;
-		progress.reset();
+		resetTimings();
 	});
 	$effect(() => {
 		void controller;
 		measuredPositions.reset();
-		progress.reset();
+		resetTimings();
 	});
 
 	// --- geometry -------------------------------------------------------------
@@ -187,8 +227,35 @@
 			muted: v('--muted'),
 			panel: v('--panel'),
 			paper: v('--paper'),
-			accent: v('--accent')
+			accent: v('--accent'),
+			flag: v('--status-yellow'),
+			purple: v('--timing-purple'),
+			green: v('--timing-green')
 		};
+	}
+
+	/** Where a car is drawn: `target`, eased from where it was drawn last
+	 * frame so a timing point's small correction never hops. */
+	function eased(driver: string, target: number, frameMs: number): number {
+		const shown = shownFractions.get(driver);
+		let delta = target - (shown?.fraction ?? target);
+		if (delta > 0.5) delta -= 1;
+		if (delta < -0.5) delta += 1;
+		let fraction = target;
+		if (shown && Math.abs(delta) < SNAP_FRACTION) {
+			const dt = Math.max(0, frameMs - shown.atMs) * Math.max(1, timeScale);
+			fraction = shown.fraction + delta * (1 - Math.exp(-dt / EASE_RACE_MS));
+			fraction = ((fraction % 1) + 1) % 1;
+		}
+		shownFractions.set(driver, { fraction, atMs: frameMs });
+		return fraction;
+	}
+
+	function lapColor(status: MiniSectorStatus): string | null {
+		if (status === 'overall_best') return colors.purple ?? '#7b2fbe';
+		if (status === 'personal_best') return colors.green ?? '#17783a';
+		if (status === 'pit_lane') return null;
+		return colors.ink2 ?? '#3c4146';
 	}
 
 	function strokeRange(
@@ -248,8 +315,42 @@
 			}
 		}
 
+		const state = controller.visibleState.get();
+		progress.update(state.events);
+		miniSectors.update(state.events);
+		sectorFlags.update(state.events);
+
+		// A yellow-flagged marshal sector glows round the track beneath it.
+		if (lapLength) {
+			const stretches = flaggedStretches(
+				sectorFlags.flags,
+				circuit?.marshal_sectors ?? [],
+				lapLength
+			);
+			for (const stretch of stretches) {
+				ctx.globalAlpha = stretch.flag === 'double_yellow' ? 0.85 : 0.6;
+				strokeRange(ctx, stretch.from, stretch.to, tw + 12, c.flag ?? '#f2c94c');
+			}
+			ctx.globalAlpha = 1;
+		}
+
 		strokeRange(ctx, 0, 1.001, tw + 3, c.edge ?? '#a4a89f');
 		strokeRange(ctx, 0, 1.001, tw, c.track ?? '#cdd0c8');
+
+		// The followed car's lap so far, mini-sector by mini-sector: purple or
+		// green where it was quickest, ink where it was not.
+		const ends = miniSectors.boundaries(profile);
+		const lit = followed !== null && ends !== null && miniSectors.layout === 'mini_sectors';
+		if (lit !== lapLit) lapLit = lit;
+		if (lit && followed !== null && ends !== null) {
+			for (const [index, status] of miniSectors.lapStatuses(followed)) {
+				const color = lapColor(status);
+				const to = ends[index];
+				if (color === null || to === undefined) continue;
+				const from = index === 0 ? 0 : (ends[index - 1] ?? 0);
+				strokeRange(ctx, from, to, tw * 0.45, color, 'butt');
+			}
+		}
 
 		// DRS zones, placed by distance along the lap.
 		if (lapLength) {
@@ -302,8 +403,6 @@
 		}
 
 		// Cars.
-		const state = controller.visibleState.get();
-		progress.update(state.events);
 		measuredPositions.update(state.positionFrames);
 		const clockMs = controller.clockMs(frameWallMs);
 		const measured = measuredPositions.hasPositions;
@@ -317,8 +416,22 @@
 
 		const pa = pair?.a ?? null;
 		const pb = pair?.b ?? null;
-		// Leader from its own lap timing, everyone else behind it by their
-		// gap on the timing screen (see placement.ts for why).
+		// Timed: each car from the mini-sector it last completed. Its own
+		// timing, so it holds in qualifying too, where gaps place nobody.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const timed = new Map<string, number>();
+		if (!measured && ends !== null) {
+			for (const row of rows) {
+				const at = miniSectors.fractionAt(row.driver, clockMs, profile, timeScale);
+				if (at !== null) timed.set(row.driver, at);
+			}
+		}
+		const how = measured ? 'measured' : timed.size ? 'timed' : 'estimated';
+		if (how !== placement) placement = how;
+		const by = miniSectors.layout;
+		if (by !== timedBy) timedBy = by;
+		// Otherwise the leader from its own lap timing, everyone else behind
+		// it by their gap on the timing screen (see placement.ts for why).
 		const fractions =
 			measured || !estimate
 				? null
@@ -327,10 +440,10 @@
 						lapTimeS: (d) => progress.lapTimeS(d)
 					});
 		// Measured, a car is drawn wherever the feed put it, classified or
-		// not (practice, the formation lap); estimated, only a classified car
-		// has anywhere to be.
+		// not (practice, the formation lap); timed, wherever its timing puts
+		// it; estimated, only a classified car has anywhere to be.
 		const placed = rows
-			.filter((r) => measured || (estimate && r.position !== null))
+			.filter((r) => measured || timed.has(r.driver) || (estimate && r.position !== null))
 			.sort(
 				(x, y) =>
 					Number(x.driver === pa || x.driver === pb) - Number(y.driver === pa || y.driver === pb) ||
@@ -348,8 +461,9 @@
 				[x, y] = toScreen([at.x, at.y]);
 				k = 0;
 			} else {
-				const fraction = fractions?.get(row.driver) ?? null;
-				if (fraction === null) continue;
+				const target = timed.get(row.driver) ?? fractions?.get(row.driver) ?? null;
+				if (target === null) continue;
+				const fraction = eased(row.driver, target, frameWallMs);
 				k = Math.round(fraction * N);
 				[x, y] = P(k);
 			}
@@ -441,21 +555,32 @@
 			<canvas bind:this={canvas} aria-hidden="true"></canvas>
 		</div>
 		<div class="map-summary">
-			{#if estimate || !estimated}<span class="field-note" data-testid="field-note"
+			{#if estimate || placement !== 'estimated'}<span class="field-note" data-testid="field-note"
 					>{#if leader}{fieldNote ??
 							`${codes[leader.driver] ?? leader.driver} leads.`}{#if pitCodes.length}
 							In the pit lane: {pitCodes.join(', ')}.{/if}{:else}&nbsp;{/if}</span
 				>{/if}
-			{#if estimated && !estimate}No measured positions for this session yet, and qualifying’s
-				timing screen cannot place the cars, so none are drawn.{:else if estimated}Positions are
-				estimated from the leader’s lap timing and each car’s gap on the timing screen; the feed
-				does not carry measured positions for this session.{:else}Measured positions from F1’s
-				position data, about four a second per car.{/if}
+			{#if placement === 'timed'}Positions are placed from each car’s {timedBy === 'sectors'
+					? 'sector times, three timing points a lap,'
+					: 'mini-sector times, about two dozen timing points a lap,'} and how fast cars run each part
+				of this circuit; the feed does not carry measured positions for this session.{:else if estimated && !estimate}No
+				measured positions for this session yet, and qualifying’s timing screen cannot place the
+				cars, so none are drawn.{:else if estimated}Positions are estimated from the leader’s lap
+				timing and each car’s gap on the timing screen; the feed does not carry measured positions
+				for this session.{:else}Measured positions from F1’s position data, about four a second per
+				car.{/if}
 		</div>
 		<div class="map-legend">
 			<span><i class="dot" style="background:var(--ink-2)"></i>Car, in team colour</span>
 			<span><i class="dot hollow"></i>In the pit lane</span>
 			{#if (circuit?.drs_zones ?? []).length}<span><i class="dash"></i>DRS zone</span>{/if}
+			{#if (circuit?.marshal_sectors ?? []).length}<span
+					><i class="dash flag-band"></i>Yellow flag</span
+				>{/if}
+			{#if lapLit && followed}<span data-testid="mini-sector-legend"
+					><i class="dash lap-purple"></i><i class="dash lap-green"></i>{codes[followed] ??
+						followed}’s lap: quickest overall, own best</span
+				>{/if}
 		</div>
 	{:else if circuitStatus === 'loading'}
 		<!-- The map's own frame, held while the circuit loads: a one-line

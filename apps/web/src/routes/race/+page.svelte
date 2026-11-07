@@ -118,7 +118,14 @@
 		// Re-subscribes whenever `controller` is reassigned (a new session
 		// picks a fresh controller) — the same pattern every view above this
 		// one already uses.
-		return controller.visibleState.subscribe((state) => (visible = state));
+		return controller.visibleState.subscribe((state) => {
+			visible = state;
+			// The clock read with every release, not only on the timer below:
+			// a release landing between two timer reads showed an event a few
+			// milliseconds past a stale clock, failing the spoiler check with
+			// nothing leaked.
+			nowMs = Date.now();
+		});
 	});
 	$effect(() => {
 		return controller.delayState.subscribe((state) => (delayState = state));

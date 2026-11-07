@@ -745,6 +745,7 @@
 				{codes}
 				timeScale={isLive ? 1 : speed > 0 ? speed : 1}
 				estimate={false}
+				followed={focus}
 			/>
 			<FeedLane
 				items={feedItems}
@@ -803,6 +804,7 @@
 					{codes}
 					timeScale={isLive ? 1 : speed > 0 ? speed : 1}
 					{fieldNote}
+					{followed}
 				/>
 			{/if}
 			{#if shows('strategy')}

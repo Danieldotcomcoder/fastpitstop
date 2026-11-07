@@ -1018,6 +1018,70 @@ analysed and gives its memory back. Envelopes paced after joining arrived
 within 0.03 s at the 95th percentile with the worker, against 10.5 s with
 the thread, at 50 viewers.
 
+## Cars placed from timing, mini-sectors and yellow flags on the map
+
+Without measured positions (every live session: the feed withholds them
+from our client; and every session since F1's archive closed), the map
+used to place the leader from its line crossings and everyone else behind
+it by their gap. That jumps: when the leader crosses the line after an
+unusual lap (a safety car, a red-flag restart), the whole field moves at
+once, and again whenever the lead changes. It is the jump at the line in
+the 2026 US GP replay; it predates shared replays (their output is byte
+for byte the old replay's).
+
+Now each car is placed from its own timing (`$lib/track-map/mini-sectors.ts`):
+
+- The feed times about two dozen mini-sectors a lap per car
+  (`MiniSectorCompleted`, docs/DATA_CONTRACTS.md). A car that completed one
+  at `t` was at its end then, and moves on at its own pace over its newest
+  timing points (never across a pit stop), held just short of the next
+  point if that is late.
+- Where a timing point is on the track comes from the circuit's pace
+  profile (`tools/build_pace_profiles.py`: OpenF1's free positions for the
+  winner of the latest race there, the median lap fraction covered at each
+  1% of a clean lap's time). A mini-sector cars complete, on average, 31%
+  of the way through their laps ends where the profile puts a car at 31%.
+  Placed that way, the 2026 Dutch GP's land a median 7 m from
+  MultiViewer's own drawing of them.
+- A session with no mini-sectors (stored before 2026-10-30) uses its three
+  sector times a lap the same way.
+- Everything is measured in race time (each payload's own `ts_utc`); only
+  the extrapolation from the viewer's clock uses the replay speed. A first
+  version measured stream time and, at 16x, scaled it twice.
+- The tracker learns the timing points from laps within 7% of the
+  session's quick lap, after 30 lap times: the first laps after the Dutch
+  GP's red flag took 140 s against 76 s racing laps.
+- A timing point that would move a car backwards round the lap is a late
+  message and is ignored; a repeat after a reconnect too. Corrections under
+  a tenth of a lap slide over 300 ms of race time instead of hopping.
+
+The gap estimate remains for sessions with no timing points at all.
+
+Measured on recorded races, 60 frames a second, against OpenF1's true
+positions, with each circuit's pace profile built from the previous
+season's race there (not the race being measured):
+
+| Session and placement | Jumps over 0.5% of a lap in one frame | Median error | 90th percentile |
+|---|---|---|---|
+| 2026 Dutch GP, mini-sectors | 4 an hour | 29 m | 136 m |
+| 2026 Dutch GP, sector times only | 33 an hour | 39 m | 222 m |
+| 2026 US GP as stored (sector times) | 2 an hour | 15 m | 45 m |
+| Gap estimate, Dutch / US | 153 / 50 an hour | 71 / 62 m | 171 / 191 m |
+
+The Dutch window is a hard one: a red-flag restart and a feed reconnect in
+25 minutes of racing.
+
+On the track itself: a marshal sector under a yellow flag glows yellow
+(`$lib/track-map/sector-flags.ts`, from race control's sector number; the
+circuit file's `marshal_sectors` come from MultiViewer's circuit API via
+`tools/build_marshal_sectors.py`, projected onto our outline: MultiViewer's
+track sits within 1.3 m of ours everywhere but Shanghai, 3.8 m, and
+Suzuka, 5.0 m). A track-wide green, the
+chequered flag or a red flag ends every sector flag. The followed car's
+lap lights up mini-sector by mini-sector, purple where it was quickest
+overall, green for its own best. Madring and Sepang have no marshal
+sectors yet (MultiViewer has none for them).
+
 ## The race story
 
 `features.SHOW_RACE_STORY` is on. Three surfaces:

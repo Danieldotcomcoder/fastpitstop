@@ -1153,6 +1153,18 @@
 	border-top: 3px solid var(--accent);
 	display: inline-block;
 }
+/* The map's yellow-flag glow and the followed car's mini-sector colours. */
+.desk-page .dash.flag-band {
+	border-top: 6px solid var(--status-yellow);
+	opacity: 0.7;
+}
+.desk-page .dash.lap-purple {
+	border-top-color: var(--timing-purple);
+}
+.desk-page .dash.lap-green {
+	border-top-color: var(--timing-green);
+	margin-left: -4px;
+}
 .desk-page .map-summary {
 	font-size: 12.5px;
 	color: var(--ink-2);

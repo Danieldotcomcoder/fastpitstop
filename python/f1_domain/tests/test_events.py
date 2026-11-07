@@ -24,6 +24,8 @@ from f1_domain import (
     GapUpdated,
     LapCompleted,
     LapCounterUpdated,
+    MiniSectorCompleted,
+    MiniSectorStatus,
     PitEntry,
     PitExit,
     PositionChanged,
@@ -78,6 +80,17 @@ EXAMPLES: Sequence[EventBase] = [
     SectorCompleted(
         **_envelope(), driver="1", lap_number=12, sector=2, time=timedelta(seconds=27.301)
     ),
+    MiniSectorCompleted(
+        **_envelope(),
+        driver="1",
+        lap_number=12,
+        sector=2,
+        segment=3,
+        mini_sector=11,
+        mini_sector_count=24,
+        status=MiniSectorStatus.OVERALL_BEST,
+        status_code=2051,
+    ),
     CarTelemetry(
         **_envelope(),
         driver="16",
@@ -124,6 +137,7 @@ EXAMPLES: Sequence[EventBase] = [
         scope="Sector",
         driver=None,
         lap=18,
+        sector=7,
     ),
     WeatherSample(
         **_envelope(),

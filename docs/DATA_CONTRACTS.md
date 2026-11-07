@@ -204,6 +204,28 @@ spec. Every event carries the envelope `session_key` / `ts_utc` /
 - `provenance` is `LIVE` (default; the live/replay pipeline never sets it) or
   `HISTORICAL` (set by `f1_historical_adapter`).
 
+`MiniSectorCompleted` (2026-10-30) is one car finishing one of the timing
+screen's mini-sectors (`TimingData`'s `Sectors.{i}.Segments.{j}.Status`):
+`sector` (1-based), `segment` (0-based within it), `mini_sector` (0-based
+across the lap), `mini_sector_count` (this session's layout: 24 at
+Zandvoort in 2026), `status` (`normal`/`personal_best`/`overall_best`/
+`pit_lane`/`other`, from codes 2048/2049/2051/2064, anything else `other`)
+and the verbatim `status_code`. Live only: the archive and the backfill do
+not carry them, and sessions stored before 2026-10-30 have none. Three
+feed habits shape it, each pinned against the recorded 2026 Dutch GP
+(`f1_parse/tests/test_mini_sectors_recorded.py`): the message that
+completes a lap's first mini-sector zeroes the rest and omits that one's
+code when unchanged, so a code surviving a reset is a completion; the lap
+count ticks a moment before that reset, and a mini-sector between the two
+belongs to the lap just finished; a race start resets with no tick.
+Where each mini-sector ends on the track is not in the event: the
+frontend places them from the circuit's `pace_profile`.
+
+`RaceControlMessage.sector` (2026-10-30) is the marshal sector a
+sector-scoped flag covers ("YELLOW IN TRACK SECTOR 7"). Events stored
+before then lack it; the message text carries the same number. The circuit
+file's `marshal_sectors` say where each starts.
+
 ## Event store (`f1_store`)
 
 Persistence for the domain events. The DB is a SINK, not a dependency of the

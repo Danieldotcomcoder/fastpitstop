@@ -89,6 +89,8 @@ from f1_domain import (
     GapUpdated,
     LapCompleted,
     LapCounterUpdated,
+    MiniSectorCompleted,
+    MiniSectorStatus,
     PitEntry,
     PitExit,
     PositionChanged,
@@ -139,6 +141,23 @@ _STATIC_BASE = "https://livetiming.formula1.com/static/"
 absolute audio URLs (the same base FastF1 uses for livetiming statics)."""
 
 _MAX_SECTORS = 10
+_MAX_SEGMENTS = 20
+"""Mini-sectors in one sector beyond this are corrupt (a lap has about two
+dozen in all)."""
+_LAP_RESET_WAIT = timedelta(seconds=15)
+"""How long after the lap count ticks the feed's mini-sector reset is still
+expected (it follows one to three seconds later); past this, a car that
+stopped after the line does not keep its next mini-sectors on the old
+lap."""
+_MINI_SECTOR_STATUSES = {
+    2048: MiniSectorStatus.NORMAL,
+    2049: MiniSectorStatus.PERSONAL_BEST,
+    2051: MiniSectorStatus.OVERALL_BEST,
+    2064: MiniSectorStatus.PIT_LANE,
+}
+"""The feed's mini-sector codes. 0 is "not yet run this lap", reset as a
+car starts the next lap; any other code is a completion we keep as
+`OTHER`."""
 _MAX_STINTS = 50
 _MAX_QUALIFYING_PARTS = 3
 """Sanity caps on sparse-list indices, so one corrupt message can't balloon
@@ -251,6 +270,8 @@ class _TimingFacts:
     in_pit: bool | None = None
     pit_stops: int | None = None
     sectors: tuple[str | None, ...] = ()
+    segments: tuple[tuple[int, ...], ...] = ()
+    """Each sector's mini-sector codes, in order (0: not yet run this lap)."""
     best_laps: tuple[tuple[str | None, int | None], ...] = ()
     """Qualifying only: (best lap value, its lap number) per part."""
     knocked_out: bool | None = None
@@ -303,6 +324,9 @@ class _DriverTracker:
     `Position` and DriverList's `Line`, deduplicated here."""
     last_emitted_lap: int | None = None
     """Highest lap number a LapCompleted was emitted (or seeded) for."""
+    counted_at: datetime | None = None
+    """When the lap count last ticked while the feed has not yet reset the
+    mini-sectors for the new lap (`_emit_mini_sectors`)."""
     lap_time_dirty: bool = False
     """True when LastLapTime changed since the last LapCompleted — i.e.
     the merged lap time is FRESH, not a leftover from the previous lap."""
@@ -335,6 +359,7 @@ def _timing_facts(merged: JsonValue) -> _TimingFacts:
         in_pit=as_bool_flag(line.get("InPit")),
         pit_stops=as_int(line.get("NumberOfPitStops")),
         sectors=_sector_values(line.get("Sectors")),
+        segments=_segment_codes(line.get("Sectors")),
         best_laps=_best_laps(line.get("BestLapTimes")),
         knocked_out=as_bool_flag(line.get("KnockedOut")),
     )
@@ -384,6 +409,28 @@ def _sector_values(sectors: JsonValue | None) -> tuple[str | None, ...]:
         entry = as_dict(raw) or {}
         values[index] = _non_empty(as_str(entry.get("Value")))
     return tuple(values)
+
+
+def _segment_codes(sectors: JsonValue | None) -> tuple[tuple[int, ...], ...]:
+    """Each sector's mini-sector codes from a merged `Sectors`, as lists or
+    digit-keyed dicts like every other feed list."""
+    result: list[tuple[int, ...]] = []
+    for index, raw in _sparse_items(sectors, _MAX_SECTORS):
+        while len(result) <= index:
+            result.append(())
+        entry = as_dict(raw) or {}
+        codes: list[int] = []
+        for position, segment in _sparse_items(entry.get("Segments"), _MAX_SEGMENTS):
+            while len(codes) <= position:
+                codes.append(0)
+            codes[position] = as_int((as_dict(segment) or {}).get("Status")) or 0
+        result[index] = tuple(codes)
+    return tuple(result)
+
+
+def _segment_code(segments: tuple[tuple[int, ...], ...], sector: int, segment: int) -> int:
+    codes = segments[sector] if sector < len(segments) else ()
+    return codes[segment] if segment < len(codes) else 0
 
 
 def _best_laps(value: JsonValue | None) -> tuple[tuple[str | None, int | None], ...]:
@@ -890,6 +937,7 @@ class SessionStateMachine:
             # leak re-sent old times onto later increment-only deltas.)
             fresh_by_delta = new.laps != old.laps and _delta_carries_lap_time(line_delta)
             self._emit_sectors(events, number, old, new, ts, seq)
+            self._emit_mini_sectors(events, number, tracker, old, new, ts, seq)
             self._emit_lap_completed(events, number, tracker, new, fresh_by_delta, ts, seq)
             self._emit_pit_events(events, number, old, new, ts, seq)
             if new.position is not None and new.position != old.position:
@@ -1014,6 +1062,73 @@ class SessionStateMachine:
                     time=time_value,
                 )
             )
+
+    def _emit_mini_sectors(
+        self,
+        events: list[DomainEvent],
+        number: str,
+        tracker: _DriverTracker,
+        old: _TimingFacts,
+        new: _TimingFacts,
+        ts: datetime,
+        seq: int,
+    ) -> None:
+        """A mini-sector the car has just completed: its code moved to a
+        new non-zero value. The feed re-sends codes constantly (no event)
+        and zeroes them as the next lap starts (no event either).
+
+        The lap's first mini-sector is the exception. The feed zeroes the
+        rest of the lap in the message that completes it, and sends its own
+        code only when it changed: yellow two laps running, the message
+        carries the zeros and nothing else. So after a reset, a mini-sector
+        still holding a code has just been completed, changed or not.
+        Without this the 2026 Dutch GP lost the first mini-sector of 254
+        laps out of 414.
+
+        A line crossing reaches us in two halves: the lap count ticks, then
+        one to three seconds later comes that reset (never the other way
+        round in the 2026 Dutch GP). A mini-sector between the two still
+        belongs to the lap just finished: taking the count alone credited
+        the last mini-sector of 28 laps to the next lap. At a race start
+        the feed resets with no tick at all, which is why the reset is not
+        the lap's start either."""
+        restarted = any(
+            code == 0 and _segment_code(old.segments, s, g) != 0
+            for s, codes in enumerate(new.segments)
+            for g, code in enumerate(codes)
+        )
+        if new.laps is not None and old.laps is not None and new.laps > old.laps:
+            tracker.counted_at = ts
+        if restarted or (
+            tracker.counted_at is not None and ts - tracker.counted_at > _LAP_RESET_WAIT
+        ):
+            tracker.counted_at = None
+        lap = _in_progress_lap(new.laps)
+        if lap is not None and tracker.counted_at is not None:
+            lap -= 1
+        count = sum(len(codes) for codes in new.segments)
+        offset = 0
+        for sector_index, codes in enumerate(new.segments):
+            for segment_index, code in enumerate(codes):
+                previous = _segment_code(old.segments, sector_index, segment_index)
+                if code == 0:
+                    continue
+                if code == previous and not restarted:
+                    continue
+                events.append(
+                    MiniSectorCompleted(
+                        **self._envelope(ts, seq),
+                        driver=number,
+                        lap_number=lap,
+                        sector=sector_index + 1,
+                        segment=segment_index,
+                        mini_sector=offset + segment_index,
+                        mini_sector_count=count,
+                        status=_MINI_SECTOR_STATUSES.get(code, MiniSectorStatus.OTHER),
+                        status_code=code,
+                    )
+                )
+            offset += len(codes)
 
     def _emit_lap_completed(
         self,
@@ -1357,6 +1472,7 @@ class SessionStateMachine:
                     scope=entry.scope,
                     driver=entry.racing_number,
                     lap=entry.lap,
+                    sector=entry.sector,
                 )
             )
         return events

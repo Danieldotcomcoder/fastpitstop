@@ -761,9 +761,12 @@ export interface components {
             geometry_from_session: boolean;
             /** Lap Distance M */
             lap_distance_m: number;
+            /** Marshal Sectors */
+            marshal_sectors?: components["schemas"]["MarshalSectorOut"][];
             /** Name */
             name: string;
             outline: components["schemas"]["TrackOutlineOut"] | null;
+            pace_profile?: components["schemas"]["PaceProfileOut"] | null;
             pit_lane?: components["schemas"]["PitLaneOut"] | null;
         };
         /**
@@ -787,9 +790,12 @@ export interface components {
             geometry_from_session: boolean;
             /** Lap Distance M */
             lap_distance_m: number;
+            /** Marshal Sectors */
+            marshal_sectors?: components["schemas"]["MarshalSectorOut"][];
             /** Name */
             name: string;
             outline: components["schemas"]["TrackOutlineOut"] | null;
+            pace_profile?: components["schemas"]["PaceProfileOut"] | null;
             pit_lane?: components["schemas"]["PitLaneOut"] | null;
             /** Pit Loss N Stops */
             pit_loss_n_stops: number | null;
@@ -1379,6 +1385,30 @@ export interface components {
             is_yellow: number;
             /** Laps */
             laps: number;
+        };
+        /**
+         * MarshalSectorOut
+         * @description `f1_kernel.MarshalSector`: where the stretch a sector-scoped flag
+         *     covers starts. It runs to the next sector's start; the last, on to
+         *     sector 1's.
+         */
+        MarshalSectorOut: {
+            /** Number */
+            number: number;
+            /** Start M */
+            start_m: number;
+        };
+        /**
+         * PaceProfileOut
+         * @description `f1_kernel.PaceProfile`: the fraction of the lap a car has covered
+         *     at each 1% of a clean lap's time, from 0.0 to 1.0. What places the
+         *     timing screen's mini-sectors, and an estimated car, on the track.
+         */
+        PaceProfileOut: {
+            /** Distance Fractions */
+            distance_fractions: number[];
+            /** Source */
+            source: string;
         };
         /**
          * PitLaneOut

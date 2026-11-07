@@ -55,6 +55,25 @@ class TrackStatusKind(StrEnum):
     CHEQUERED = "chequered"
 
 
+class MiniSectorStatus(StrEnum):
+    """How quick a car was through one mini-sector, as the timing screen
+    colours it. The wire sends numeric codes (2048, 2049, 2051, 2064);
+    mapping codes onto these is the parser's job, not this enum's.
+    `OTHER` is any completion code we have not identified (2052 appears a
+    few times a race) — kept, never guessed into a colour.
+    """
+
+    NORMAL = "normal"
+    """Yellow: slower than the car's own best through it."""
+    PERSONAL_BEST = "personal_best"
+    """Green: the car's quickest through it this session."""
+    OVERALL_BEST = "overall_best"
+    """Purple: the quickest anyone has been through it this session."""
+    PIT_LANE = "pit_lane"
+    """The car went through it in the pit lane."""
+    OTHER = "other"
+
+
 class Compound(StrEnum):
     """Tyre compound. `UNKNOWN` covers the feed's blanks and any future
     compound name we haven't seen — never guess a compound.
